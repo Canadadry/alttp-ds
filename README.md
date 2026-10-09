@@ -47,3 +47,5 @@ git submodule update --init
 ```
 
 Game logic lives in `vendor/zelda3` and is not linked yet.
+
+The full porting plan is in [PORTING.md](PORTING.md).
