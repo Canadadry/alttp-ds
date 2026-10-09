@@ -1,0 +1,3 @@
+[submodule "vendor/zelda3"]
+	path = vendor/zelda3
+	url = https://github.com/snesrev/zelda3.git

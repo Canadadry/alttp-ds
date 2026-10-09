@@ -1,0 +1,16 @@
+/build/
+*.elf
+*.map
+*.nds
+*.sfc
+*.smc
+*.sav
+*.srm
+*.bps
+zelda3_assets.dat
+Thumbs.db
+.DS_Store
+saves/
+data/*.dat
+data/*.sfc
+data/*.smc
