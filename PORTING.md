@@ -83,12 +83,9 @@ Extract with upstream `assets/restool.py`. Desktop copy lives in `ALTTP-DS/` (`z
 
 Bring-up `.nds`: top framebuffer, bottom console, keypad, NitroFS `hello.txt`, FAT probe for `zelda3_assets.dat`. zelda3 is a submodule but **not linked**.
 
-### Phase 2 — Compile the game, no video yet
+### Phase 2 — Compile the game, no video yet (done)
 
-1. Compile `vendor/zelda3/src/*.c` and `snes/*.c`; exclude `main.c`, GL, Opus, win32.
-2. Stub `Die()`, time, mutex; fix unaligned access and other ARM issues as they appear.
-3. Replace SDL keycodes with DS buttons / a small ini.
-4. Load assets and run the same init zelda3 uses after `LoadAssets()`.
+zelda3 is linked (excluding `main.c`, OpenGL, CPU infra). SDL/Opus are stubbed in `platform/nds/include`. Host glue in `zelda_host.c` loads `zelda3_assets.dat` (NitroFS / FAT) and calls `ZeldaInitialize()`. No gameplay frame is drawn yet.
 
 **Exit:** links, boots, does not crash before the first frame (black screen is OK).
 

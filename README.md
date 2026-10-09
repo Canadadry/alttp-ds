@@ -4,9 +4,11 @@ A Nintendo DS (Phat / Lite) port of [snesrev/zelda3](https://github.com/snesrev/
 
 This repo does **not** include the game ROM or `zelda3_assets.dat`. You must extract assets from a USA SNES cartridge dump you own.
 
-## Phase 1 (current)
+## Phase 2 (current)
 
-Bring-up ROM: top-screen framebuffer, bottom-screen log, keypad, NitroFS, and a FAT probe for `zelda3_assets.dat`.
+zelda3 game code is compiled and linked. On boot the ROM loads `zelda3_assets.dat` (NitroFS if you copied it into `platform/nds/nitrofiles`, otherwise FAT) and runs `ZeldaInitialize()`. There is still no PPU blit — the top screen is a placeholder.
+
+`build.bat` copies `Desktop\ALTTP-DS\zelda3_assets.dat` into NitroFS when that file exists (gitignored).
 
 ### Build
 

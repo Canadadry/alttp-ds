@@ -16,23 +16,34 @@ include $(DEVKITARM)/ds_rules
 TARGET   := lttp-ds
 BUILD    := build
 SOURCES  := platform/nds/source
-INCLUDES :=
+INCLUDES := platform/nds/include vendor/zelda3 vendor/zelda3/src vendor/zelda3/snes
 DATA     :=
 GRAPHICS :=
 AUDIO    :=
 ICON     :=
 NITRO    := platform/nds/nitrofiles
+ZELDA3   := vendor/zelda3
+
+ZELDA_SRC := $(wildcard $(ZELDA3)/src/*.c) $(wildcard $(ZELDA3)/snes/*.c)
+ZELDA_SRC := $(filter-out \
+	$(ZELDA3)/src/main.c \
+	$(ZELDA3)/src/opengl.c \
+	$(ZELDA3)/src/glsl_shader.c \
+	$(ZELDA3)/src/zelda_cpu_infra.c \
+	$(ZELDA3)/snes/tracing.c,\
+	$(ZELDA_SRC))
 
 #---------------------------------------------------------------------------------
-ARCH := -march=armv5te -mtune=arm946e-s
+ARCH := -march=armv5te -mtune=arm946e-s -mthumb
 
-CFLAGS   := -g -Wall -O2 -ffunction-sections -fdata-sections\
+CFLAGS   := -g -Wall -Os -ffunction-sections -fdata-sections\
+            -fsigned-char -fno-strict-aliasing -Wno-deprecated-declarations\
             $(ARCH) $(INCLUDE) -DARM9
 CXXFLAGS := $(CFLAGS) -fno-rtti -fno-exceptions
 ASFLAGS  := -g $(ARCH)
 LDFLAGS   = -specs=ds_arm9.specs -g $(ARCH) -Wl,-Map,$(notdir $*.map)
 
-LIBS := -lfilesystem -lfat -lnds9
+LIBS := -lfilesystem -lfat -lnds9 -lm
 
 LIBDIRS := $(LIBNDS) $(PORTLIBS)
 
@@ -45,11 +56,14 @@ export OUTPUT := $(CURDIR)/$(TARGET)
 export VPATH := $(CURDIR)/$(subst /,,$(dir $(ICON)))\
                 $(foreach dir,$(SOURCES),$(CURDIR)/$(dir))\
                 $(foreach dir,$(DATA),$(CURDIR)/$(dir))\
-                $(foreach dir,$(GRAPHICS),$(CURDIR)/$(dir))
+                $(foreach dir,$(GRAPHICS),$(CURDIR)/$(dir))\
+                $(CURDIR)/$(ZELDA3)/src \
+                $(CURDIR)/$(ZELDA3)/snes
 
 export DEPSDIR := $(CURDIR)/$(BUILD)
 
-CFILES   := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.c)))
+CFILES   := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.c))) \
+            $(notdir $(ZELDA_SRC))
 CPPFILES := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.cpp)))
 SFILES   := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.s)))
 PNGFILES := $(foreach dir,$(GRAPHICS),$(notdir $(wildcard $(dir)/*.png)))
@@ -70,7 +84,7 @@ export OFILES_SOURCES := $(CPPFILES:.cpp=.o) $(CFILES:.c=.o) $(SFILES:.s=.o)
 export OFILES := $(PNGFILES:.png=.o) $(OFILES_BIN) $(OFILES_SOURCES)
 export HFILES := $(PNGFILES:.png=.h) $(addsuffix .h,$(subst .,_,$(BINFILES)))
 
-export INCLUDE  := $(foreach dir,$(INCLUDES),-iquote $(CURDIR)/$(dir))\
+export INCLUDE  := $(foreach dir,$(INCLUDES),-I$(CURDIR)/$(dir))\
                    $(foreach dir,$(LIBDIRS),-I$(dir)/include)\
                    -I$(CURDIR)/$(BUILD)
 export LIBPATHS := $(foreach dir,$(LIBDIRS),-L$(dir)/lib)
