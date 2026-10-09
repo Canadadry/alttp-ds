@@ -3,49 +3,25 @@
 #include <filesystem.h>
 
 #include <stdio.h>
-#include <string.h>
 
-void ZeldaHostInit(void);
-
-#define FB_WIDTH 256
-#define FB_HEIGHT 192
-
-static u16 *framebuffer;
-
-static void draw_idle_frame(int tick)
-{
-	int x, y;
-	int box_x = (tick * 2) % (FB_WIDTH - 32);
-	int box_y = 80;
-
-	for (y = 0; y < FB_HEIGHT; y++) {
-		u16 bg = RGB15(0, 4 + (y / 24), 8);
-		u16 *row = framebuffer + y * FB_WIDTH;
-		for (x = 0; x < FB_WIDTH; x++)
-			row[x] = bg;
-	}
-
-	for (y = 0; y < 16; y++) {
-		for (x = 0; x < 32; x++)
-			framebuffer[(box_y + y) * FB_WIDTH + box_x + x] = RGB15(31, 24, 0);
-	}
-}
+#include "zelda_host.h"
+#include "zelda_video.h"
 
 int main(int argc, char **argv)
 {
-	int tick = 0;
+	u16 *framebuffer;
+	int last_step = -1;
 
 	(void)argc;
 	(void)argv;
 
-	videoSetMode(MODE_FB0);
-	vramSetBankA(VRAM_A_LCD);
-	framebuffer = VRAM_A;
 	lcdMainOnTop();
 	consoleDemoInit();
 
-	iprintf("LttP DS  --  phase 2\n");
-	iprintf("Compile + LoadAssets + init\n\n");
+	iprintf("LttP DS  --  phase 3\n");
+	iprintf("asset index + 256 present\n");
+	iprintf("Y/Left=prev  X/Right=next\n");
+	iprintf("A=old/new renderer\n\n");
 
 	if (nitroFSInit(NULL))
 		iprintf("NitroFS: ok\n");
@@ -58,16 +34,34 @@ int main(int argc, char **argv)
 		iprintf("FAT: not mounted\n");
 
 	ZeldaHostInit();
-
-	iprintf("\nPhase 2 reached idle loop.\n");
-	iprintf("START exits.\n");
+	framebuffer = ZeldaVideoFramebuffer();
+	iprintf("L+R+START+SELECT quits\n");
 
 	while (pmMainLoop()) {
-		swiWaitForVBlank();
 		scanKeys();
-		draw_idle_frame(tick++);
-		if (keysDown() & KEY_START)
+		u32 held = keysHeld();
+		u32 down = keysDown();
+
+		if ((held & (KEY_L | KEY_R | KEY_START | KEY_SELECT)) ==
+		    (KEY_L | KEY_R | KEY_START | KEY_SELECT))
 			break;
+
+		ZeldaHostOnKeys(held, down);
+		ZeldaHostTick(held);
+		ZeldaHostBlit(framebuffer);
+
+		scanKeys();
+		held = keysHeld();
+		down = keysDown();
+		if (down)
+			ZeldaHostOnKeys(held, down);
+
+		if (ZeldaHostPhase3Step() != last_step) {
+			last_step = ZeldaHostPhase3Step();
+			iprintf("step 3%c\n", 'a' + last_step - 1);
+		}
+
+		swiWaitForVBlank();
 	}
 
 	return 0;

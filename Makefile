@@ -10,6 +10,11 @@ GAME_TITLE     := LttP DS
 GAME_SUBTITLE1 := A Link to the Past
 GAME_SUBTITLE2 := DS Phat / Lite
 
+ifeq ($(origin LTTP_ROOT),undefined)
+  LTTP_ROOT := $(CURDIR)
+endif
+export LTTP_ROOT
+
 include $(DEVKITARM)/ds_rules
 
 #---------------------------------------------------------------------------------
@@ -37,11 +42,14 @@ ZELDA_SRC := $(filter-out \
 ARCH := -march=armv5te -mtune=arm946e-s -mthumb
 
 CFLAGS   := -g -Wall -Os -ffunction-sections -fdata-sections\
-            -fsigned-char -fno-strict-aliasing -Wno-deprecated-declarations\
+            -fsigned-char -fno-strict-aliasing -mno-unaligned-access\
+            -Wno-deprecated-declarations\
+            -include $(LTTP_ROOT)/platform/nds/include/nds_force_types.h\
             $(ARCH) $(INCLUDE) -DARM9
 CXXFLAGS := $(CFLAGS) -fno-rtti -fno-exceptions
 ASFLAGS  := -g $(ARCH)
-LDFLAGS   = -specs=ds_arm9.specs -g $(ARCH) -Wl,-Map,$(notdir $*.map)
+LDFLAGS   = -specs=ds_arm9.specs -g $(ARCH) -Wl,-Map,$(notdir $*.map) \
+            -Wl,--wrap=FindIndexInMemblk
 
 LIBS := -lfilesystem -lfat -lnds9 -lm
 
@@ -124,6 +132,9 @@ $(OUTPUT).nds: $(OUTPUT).elf $(NITRO_FILES) $(GAME_ICON)
 $(OUTPUT).elf: $(OFILES)
 
 $(OFILES_SOURCES) : $(HFILES)
+
+# PPU inner loop is the hot path; Thumb/-Os is too slow on DS.
+ppu.o: CFLAGS := $(filter-out -mthumb -Os,$(CFLAGS)) -marm -O2
 
 %.bin.o %_bin.h : %.bin
 	@echo $(notdir $<)

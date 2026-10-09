@@ -89,14 +89,22 @@ zelda3 is linked (excluding `main.c`, OpenGL, CPU infra). SDL/Opus are stubbed i
 
 **Exit:** links, boots, does not crash before the first frame (black screen is OK).
 
-### Phase 3 — First picture
+### Phase 3 — First picture (in progress)
 
-1. `ZeldaRunFrame` (or equivalent), then blit PPU output to RGB15 VRAM.
-2. Crop 224→192.
-3. D-pad + ABXY + Start.
-4. Frameskip if under 60 Hz.
+The Nintendo logo is four 16×16 white sprites, not a background. `zelda3_assets.dat` in the project root is the source of truth (`build.bat` copies it into NitroFS). Packed blobs are indexed by `FindIndexInMemblk`. The sprite-gfx blob length is odd, so the count word sits on an odd address. ARM9 `LDRH` ignores bit 0 and returns the wrong slice (still 1536 bytes, so a size check looks fine). The DS build wraps that function with byte loads. Present stays 256 wide (`extraLeftRight = 0`); a 96-pixel pad shears the line. Host steps: X next, Y prev, A toggles old/new renderer on 3c/3e. Default boot is step 3a (`PHASE3_STEP`).
 
-**Exit:** title screen / file select visible in melonDS.
+| Step | Top screen | Pass |
+|---|---|---|
+| **3a** | Left half solid red, right half 8×8 checkerboard. No PPU. | Clean geometry, not snow |
+| **3b** | Host-decoded SNES 4bpp “N”, magnified 16× | Sharp white glyph |
+| **3c** | One isolated LakeSnes 16×16 border sprite, pad 96, 448-wide buffer | Intact box, not noise |
+| **3d** | Host-decoded pack 8 (second half) “Nintendo presents”, 3× | Readable logo. `vram[0x4690]` should be `0003` |
+| **3e** | Full `ZeldaDrawPpuFrame`, **pad 0 / 256-wide** (PC 4:3), crop 16+16 to RGB15 | Readable Nintendo logo |
+| **3f** | Same present as 3e; verbose debug only every 16 frames | Title / file select (slow is OK) |
+
+3e present is a DS clone of snesrev `DrawPpuFrameWithPerf` + SDL `ARGB8888` (`zelda_video.c`): `ZeldaDrawPpuFrame` into a 256×224 byte buffer (pitch `width*4`), then LE `B,G,R,A` → libnds RGB15 with `BIT(15)` on a MODE_5_2D 16-bit BG (same 555 idea as snes9x on RGB555). `NewRenderer = 1` and `extraLeftRight = 0` match `zelda3.ini` 4:3. Isolated 3c still uses pad 96 without side-space. No vendor edits.
+
+**Exit:** readable Nintendo logo, then title / file select in melonDS.
 
 ### Phase 4 — Make it a game
 
