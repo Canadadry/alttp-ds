@@ -2,6 +2,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 #include "types.h"
 #include "config.h"
@@ -9,22 +11,14 @@
 #include "util.h"
 #include "audio.h"
 #include "zelda_rtl.h"
-#include "features.h"
+#include "variables.h"
 #include "snes/ppu.h"
-#include "snes/dma.h"
 #include "zelda_video.h"
 
 const uint8 *g_asset_ptrs[kNumberOfAssets];
 uint32 g_asset_sizes[kNumberOfAssets];
 
-#ifndef PHASE3_STEP
-#define PHASE3_STEP 1
-#endif
-
-#define PPU_PAD kPpuExtraLeftRight
-#define PPU_STRIDE (256 + PPU_PAD * 2)
-#define PPU_H 224
-#define CROP_Y 16
+enum { kAudioHz = 11025 };
 
 void NORETURN Die(const char *error)
 {
@@ -139,188 +133,65 @@ MemBlk __wrap_FindIndexInMemblk(MemBlk data, size_t i)
 	return (MemBlk) { data.ptr + left_off, right_off - left_off };
 }
 
-static int phase3_step = PHASE3_STEP;
-static int phase3_new_renderer = 1;
-static int present_dirty = 1;
-static int game_chr_ready;
-static int blit_frames;
-static uint32 ppu_pixels[PPU_STRIDE * PPU_H];
-static u16 fb_copy[SCREEN_WIDTH * SCREEN_HEIGHT];
+/* kKeys "AXsSUDLRBY" before the 16-bit reverse in NMI_ReadJoypads.
+ * bit 0 SNES B sword, 1 SNES Y item, 2 Select, 3 Start,
+ * 4-7 Up Down Left Right, 8 SNES A dash, 9 SNES X, 10 SNES L, 11 SNES R.
+ */
+static int paused;
+static int save_ok;
+static int hud_dirty = 1;
 
-/* 8x8 letter N, color 15 vs 0. */
-static const uint8 kGlyphN[8][8] = {
-	{ 15, 0,  0,  0,  0,  0,  0, 15 },
-	{ 15, 15, 0,  0,  0,  0,  0, 15 },
-	{ 15, 0,  15, 0,  0,  0,  0, 15 },
-	{ 15, 0,  0,  15, 0,  0,  0, 15 },
-	{ 15, 0,  0,  0,  15, 0,  0, 15 },
-	{ 15, 0,  0,  0,  0,  15, 0, 15 },
-	{ 15, 0,  0,  0,  0,  0,  15, 15 },
-	{ 15, 0,  0,  0,  0,  0,  0, 15 },
-};
-
-static u16 px15(int r, int g, int b)
+static const char *item_name(unsigned id)
 {
-	return RGB15(r, g, b) | BIT(15);
+	static const char *const names[] = {
+		"none", "bow", "boomerang", "hookshot", "bombs",
+		"mushroom", "fire rod", "ice rod", "bombos", "ether",
+		"quake", "lamp", "hammer", "flute", "net",
+		"book", "bottle", "somaria", "byrna", "cape",
+		"mirror", "gloves", "boots", "flippers", "pearl",
+		"-", "sword", "shield", "tunic",
+		"bottle", "bottle", "bottle", "bottle"
+	};
+	if (id >= sizeof(names) / sizeof(names[0]))
+		return "?";
+	return names[id];
 }
 
-static void fb_clear(u16 c)
+static void mount_save(void)
 {
-	int i;
-	for (i = 0; i < SCREEN_WIDTH * SCREEN_HEIGHT; i++)
-		fb_copy[i] = c;
-}
-
-static void fb_present(u16 *fb)
-{
-	memcpy(fb, fb_copy, sizeof(fb_copy));
-}
-
-static void encode_snes4bpp(uint16 *tile, const uint8 pix[8][8])
-{
-	int y, x;
-
-	for (y = 0; y < 8; y++) {
-		uint16 p01 = 0, p23 = 0;
-		for (x = 0; x < 8; x++) {
-			int bit = 7 - x;
-			int p = pix[y][x] & 15;
-			if (p & 1)
-				p01 |= (uint16)(1u << bit);
-			if (p & 2)
-				p01 |= (uint16)(1u << (bit + 8));
-			if (p & 4)
-				p23 |= (uint16)(1u << bit);
-			if (p & 8)
-				p23 |= (uint16)(1u << (bit + 8));
-		}
-		tile[y] = p01;
-		tile[y + 8] = p23;
-	}
-}
-
-static int snes4bpp_pixel(const uint16 *tile, int x, int y)
-{
-	int bit = 7 - x;
-	uint16 p01 = tile[y];
-	uint16 p23 = tile[y + 8];
-
-	return ((p01 >> bit) & 1)
-		| (((p01 >> (bit + 8)) & 1) << 1)
-		| (((p23 >> bit) & 1) << 2)
-		| (((p23 >> (bit + 8)) & 1) << 3);
-}
-
-static void magnify_tile(const uint16 *tile, int ox, int oy, int mag, int ink_only)
-{
-	int x, y, mx, my;
-
-	for (y = 0; y < 8; y++) {
-		for (x = 0; x < 8; x++) {
-			int p = snes4bpp_pixel(tile, x, y);
-			u16 c;
-			if (!p && ink_only)
-				continue;
-			c = p ? px15(31, 31, 31) : px15(0, 0, 0);
-			for (my = 0; my < mag; my++) {
-				for (mx = 0; mx < mag; mx++) {
-					int dx = ox + x * mag + mx;
-					int dy = oy + y * mag + my;
-					if (dx >= 0 && dx < SCREEN_WIDTH && dy >= 0 && dy < SCREEN_HEIGHT)
-						fb_copy[dy * SCREEN_WIDTH + dx] = c;
-				}
-			}
-		}
-	}
-}
-
-/* Same 3bpp→4bpp expansion as Graphics_LoadChrHalfSlot, second half of pack 8. */
-static uint16 logo_tiles[32 * 16];
-static int logo_tiles_ok;
-
-static void expand_logo_half(const uint8 *src)
-{
-	int tile, row;
-
-	src += 0x300;
-	for (tile = 0; tile < 32; tile++) {
-		uint16 *dst = logo_tiles + tile * 16;
-		const uint8 *p0 = src;
-		const uint8 *p2 = src + 16;
-
-		src += 24;
-		for (row = 0; row < 8; row++) {
-			uint16 t = (uint16)p0[0] | ((uint16)p0[1] << 8);
-			uint8 u = p2[0];
-
-			dst[row] = t;
-			dst[row + 8] = (uint16)(((t | (t >> 8) | u) << 8) | u);
-			p0 += 2;
-			p2 += 1;
-		}
-	}
-}
-
-static void ensure_logo_tiles(void)
-{
-	MemBlk blk;
-
-	if (logo_tiles_ok)
+	if (chdir("fat:/") != 0) {
+		iprintf("Save: no SD\n");
 		return;
-	blk = kSprGfx(8);
-	if (!blk.ptr || blk.size < 0x600)
-		return;
-	expand_logo_half(blk.ptr);
-	logo_tiles_ok = 1;
-}
-
-static int obj16_name(int base, int col, int row)
-{
-	return ((base & 0xf0) + (row ? 0x10 : 0)) | (((base & 0x0f) + col) & 0x0f);
-}
-
-static void blit_obj16(int name, int ox, int oy, int mag)
-{
-	int row, col;
-
-	for (row = 0; row < 2; row++) {
-		for (col = 0; col < 2; col++) {
-			int n = obj16_name(name, col, row) - 0x60;
-			if (n < 0 || n >= 32)
-				continue;
-			magnify_tile(&logo_tiles[n * 16], ox + col * 8 * mag, oy + row * 8 * mag, mag, 1);
+	}
+	if (mkdir("saves", 0777) != 0) {
+		/* Already there is fine. */
+	}
+	save_ok = 1;
+	{
+		FILE *f = fopen("saves/sram.dat", "rb");
+		if (f) {
+			fclose(f);
+			ZeldaReadSram();
+			iprintf("Save: loaded\n");
+		} else {
+			iprintf("Save: new\n");
 		}
 	}
 }
 
-/* LakeSnes/PC: 0x00RRGGBB. DS RGB15 is the same 555 packing snes9x uses on RGB555 hosts.
- * 3DS port (EstebanPdN/zelda-alttp-3ds) converts that 32-bit buffer to RGB565. */
-static void present_argb_crop(u16 *fb, int stride, int x0)
-{
-	int x, y;
-
-	for (y = 0; y < SCREEN_HEIGHT; y++) {
-		const uint32 *src = ppu_pixels + (y + CROP_Y) * stride + x0;
-		u16 *dst = fb_copy + y * SCREEN_WIDTH;
-		for (x = 0; x < SCREEN_WIDTH; x++) {
-			u32 c = src[x];
-			dst[x] = RGB8((c >> 16) & 0xff, (c >> 8) & 0xff, c & 0xff) | BIT(15);
-		}
-	}
-	fb_present(fb);
-}
-
-static uint32 ppu_draw_flags(void)
-{
-	return phase3_new_renderer ? kPpuRenderFlags_NewRenderer : 0;
-}
-
-static int ZeldaHostMapKeys(u32 held)
+static int map_keys(u32 held)
 {
 	int inputs = 0;
 
-	if (held & KEY_B)
+	if ((held & (KEY_START | KEY_SELECT)) == (KEY_START | KEY_SELECT))
+		held &= ~(KEY_START | KEY_SELECT);
+	if ((held & (KEY_L | KEY_R | KEY_SELECT)) == (KEY_L | KEY_R | KEY_SELECT))
+		held &= ~(KEY_L | KEY_R | KEY_SELECT);
+
+	if (held & KEY_A)
 		inputs |= 1 << 0;
+	if (held & KEY_B)
+		inputs |= 1 << 1;
 	if (held & KEY_SELECT)
 		inputs |= 1 << 2;
 	if (held & KEY_START)
@@ -333,8 +204,10 @@ static int ZeldaHostMapKeys(u32 held)
 		inputs |= 1 << 6;
 	if (held & KEY_RIGHT)
 		inputs |= 1 << 7;
-	if (held & KEY_A)
+	if (held & KEY_Y)
 		inputs |= 1 << 8;
+	if (held & KEY_X)
+		inputs |= 1 << 9;
 	if (held & KEY_L)
 		inputs |= 1 << 10;
 	if (held & KEY_R)
@@ -350,239 +223,111 @@ void ZeldaHostInit(void)
 	g_config.extend_y = false;
 	g_config.extended_aspect_ratio = 0;
 	g_config.new_renderer = true;
-	g_config.enable_audio = false;
-	g_config.audio_freq = 22050;
+	g_config.enable_audio = true;
+	g_config.audio_freq = kAudioHz;
 	g_config.audio_channels = 1;
 
 	ZeldaLoadAssets();
 	ZeldaInitialize();
-	/* PC 4:3: extraLeftRight = min(extended_aspect_ratio, 96) = 0. */
 	g_zenv.ppu->extraLeftRight = 0;
 	g_wanted_zelda_features = 0;
 	ZeldaEnableMsu(0);
 	ZeldaSetLanguage(NULL);
+	mount_save();
 	ZeldaVideoInit();
-	iprintf("ZeldaInitialize: ok\n");
-	iprintf("video flags %lu extra %d\n",
-		(unsigned long)ZeldaVideoRenderFlags(), g_zenv.ppu->extraLeftRight);
+	iprintf("A sword  B item  Y dash\n");
+	iprintf("Start menu\n");
 }
 
-int ZeldaHostPhase3Step(void)
+void ZeldaHostSave(void)
 {
-	return phase3_step;
-}
-
-static void restart_game_cpu(void)
-{
-	dma_reset(g_zenv.dma);
-	ppu_reset(g_zenv.ppu);
-	memset(g_zenv.ram, 0, 0x20000);
-	g_zenv.ppu->extraLeftRight = 0;
-	game_chr_ready = 0;
+	if (save_ok)
+		ZeldaWriteSram();
 }
 
 void ZeldaHostOnKeys(u32 held, u32 down)
 {
-	int prev = phase3_step;
-
-	(void)held;
-
-	if ((down & (KEY_X | KEY_RIGHT)) && phase3_step < 5) {
-		phase3_step++;
-		present_dirty = 1;
+	if ((down & (KEY_START | KEY_SELECT)) &&
+	    (held & (KEY_START | KEY_SELECT)) == (KEY_START | KEY_SELECT)) {
+		paused ^= 1;
+		hud_dirty = 1;
 	}
-	if ((down & (KEY_Y | KEY_LEFT)) && phase3_step > 1) {
-		phase3_step--;
-		present_dirty = 1;
-	}
-	if ((down & KEY_A) && (phase3_step == 3 || phase3_step == 5)) {
-		phase3_new_renderer ^= 1;
-		ZeldaVideoSetNewRenderer(phase3_new_renderer);
-		present_dirty = 1;
-		iprintf("renderer %s\n", phase3_new_renderer ? "new" : "old");
-	}
-
-	if (phase3_step != prev &&
-	    ((phase3_step == 4 && prev <= 3) || phase3_step == 5)) {
-		iprintf("-> 3%c restart game\n", 'a' + phase3_step - 1);
-		restart_game_cpu();
+	if (!(held & KEY_START) &&
+	    (down & (KEY_L | KEY_R | KEY_SELECT)) &&
+	    (held & (KEY_L | KEY_R | KEY_SELECT)) == (KEY_L | KEY_R | KEY_SELECT)) {
+		ZeldaHostSave();
+		ZeldaReset(true);
+		paused = 0;
+		hud_dirty = 1;
 	}
 }
 
 void ZeldaHostTick(u32 held)
 {
-	if (phase3_step == 4 && !game_chr_ready) {
-		ZeldaRunFrame(0);
-		if (g_zenv.vram[0x4690] != 0) {
-			game_chr_ready = 1;
-			present_dirty = 1;
-			iprintf("3d CHR ready %04X\n", g_zenv.vram[0x4690]);
-		}
-	} else if (phase3_step == 5) {
-		ZeldaRunFrame(ZeldaHostMapKeys(held));
-	}
-}
-
-static void step_3a(u16 *fb)
-{
-	int x, y;
-
-	for (y = 0; y < SCREEN_HEIGHT; y++) {
-		for (x = 0; x < SCREEN_WIDTH; x++) {
-			u16 c;
-			if (x < 128)
-				c = px15(31, 0, 0);
-			else
-				c = ((x / 8 + y / 8) & 1) ? px15(31, 31, 31) : px15(0, 0, 0);
-			fb_copy[y * SCREEN_WIDTH + x] = c;
-		}
-	}
-	fb_present(fb);
-	if (blit_frames == 0)
-		iprintf("3a FB0 red|checker\n");
-}
-
-static void step_3b(u16 *fb)
-{
-	uint16 tile[16];
-
-	encode_snes4bpp(tile, kGlyphN);
-	fb_clear(px15(7, 0, 7));
-	magnify_tile(tile, 64, 32, 16, 0);
-	fb_present(fb);
-	if (blit_frames == 0)
-		iprintf("3b glyph N x16  t0=%04X\n", tile[0]);
-}
-
-static void make_border_tile(uint16 *tile, int top, int left, int bot, int right)
-{
-	uint8 pix[8][8];
-	int x, y;
-
-	memset(pix, 0, sizeof(pix));
-	for (x = 0; x < 8; x++) {
-		if (top)
-			pix[0][x] = 15;
-		if (bot)
-			pix[7][x] = 15;
-	}
-	for (y = 0; y < 8; y++) {
-		if (left)
-			pix[y][0] = 15;
-		if (right)
-			pix[y][7] = 15;
-	}
-	encode_snes4bpp(tile, pix);
-}
-
-static void step_3c(u16 *fb)
-{
-	Ppu *ppu = g_zenv.ppu;
-	uint16 tile[16];
-	int i;
-
-	ppu_reset(ppu);
-	ppu->extraLeftRight = PPU_PAD;
-	ppu->extraLeftCur = 0;
-	ppu->extraRightCur = 0;
-	ppu->forcedBlank = false;
-	ppu->brightness = 15;
-	ppu->lastBrightnessMult = 0xff;
-	ppu->mode = 1;
-	ppu->screenEnabled[0] = 0x10;
-	ppu->screenEnabled[1] = 0;
-	ppu->objTileAdr1 = 0x4000;
-	ppu->objSize = 0;
-
-	make_border_tile(tile, 1, 1, 0, 0);
-	memcpy(&ppu->vram[0x4690], tile, 32);
-	make_border_tile(tile, 1, 0, 0, 1);
-	memcpy(&ppu->vram[0x46a0], tile, 32);
-	make_border_tile(tile, 0, 1, 1, 0);
-	memcpy(&ppu->vram[0x4790], tile, 32);
-	make_border_tile(tile, 0, 0, 1, 1);
-	memcpy(&ppu->vram[0x47a0], tile, 32);
-
-	for (i = 0x90; i < 0xa0; i++)
-		ppu->cgram[i] = 0x7fff;
-
-	memset(ppu->oam, 0, sizeof(ppu->oam));
-	for (i = 0; i < 128; i++)
-		ppu->oam[i * 2] = 0xf0 << 8;
-	ppu->oam[0] = (104 << 8) | 96;
-	ppu->oam[1] = (0x32 << 8) | 0x69;
-	ppu->oam[0x100] = 2;
-
-	memset(ppu_pixels, 0, sizeof(ppu_pixels));
-	PpuBeginDrawing(ppu, (uint8 *)ppu_pixels, PPU_STRIDE * 4, ppu_draw_flags());
-	for (i = 0; i <= 224; i++)
-		ppu_runLine(ppu, i);
-
-	present_argb_crop(fb, PPU_STRIDE, PPU_PAD);
-	iprintf("3c spr %s pad%d v=%04X\n",
-		phase3_new_renderer ? "new" : "old",
-		ppu->extraLeftRight, ppu->vram[0x4690]);
-}
-
-static void step_3d(u16 *fb)
-{
-	static const uint8 kLogoX[4] = { 0, 16, 32, 40 };
-	static const uint8 kLogoTile[4] = { 0x69, 0x6b, 0x6d, 0x6e };
-	const int mag = 3;
-	int i;
-
-	ensure_logo_tiles();
-	fb_clear(px15(4, 0, 8));
-	if (logo_tiles_ok) {
-		int ox = (SCREEN_WIDTH - 56 * mag) / 2;
-		int oy = (SCREEN_HEIGHT - 16 * mag) / 2;
-		for (i = 0; i < 4; i++)
-			blit_obj16(kLogoTile[i], ox + kLogoX[i] * mag, oy, mag);
-	}
-	fb_present(fb);
-	iprintf("3d logo $69=%04X vram=%04X\n",
-		logo_tiles_ok ? logo_tiles[9 * 16] : 0,
-		g_zenv.vram[0x4690]);
-}
-
-static void step_3e(u16 *fb)
-{
-	(void)fb;
-	ZeldaVideoDrawPpuFrame();
-	if ((blit_frames & 15) == 0) {
-		iprintf("3e sdl %s extra%d blank%d %04X\n",
-			ZeldaVideoNewRenderer() ? "new" : "old",
-			g_zenv.ppu->extraLeftRight,
-			g_zenv.ppu->forcedBlank,
-			g_zenv.vram[0x4690]);
-	}
+	if (paused)
+		return;
+	ZeldaRunFrame(map_keys(held));
 }
 
 void ZeldaHostBlit(u16 *fb)
 {
-	if (phase3_step <= 4 && !present_dirty) {
-		fb_present(fb);
-		return;
-	}
+	(void)fb;
+	if (!paused)
+		ZeldaVideoDrawPpuFrame();
+}
 
-	switch (phase3_step) {
-	case 1:
-		step_3a(fb);
-		break;
-	case 2:
-		step_3b(fb);
-		break;
-	case 3:
-		step_3c(fb);
-		break;
-	case 4:
-		step_3d(fb);
-		break;
-	default:
-		step_3e(fb);
-		break;
-	}
-	if (phase3_step <= 4)
-		present_dirty = 0;
-	blit_frames++;
+void ZeldaHostAudio(void)
+{
+}
+
+void ZeldaHostHud(void)
+{
+	unsigned hp = link_health_current;
+	unsigned cap = link_health_capacity;
+	unsigned magic = link_magic_power;
+	unsigned bombs = link_item_bombs;
+	unsigned arrows = link_num_arrows;
+	unsigned keys = link_num_keys;
+	unsigned item = current_item_y;
+	unsigned sword = link_sword_type;
+	unsigned rupees = link_rupees_actual;
+	static unsigned p_hp, p_cap, p_magic, p_bombs, p_arrows, p_keys, p_item, p_sword, p_rupees;
+	static int p_paused;
+
+	if (!hud_dirty &&
+	    p_hp == hp && p_cap == cap && p_magic == magic &&
+	    p_bombs == bombs && p_arrows == arrows && p_keys == keys &&
+	    p_item == item && p_sword == sword && p_rupees == rupees &&
+	    p_paused == paused)
+		return;
+	p_hp = hp;
+	p_cap = cap;
+	p_magic = magic;
+	p_bombs = bombs;
+	p_arrows = arrows;
+	p_keys = keys;
+	p_item = item;
+	p_sword = sword;
+	p_rupees = rupees;
+	p_paused = paused;
+
+	hud_dirty = 0;
+	consoleClear();
+	iprintf("%s\n", paused ? "PAUSED" : "LttP DS");
+	if (hp % 8)
+		iprintf("Hearts %u+%u/%u\n", hp / 8, hp % 8, cap / 8);
+	else
+		iprintf("Hearts %u/%u\n", hp / 8, cap / 8);
+	iprintf("Rupees %u\n", rupees);
+	iprintf("Bombs %u  Arrows %u\n", bombs, arrows);
+	iprintf("Magic %u  Keys %u\n", magic, keys);
+	iprintf("Item %s\n", item_name(item));
+	iprintf("Sword %u\n", sword);
+	iprintf("\nA sword   B item\n");
+	iprintf("Y dash    X  L/R\n");
+	iprintf("Start menu\n");
+	iprintf("Sel+Start pause\n");
+	iprintf("L+R+Sel reset\n");
+	iprintf("L+R+Start+Sel quit\n");
+	iprintf("Save %s\n", save_ok ? "SD" : "off");
 }

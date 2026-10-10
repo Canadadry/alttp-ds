@@ -10,7 +10,6 @@
 int main(int argc, char **argv)
 {
 	u16 *framebuffer;
-	int last_step = -1;
 
 	(void)argc;
 	(void)argv;
@@ -18,10 +17,7 @@ int main(int argc, char **argv)
 	lcdMainOnTop();
 	consoleDemoInit();
 
-	iprintf("LttP DS  --  phase 3\n");
-	iprintf("asset index + 256 present\n");
-	iprintf("Y/Left=prev  X/Right=next\n");
-	iprintf("A=old/new renderer\n\n");
+	iprintf("LttP DS\n");
 
 	if (nitroFSInit(NULL))
 		iprintf("NitroFS: ok\n");
@@ -35,7 +31,6 @@ int main(int argc, char **argv)
 
 	ZeldaHostInit();
 	framebuffer = ZeldaVideoFramebuffer();
-	iprintf("L+R+START+SELECT quits\n");
 
 	while (pmMainLoop()) {
 		scanKeys();
@@ -43,23 +38,16 @@ int main(int argc, char **argv)
 		u32 down = keysDown();
 
 		if ((held & (KEY_L | KEY_R | KEY_START | KEY_SELECT)) ==
-		    (KEY_L | KEY_R | KEY_START | KEY_SELECT))
+		    (KEY_L | KEY_R | KEY_START | KEY_SELECT)) {
+			ZeldaHostSave();
 			break;
+		}
 
 		ZeldaHostOnKeys(held, down);
 		ZeldaHostTick(held);
 		ZeldaHostBlit(framebuffer);
-
-		scanKeys();
-		held = keysHeld();
-		down = keysDown();
-		if (down)
-			ZeldaHostOnKeys(held, down);
-
-		if (ZeldaHostPhase3Step() != last_step) {
-			last_step = ZeldaHostPhase3Step();
-			iprintf("step 3%c\n", 'a' + last_step - 1);
-		}
+		ZeldaHostAudio();
+		ZeldaHostHud();
 
 		swiWaitForVBlank();
 	}

@@ -39,17 +39,17 @@ ZELDA_SRC := $(filter-out \
 	$(ZELDA_SRC))
 
 #---------------------------------------------------------------------------------
-ARCH := -march=armv5te -mtune=arm946e-s -mthumb
+ARCH := -march=armv5te -mtune=arm946e-s -marm
 
-CFLAGS   := -g -Wall -Os -ffunction-sections -fdata-sections\
+CFLAGS   := -g -Wall -O2 -ffunction-sections -fdata-sections\
             -fsigned-char -fno-strict-aliasing -mno-unaligned-access\
             -Wno-deprecated-declarations\
             -include $(LTTP_ROOT)/platform/nds/include/nds_force_types.h\
-            $(ARCH) $(INCLUDE) -DARM9
+            $(ARCH) $(INCLUDE) -DARM9 -DLTTP_PPU_RGB15
 CXXFLAGS := $(CFLAGS) -fno-rtti -fno-exceptions
 ASFLAGS  := -g $(ARCH)
 LDFLAGS   = -specs=ds_arm9.specs -g $(ARCH) -Wl,-Map,$(notdir $*.map) \
-            -Wl,--wrap=FindIndexInMemblk
+            -Wl,--wrap=FindIndexInMemblk,--wrap=ppu_runLine
 
 LIBS := -lfilesystem -lfat -lnds9 -lm
 
@@ -88,7 +88,9 @@ else
 endif
 
 export OFILES_BIN   :=	$(addsuffix .o,$(BINFILES))
-export OFILES_SOURCES := $(CPPFILES:.cpp=.o) $(CFILES:.c=.o) $(SFILES:.s=.o)
+# ppu.itcm.o matches the DS linker's *.itcm.* rule, so the software
+# renderer executes from instruction RAM instead of main memory.
+export OFILES_SOURCES := $(filter-out ppu.o,$(CPPFILES:.cpp=.o) $(CFILES:.c=.o) $(SFILES:.s=.o)) ppu.itcm.o
 export OFILES := $(PNGFILES:.png=.o) $(OFILES_BIN) $(OFILES_SOURCES)
 export HFILES := $(PNGFILES:.png=.h) $(addsuffix .h,$(subst .,_,$(BINFILES)))
 
@@ -133,8 +135,10 @@ $(OUTPUT).elf: $(OFILES)
 
 $(OFILES_SOURCES) : $(HFILES)
 
-# PPU inner loop is the hot path; Thumb/-Os is too slow on DS.
-ppu.o: CFLAGS := $(filter-out -mthumb -Os,$(CFLAGS)) -marm -O2
+ppu.itcm.o: ppu.c
+	$(SILENTMSG) $(notdir $<)
+	$(ADD_COMPILE_COMMAND) add $(CC) "$(_EXTRADEFS) $(CPPFLAGS) $(CFLAGS) -c $< -o $@" $<
+	$(SILENTCMD)$(CC) -MMD -MP -MF $(DEPSDIR)/ppu.itcm.d $(_EXTRADEFS) $(CPPFLAGS) $(CFLAGS) -c $< -o $@ $(ERROR_FILTER)
 
 %.bin.o %_bin.h : %.bin
 	@echo $(notdir $<)

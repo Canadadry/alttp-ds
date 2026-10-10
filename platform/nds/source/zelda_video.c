@@ -1,6 +1,4 @@
 #include <nds.h>
-#include <string.h>
-#include <stdio.h>
 
 #include "zelda_rtl.h"
 #include "snes/ppu.h"
@@ -14,18 +12,29 @@ enum {
 };
 
 static int bg_main;
+static int hw_bound;
 static uint32 g_ppu_render_flags;
 static int g_snes_width = kSnesW;
 static int g_snes_height = kSnesH;
-static uint8 pixel_buffer[kSnesW * kSnesH * 4] __attribute__((aligned(8)));
+static u16 pixel_buffer[kSnesW * kSnesH] __attribute__((aligned(8)));
+
+void ZeldaHwInit(void);
+void ZeldaHwPresent(Ppu *ppu);
+
+/* Rows 0..15 and 208..223 are cropped. ppu_runLine(n) draws row n-1. */
+void __real_ppu_runLine(Ppu *ppu, int line);
+void __wrap_ppu_runLine(Ppu *ppu, int line)
+{
+	if (line < (kCropY + 1) || line > (kCropY + SCREEN_HEIGHT))
+		return;
+	__real_ppu_runLine(ppu, line);
+}
 
 void ZeldaVideoInit(void)
 {
-	videoSetMode(MODE_5_2D);
-	vramSetBankA(VRAM_A_MAIN_BG);
-	bg_main = bgInit(3, BgType_Bmp16, BgSize_B16_256x256, 0, 0);
-	lcdMainOnTop();
-	bgSetPriority(bg_main, 0);
+	ZeldaHwInit();
+	hw_bound = 1;
+	bg_main = 0;
 
 	g_snes_width = g_config.extended_aspect_ratio * 2 + 256;
 	if (g_snes_width != kSnesW)
@@ -65,26 +74,40 @@ void ZeldaVideoSetNewRenderer(int on)
 		g_ppu_render_flags &= ~kPpuRenderFlags_NewRenderer;
 }
 
-/* Clone of DrawPpuFrameWithPerf + SdlRenderer_BeginDraw/EndDraw.
- * DS is 256 wide, same as PC 4:3. extraLeftRight must stay 0: if it is 96,
- * ZeldaDrawPpuFrame switches the intro to a 448-wide line and this pitch shears. */
+/* Mode 7 (the world map) still uses the scanline renderer. Every frame is drawn. */
+static void draw_software(void)
+{
+	u16 *dst_base;
+	int pitch = g_snes_width * (int)sizeof(u16);
+	u16 *src;
+
+	if (hw_bound) {
+		videoSetMode(MODE_5_2D);
+		vramSetBankA(VRAM_A_MAIN_BG);
+		bg_main = bgInit(3, BgType_Bmp16, BgSize_B16_256x256, 0, 0);
+		bgSetPriority(bg_main, 0);
+		hw_bound = 0;
+	}
+
+	dst_base = bgGetGfxPtr(bg_main);
+	g_zenv.ppu->extraLeftRight = 0;
+	ZeldaDrawPpuFrame((uint8 *)pixel_buffer, (size_t)pitch, g_ppu_render_flags);
+
+	src = pixel_buffer + kCropY * g_snes_width;
+	DC_FlushRange(src, SCREEN_HEIGHT * SCREEN_WIDTH * sizeof(u16));
+	dmaCopyWords(3, src, dst_base, SCREEN_HEIGHT * SCREEN_WIDTH * sizeof(u16));
+}
+
 void ZeldaVideoDrawPpuFrame(void)
 {
-	u16 *dst_base = bgGetGfxPtr(bg_main);
-	int pitch = g_snes_width * 4;
-	int x, y;
-	uint8 *pixels = pixel_buffer;
-
-	g_zenv.ppu->extraLeftRight = 0;
-	memset(pixel_buffer, 0, sizeof(pixel_buffer));
-	ZeldaDrawPpuFrame(pixels, (size_t)pitch, g_ppu_render_flags);
-
-	for (y = 0; y < SCREEN_HEIGHT; y++) {
-		const uint8 *src = pixels + (y + kCropY) * pitch;
-		u16 *dst = dst_base + y * SCREEN_WIDTH;
-		for (x = 0; x < SCREEN_WIDTH; x++, src += 4) {
-			/* SDL_PIXELFORMAT_ARGB8888 on LE: B, G, R, A */
-			dst[x] = RGB8(src[2], src[1], src[0]) | BIT(15);
-		}
+	if (g_zenv.ppu->mode == 7) {
+		draw_software();
+		return;
 	}
+	if (!hw_bound) {
+		ZeldaHwInit();
+		hw_bound = 1;
+		bg_main = 0;
+	}
+	ZeldaHwPresent(g_zenv.ppu);
 }

@@ -89,7 +89,7 @@ zelda3 is linked (excluding `main.c`, OpenGL, CPU infra). SDL/Opus are stubbed i
 
 **Exit:** links, boots, does not crash before the first frame (black screen is OK).
 
-### Phase 3 — First picture (in progress)
+### Phase 3 — First picture (done)
 
 The Nintendo logo is four 16×16 white sprites, not a background. `zelda3_assets.dat` in the project root is the source of truth (`build.bat` copies it into NitroFS). Packed blobs are indexed by `FindIndexInMemblk`. The sprite-gfx blob length is odd, so the count word sits on an odd address. ARM9 `LDRH` ignores bit 0 and returns the wrong slice (still 1536 bytes, so a size check looks fine). The DS build wraps that function with byte loads. Present stays 256 wide (`extraLeftRight = 0`); a 96-pixel pad shears the line. Host steps: X next, Y prev, A toggles old/new renderer on 3c/3e. Default boot is step 3a (`PHASE3_STEP`).
 
@@ -106,9 +106,13 @@ The Nintendo logo is four 16×16 white sprites, not a background. `zelda3_assets
 
 **Exit:** readable Nintendo logo, then title / file select in melonDS.
 
-### Phase 4 — Make it a game
+### Phase 4 — Make it a game (in progress)
 
-Full button map, save/load on SD, low-rate audio, dual-screen HUD, pause / reset.
+Boots into the game loop. GBA-style buttons: **A** sword (SNES B), **B** item (SNES Y), **Y** dash (SNES A), **X** / **L** / **R** are the SNES X and shoulders, **Start** opens the game menu. Select+Start pauses the host. L+R+Select soft-resets and keeps SRAM. L+R+Start+Select quits and writes SRAM.
+
+SRAM is `fat:/saves/sram.dat` (the same file the game already opens as `saves/sram.dat`). Needs a mounted SD; NitroFS still supplies `zelda3_assets.dat`.
+
+Bottom screen is a RAM HUD: hearts, rupees, bombs, arrows, magic, keys, Y-item, sword. Audio is 11025 Hz mono, one game frame at a time, so it stutters until Phase 5.
 
 **Exit:** leave the house, sword, first dungeon without a crash.
 

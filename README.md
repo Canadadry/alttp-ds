@@ -4,11 +4,15 @@ A Nintendo DS (Phat / Lite) port of [snesrev/zelda3](https://github.com/snesrev/
 
 This repo does **not** include the game ROM or `zelda3_assets.dat`. You must extract assets from a USA SNES cartridge dump you own.
 
-## Phase 3 (current)
+## Phase 4 (current)
 
-Software PPU is blitted to the top screen (256×224 cropped to 256×192). D-pad, A/B/X/Y, L/R, Start, Select work. **A = sword, B = item** (GBA layout). L+R+Start+Select returns to the loader.
+The top screen is the game (256×224 cropped to 256×192). The bottom screen is a status HUD.
 
-`build.bat` copies `Desktop\ALTTP-DS\zelda3_assets.dat` into NitroFS when that file exists (gitignored).
+**A** sword, **B** item, **Y** dash, **X** / **L** / **R** match the SNES X and shoulder buttons, **Start** opens the menu. Select+Start pauses. L+R+Select resets and keeps the save. L+R+Start+Select quits.
+
+SRAM is written to `saves/sram.dat` on the SD card (`fat:/`). Mount an SD image in melonDS or use a DLDI cart. Assets still come from NitroFS.
+
+`build.bat` copies `zelda3_assets.dat` from the project root into NitroFS when that file exists (gitignored).
 
 ### Build
 
@@ -31,7 +35,7 @@ That produces `lttp-ds.nds`.
 - Emulator: [melonDS](https://melonds.melonemu.org/) (or DeSmuME).
 - Hardware: flashcart with DLDI. NitroFS is inside the `.nds`. FAT only works when the cart’s DLDI driver is patched in (many loaders do this).
 
-Put `zelda3_assets.dat` next to the `.nds` or in `/lttp-ds/` on the SD card when you are ready for later phases. The Phase 1 ROM only reports whether it can open that file.
+Saves go in `saves/` on the SD card. The asset blob is inside the ROM via NitroFS.
 
 ### Assets (your dump)
 
@@ -48,6 +52,6 @@ Do not commit those files.
 git submodule update --init
 ```
 
-Game logic lives in `vendor/zelda3` and is not linked yet.
+Game logic lives in `vendor/zelda3` and is linked into the ROM.
 
 The full porting plan is in [PORTING.md](PORTING.md).
