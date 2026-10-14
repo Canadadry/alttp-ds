@@ -1,6 +1,8 @@
 #include <nds.h>
 #include <string.h>
 
+#include "zelda_rtl.h"
+#include "variables.h"
 #include "snes/ppu.h"
 
 /*
@@ -10,19 +12,30 @@
  * four tiled backgrounds and 128 hardware sprites, so the frame is tile
  * uploads, map entries, palettes, and OAM — not a software scanline plot.
  *
- * Back to front:
- *   BG3 priority-1 tiles  HUD, in front of sprites
- *   BG1 priority-1 tiles  overhangs, in front of Link
+ * Back to front, matching PpuDrawBackgrounds in mode 1 with BG3 priority
+ * (the only mode-1 setting this game writes, BGMODE 9):
+ *   BG3 priority 1        HUD, in front of every sprite
+ *   sprites priority 3
+ *   BG1 priority 1        overhangs, and the file-select wallpaper
  *   sprites priority 2    Link
- *   BG1 priority-0 tiles
- *   BG2                   ground, behind Link
+ *   BG1 priority 0
+ *   BG2                   ground, in front of sprites 0 and 1
+ *   sprites priority 1
+ *   sprites priority 0
+ *   BG3 priority 0        name letters. Behind the wallpaper.
+ *   backdrop
  *
- * BG1 is split across two backgrounds so its per-tile priority bit still
- * puts doorways and tree tops in front of the player. BG2 keeps one scroll,
- * so its priority-1 tiles stay with the ground instead of being copied onto
- * BG1 (those layers do not share a scroll). BG3 priority-0 tiles are omitted.
- * Color math (the lamp spotlight, translucent overlays) has no DS equivalent
- * here. Mode 7 stays on the scanline renderer.
+ * The DS has four backgrounds, so BG2 priority 1 stays on the ground layer
+ * (it has its own scroll and cannot move onto BG1) and BG3 priority 0 shares
+ * that hardware layer: the letters use it while BG2 is off. A subscreen-only
+ * picture is priority 3, behind every sprite, because color math adds it
+ * instead of covering them. Color math itself has no DS equivalent here.
+ * Mode 7 stays on the scanline renderer.
+ *
+ * Naming a file scrolls the letter grid without moving the name. An IRQ at
+ * SNES line 128 switches BG3 from the name scroll to selectfile_var8. That
+ * scanline split is done here with an HBlank interrupt; the rest of the
+ * picture keeps one scroll per background.
  *
  * Bank A (128KB), 16KB tile bases and 2KB map bases:
  *   0x00000 maps: HUD, BG1 high, BG1 low, BG2  (8KB each)
@@ -39,6 +52,7 @@ enum {
 
 static int bg_id[4];
 static uint8 bg_size[4];
+static uint8 bg_tilebase[4];
 static uint32 tile_hash[3][1024];
 static uint32 map_sig[3];
 static int map_valid[3];
@@ -46,9 +60,12 @@ static uint16 last_adr[3];
 static uint8 used_bg1[1024];
 static int blank_bg1 = kBlankNone;
 
-/* 2bpp tiles are compacted. Slot 0 is a transparent tile. */
+/* 2bpp tiles are compacted. Slot 0 is a transparent tile.
+ * bg3_lo is the priority-0 map (name letters), behind the wallpaper. */
 static uint16 bg3_slot[8 * 1024];
 static int bg3_next;
+static u16 bg3_lo[4096] __attribute__((aligned(4)));
+static int back_mode;
 static uint32 spr_hash[128];
 
 static u16 map_buf[4][4096] __attribute__((aligned(4)));
@@ -163,13 +180,16 @@ static uint32 sig_map(const Ppu *ppu, uint16 adr, int words) {
 static void ensure_size(int slot, int wider, int higher, int map_base, int tile_base) {
 	uint8 sid = (uint8)((wider ? 1 : 0) | (higher ? 2 : 0));
 
-	if (bg_size[slot] == sid)
+	if (bg_size[slot] == sid && bg_tilebase[slot] == (uint8)tile_base)
 		return;
 	bg_id[slot] = bgInit(slot, BgType_Text4bpp, map_bg_size(wider, higher), map_base, tile_base);
 	bg_size[slot] = sid;
+	bg_tilebase[slot] = (uint8)tile_base;
 }
 
-static void present_bg1(Ppu *ppu) {
+static int bg1_split_mode = -1;
+
+static void present_bg1(Ppu *ppu, int split) {
 	BgLayer *layer = &ppu->bgLayer[0];
 	int words = map_words(layer->tilemapWider, layer->tilemapHigher);
 	uint32 sig = sig_map(ppu, layer->tilemapAdr, words);
@@ -185,13 +205,21 @@ static void present_bg1(Ppu *ppu) {
 		last_adr[0] = layer->tileAdr;
 		map_valid[0] = 0;
 	}
+	if (bg1_split_mode != split) {
+		bg1_split_mode = split;
+		map_valid[0] = 0;
+	}
 
+	memset(used_bg1, 0, sizeof used_bg1);
+	{
+		int i;
+
+		for (i = 0; i < words; i++)
+			used_bg1[ppu->vram[(layer->tilemapAdr + i) & 0x7fff] & 0x3ff] = 1;
+	}
 	if (!map_valid[0] || map_sig[0] != sig) {
 		int i;
 
-		memset(used_bg1, 0, sizeof used_bg1);
-		for (i = 0; i < words; i++)
-			used_bg1[ppu->vram[(layer->tilemapAdr + i) & 0x7fff] & 0x3ff] = 1;
 		blank_bg1 = kBlankNone;
 		for (i = 0; i < 1024; i++) {
 			if (!used_bg1[i]) {
@@ -199,11 +227,16 @@ static void present_bg1(Ppu *ppu) {
 				break;
 			}
 		}
+		if (!split)
+			blank_bg1 = kBlankNone;
 		for (i = 0; i < words; i++) {
 			uint16 entry = ppu->vram[(layer->tilemapAdr + i) & 0x7fff];
 			u16 blank = (u16)(blank_bg1 < 0 ? 0 : blank_bg1);
 
-			if (entry & 0x2000) {
+			if (!split) {
+				map_buf[1][i] = 0;
+				map_buf[2][i] = swizzle4(entry);
+			} else if (entry & 0x2000) {
 				map_buf[1][i] = swizzle4(entry);
 				map_buf[2][i] = blank;
 			} else {
@@ -224,7 +257,10 @@ static void present_bg1(Ppu *ppu) {
 			continue;
 		upload4_tile(ppu, 0, gfx, layer->tileAdr, tile);
 	}
-	if (blank_bg1 >= 0 && tile_hash[0][blank_bg1] != 0) {
+	/* The unused index fills the other priority layer. It has to stay
+	 * transparent even when a previous upload left pixels there and the
+	 * hash was cleared, or those pixels paint over the logo and sprites. */
+	if (blank_bg1 >= 0 && !used_bg1[blank_bg1]) {
 		clear_tile(gfx, blank_bg1);
 		tile_hash[0][blank_bg1] = 0;
 	}
@@ -286,7 +322,7 @@ static int bg3_lookup(int key) {
 	return slot;
 }
 
-static void present_bg3(Ppu *ppu) {
+static void present_bg3(Ppu *ppu, int show_low) {
 	BgLayer *layer = &ppu->bgLayer[2];
 	int words = map_words(layer->tilemapWider, layer->tilemapHigher);
 	uint32 sig = sig_map(ppu, layer->tilemapAdr, words);
@@ -294,6 +330,8 @@ static void present_bg3(Ppu *ppu) {
 	int i;
 
 	ensure_size(0, layer->tilemapWider, layer->tilemapHigher, 0, 6);
+	if (show_low)
+		ensure_size(3, layer->tilemapWider, layer->tilemapHigher, 12, 6);
 	gfx = bgGetGfxPtr(bg_id[0]);
 
 	if (last_adr[2] != layer->tileAdr) {
@@ -312,13 +350,10 @@ static void present_bg3(Ppu *ppu) {
 			int slot;
 			u16 out;
 
-			if ((entry & 0x2000) == 0) {
-				map_buf[0][i] = 0;
-				continue;
-			}
 			slot = bg3_lookup((tile << 3) | pal);
 			if (slot < 0) {
 				map_buf[0][i] = 0;
+				bg3_lo[i] = 0;
 				continue;
 			}
 			out = (u16)slot;
@@ -327,10 +362,22 @@ static void present_bg3(Ppu *ppu) {
 			if (entry & 0x8000)
 				out |= 1 << 11;
 			out |= (u16)((pal >> 2) << 12);
-			map_buf[0][i] = out;
+			/* Priority 1 is the HUD, in front of sprites. Priority 0 is
+			 * the name text, which the wallpaper has to cover. */
+			if (entry & 0x2000) {
+				map_buf[0][i] = out;
+				bg3_lo[i] = 0;
+			} else {
+				map_buf[0][i] = 0;
+				bg3_lo[i] = out;
+			}
 		}
 		DC_FlushRange(map_buf[0], (uint32)words * 2);
 		dmaCopyWords(3, map_buf[0], bgGetMapPtr(bg_id[0]), (uint32)words * 2);
+		if (show_low) {
+			DC_FlushRange(bg3_lo, (uint32)words * 2);
+			dmaCopyWords(3, bg3_lo, bgGetMapPtr(bg_id[3]), (uint32)words * 2);
+		}
 		map_sig[2] = sig;
 		map_valid[2] = 1;
 	}
@@ -373,11 +420,38 @@ static u16 shade(u16 color, int brightness) {
 	return (u16)(r | (g << 5) | (b << 10));
 }
 
+static int clamp5(int v) {
+	if (v < 0)
+		return 0;
+	if (v > 31)
+		return 31;
+	return v;
+}
+
+/* Sword impact adds red, green, or blue to the backdrop for a few frames. */
+static u16 backdrop_color(const Ppu *ppu) {
+	u16 color = ppu->cgram[0];
+	int r, g, b;
+
+	if ((ppu->mathEnabled & 0x20) == 0 || ppu->preventMathMode == 3)
+		return color;
+	r = (color & 31) + (ppu->subtractColor ? -(int)ppu->fixedColorR : (int)ppu->fixedColorR);
+	g = ((color >> 5) & 31) + (ppu->subtractColor ? -(int)ppu->fixedColorG : (int)ppu->fixedColorG);
+	b = ((color >> 10) & 31) + (ppu->subtractColor ? -(int)ppu->fixedColorB : (int)ppu->fixedColorB);
+	if (ppu->halfColor && !ppu->addSubscreen) {
+		r >>= 1;
+		g >>= 1;
+		b >>= 1;
+	}
+	return (u16)(clamp5(r) | (clamp5(g) << 5) | (clamp5(b) << 10));
+}
+
 static void present_palettes(const Ppu *ppu) {
 	int i;
 	int brightness = ppu->brightness;
 
-	for (i = 0; i < 128; i++)
+	BG_PALETTE[0] = shade(backdrop_color(ppu), brightness);
+	for (i = 1; i < 128; i++)
 		BG_PALETTE[i] = shade(ppu->cgram[i], brightness);
 	for (i = 0; i < 128; i++)
 		SPRITE_PALETTE[i] = shade(ppu->cgram[128 + i], brightness);
@@ -388,6 +462,8 @@ static int obj_tile(int name, int tx, int ty) {
 }
 
 static int ds_sprite_priority(int snes_priority) {
+	/* Same interleave as PpuDrawBackgrounds: 3 above BG1-high, 2 above
+	 * BG1-low, 0 and 1 above only the back layer. */
 	if (snes_priority >= 3)
 		return 1;
 	if (snes_priority == 2)
@@ -473,19 +549,67 @@ static void present_sprites(Ppu *ppu, int sprites_on) {
 	oamUpdate(&oamMain);
 }
 
-static void present_scroll(const Ppu *ppu) {
+/* First DS line of the letter grid. SNES row 127 is the first row drawn
+ * with the post-IRQ scroll, and the top 16 SNES rows are cropped. */
+enum { kBg3SplitLine = 128 - 1 - kCropY };
+
+static int bg3_split_on;
+static u16 bg3_top_x, bg3_top_y, bg3_bot_x, bg3_bot_y;
+
+/* Fires at the end of REG_VCOUNT, so the scroll applies to the next line. */
+static void bg3_split_hblank(void) {
+	unsigned line = REG_VCOUNT;
+
+	if (line >= (unsigned)(kBg3SplitLine - 1) && line < SCREEN_HEIGHT - 1) {
+		REG_BG3HOFS = bg3_bot_x;
+		REG_BG3VOFS = bg3_bot_y;
+	} else {
+		REG_BG3HOFS = bg3_top_x;
+		REG_BG3VOFS = bg3_top_y;
+	}
+}
+
+static void bg3_split_set(int on) {
+	if (bg3_split_on == on)
+		return;
+	bg3_split_on = on;
+	if (on) {
+		irqSet(IRQ_HBLANK, bg3_split_hblank);
+		irqEnable(IRQ_HBLANK);
+		REG_DISPSTAT |= DISP_HBLANK_IRQ;
+	} else {
+		irqDisable(IRQ_HBLANK);
+		REG_DISPSTAT &= ~DISP_HBLANK_IRQ;
+	}
+}
+
+static void present_scroll(const Ppu *ppu, int back_bg3) {
 	int sy0 = (int)ppu->bgLayer[0].vScroll + kCropY;
 	int sy1 = (int)ppu->bgLayer[1].vScroll + kCropY;
 	int sy2 = (int)ppu->bgLayer[2].vScroll + kCropY;
+	int split = back_bg3 && irq_flag != 0;
+	int ime = enterCriticalSection();
 
 	bgSetScroll(bg_id[1], ppu->bgLayer[0].hScroll, sy0);
 	bgSetScroll(bg_id[2], ppu->bgLayer[0].hScroll, sy0);
-	bgSetScroll(bg_id[3], ppu->bgLayer[1].hScroll, sy1);
 	bgSetScroll(bg_id[0], ppu->bgLayer[2].hScroll, sy2);
-	bgSetPriority(bg_id[0], 0);
-	bgSetPriority(bg_id[1], 1);
-	bgSetPriority(bg_id[2], 2);
-	bgSetPriority(bg_id[3], 3);
+	if (back_bg3)
+		bgSetScroll(bg_id[3], ppu->bgLayer[2].hScroll, sy2);
+	else
+		bgSetScroll(bg_id[3], ppu->bgLayer[1].hScroll, sy1);
+
+	if (split) {
+		/* Above the IRQ the name stays on the normal BG3 scroll. Below it
+		 * the grid follows selectfile_var8 and BG3 V is reset to 0. */
+		bg3_top_x = (u16)ppu->bgLayer[2].hScroll;
+		bg3_top_y = (u16)sy2;
+		bg3_bot_x = (u16)(selectfile_var8 & 0x1ff);
+		bg3_bot_y = (u16)kCropY;
+	}
+	bg3_split_set(split);
+	if (irq_flag & 0x80)
+		irq_flag = 0;
+	leaveCriticalSection(ime);
 	bgUpdate();
 }
 
@@ -506,10 +630,16 @@ void ZeldaHwInit(void) {
 	bg_size[1] = 0;
 	bg_size[2] = 0;
 	bg_size[3] = 2;
+	bg_tilebase[0] = 6;
+	bg_tilebase[1] = 2;
+	bg_tilebase[2] = 2;
+	bg_tilebase[3] = 4;
+	back_mode = -1;
 	bgSetPriority(bg_id[0], 0);
 	bgSetPriority(bg_id[1], 1);
 	bgSetPriority(bg_id[2], 2);
 	bgSetPriority(bg_id[3], 3);
+	bg3_split_set(0);
 
 	memset(tile_hash, 0, sizeof tile_hash);
 	memset(map_valid, 0, sizeof map_valid);
@@ -525,29 +655,74 @@ void ZeldaHwInit(void) {
 }
 
 void ZeldaHwPresent(Ppu *ppu) {
-	int enable = ppu->forcedBlank ? 0 : ppu->screenEnabled[0];
+	int main_en = ppu->forcedBlank ? 0 : ppu->screenEnabled[0];
+	int sub_en = ppu->forcedBlank ? 0 : ppu->screenEnabled[1];
+	int bg1_main = (main_en & 0x01) != 0;
+	int bg1_sub = (sub_en & 0x01) != 0;
+	int bg2_on = ((main_en | sub_en) & 0x02) != 0;
+	int bg3_on = ((main_en | sub_en) & 0x04) != 0;
+	int show_bg3_lo = bg3_on && !bg2_on;
 
-	present_bg1(ppu);
-	present_bg2(ppu);
-	present_bg3(ppu);
+	/* BG3 priority 0 and BG2 share the back background. Switching which
+	 * one owns that map has to upload it again. */
+	if (bg2_on) {
+		if (back_mode != 0) {
+			back_mode = 0;
+			map_valid[1] = 0;
+		}
+	} else if (show_bg3_lo) {
+		if (back_mode != 1) {
+			back_mode = 1;
+			map_valid[2] = 0;
+		}
+	}
+
+	/* Main-screen BG1 keeps the priority split. A subscreen-only BG1 is the
+	 * title art, which is added behind the sprites instead of covering them. */
+	present_bg1(ppu, bg1_main);
+	if (bg2_on)
+		present_bg2(ppu);
+	present_bg3(ppu, show_bg3_lo);
 	present_palettes(ppu);
-	present_sprites(ppu, (enable & 0x10) != 0);
-	present_scroll(ppu);
+	present_sprites(ppu, (main_en & 0x10) != 0);
+	present_scroll(ppu, show_bg3_lo);
 
-	if (enable & 0x04)
+	if (main_en & 0x04) {
+		bgSetPriority(bg_id[0], 0);
 		bgShow(bg_id[0]);
-	else
+	} else if (sub_en & 0x04) {
+		bgSetPriority(bg_id[0], 3);
+		bgShow(bg_id[0]);
+	} else {
 		bgHide(bg_id[0]);
-	if (enable & 0x01) {
+	}
+
+	if (bg1_main) {
+		bgSetPriority(bg_id[1], 1);
+		bgSetPriority(bg_id[2], 2);
 		bgShow(bg_id[1]);
+		bgShow(bg_id[2]);
+	} else if (bg1_sub) {
+		bgSetPriority(bg_id[2], 3);
+		bgHide(bg_id[1]);
 		bgShow(bg_id[2]);
 	} else {
 		bgHide(bg_id[1]);
 		bgHide(bg_id[2]);
 	}
-	if (enable & 0x02)
+
+	if (bg2_on) {
+		/* Main-screen BG2 is in the same band as BG1 priority 0: layer 2
+		 * (BG1) is in front of layer 3, Link is in front of both, and
+		 * sprites 0/1 are behind both. Subscreen-only BG2 is the title
+		 * picture, added behind every sprite. */
+		bgSetPriority(bg_id[3], (main_en & 0x02) ? 2 : 3);
 		bgShow(bg_id[3]);
-	else
+	} else if (show_bg3_lo) {
+		bgSetPriority(bg_id[3], 3);
+		bgShow(bg_id[3]);
+	} else {
 		bgHide(bg_id[3]);
+	}
 	REG_DISPCNT |= DISPLAY_SPR_ACTIVE | DISPLAY_SPR_1D | DISPLAY_SPR_1D_SIZE_32;
 }
