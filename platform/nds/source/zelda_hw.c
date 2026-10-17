@@ -803,9 +803,11 @@ static void bg3_split_set(int on) {
 	scanline_irq_sync();
 }
 
-/* Copy the finished circle. The scanline IRQ latches it before line 0.
- * Writing the window here would clip whatever line the CPU happens to be
- * on, which is the full-width bar through the iris. */
+/* Copy the finished circle and arm the scanline IRQ. The latch itself
+ * stays at the end of vblank: writing the window here would clip whatever
+ * line the CPU happens to be on. Call this before the tile upload. The
+ * upload of a freshly loaded room runs past line 0, and the circle has to
+ * be waiting when that line is drawn. */
 static void present_iris(void) {
 	int on = iris_wanted();
 	int idx = (int)(((iris_publish >> 8) & 1) ^ 1);
@@ -818,8 +820,6 @@ static void present_iris(void) {
 	}
 	iris_publish = ((uint32)idx << 8) | (on ? 1u : 0u);
 	scanline_irq_sync();
-	/* Blit normally finishes before this. If it didn't, line 0 is about
-	 * to start and the latch in the IRQ already ran with the old circle. */
 	if (REG_VCOUNT >= 261)
 		iris_latch_frame();
 }
@@ -1000,8 +1000,11 @@ void ZeldaHwPresent(Ppu *ppu) {
 	int main_en;
 	int sub_en;
 
-	/* Before the tile upload. A brightness step or a forced blank then
-	 * covers every line of this frame, which is what INIDISP does. */
+	/* Before the tile upload. The iris has to be armed first: Spotlight_open
+	 * leaves a closed circle, and the room upload otherwise shows one full
+	 * frame before that circle is latched. Brightness is the same kind of
+	 * latch. INIDISP covers every line of this frame. */
+	present_iris();
 	ZeldaHwUseMasterBright(1);
 	main_en = ppu->forcedBlank ? 0 : ppu->screenEnabled[0];
 	sub_en = ppu->forcedBlank ? 0 : ppu->screenEnabled[1];
@@ -1110,5 +1113,4 @@ void ZeldaHwPresent(Ppu *ppu) {
 	REG_DISPCNT |= DISPLAY_SPR_ACTIVE | DISPLAY_SPR_1D | DISPLAY_SPR_1D_SIZE_32;
 	present_mosaic(ppu);
 	present_overlay_blend(ppu, overlay);
-	present_iris();
 }
