@@ -47,11 +47,13 @@ int main(int argc, char **argv)
 		ZeldaHostOnKeys(held, down);
 		ZeldaHostTick(held);
 		ZeldaSaveFlush();
-		ZeldaHostBlit(framebuffer);
 		ZeldaHostAudio();
 		ZeldaHostHud();
 
+		/* Present during vblank. A window or palette write during the
+		 * picture shows up as a full-width bar. */
 		swiWaitForVBlank();
+		ZeldaHostBlit(framebuffer);
 	}
 
 	return 0;

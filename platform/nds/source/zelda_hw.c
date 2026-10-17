@@ -39,8 +39,10 @@
  * the opening and the dark rooms. Mosaic uses the DS mosaic register, so
  * the pixelated fade when leaving the house is visible. The door iris is
  * the SNES window HDMA table: outside the circle the picture is black, and
- * the circle closes on Link, then opens again outside. Mode 7 stays on
- * the scanline renderer.
+ * the circle closes on Link, then opens again outside. That window is
+ * latched on the last vblank line, so the first line of the frame is
+ * already clipped and no scanline keeps another line's span. Mode 7 stays
+ * on the scanline renderer.
  *
  * Naming a file scrolls the letter grid without moving the name. An IRQ at
  * SNES line 128 switches BG3 from the name scroll to selectfile_var8. That
@@ -496,6 +498,8 @@ static u16 math_color(u16 color, const Ppu *ppu) {
 	return (u16)(clamp5(r) | (clamp5(g) << 5) | (clamp5(b) << 10));
 }
 
+static int iris_wanted(void);
+
 static int math_active(const Ppu *ppu) {
 	if (ppu->preventMathMode == 3 || (ppu->mathEnabled & 0x3f) == 0)
 		return 0;
@@ -514,7 +518,9 @@ static void present_palettes(const Ppu *ppu) {
 	u16 color;
 
 	color = back ? math_color(ppu->cgram[0], ppu) : ppu->cgram[0];
-	BG_PALETTE[0] = shade(color, brightness);
+	/* The backdrop cannot be windowed. While the iris is up it has to stay
+	 * black, or the area outside the circle picks up this color. */
+	BG_PALETTE[0] = iris_wanted() ? 0 : shade(color, brightness);
 	for (i = 1; i < 128; i++) {
 		color = bg ? math_color(ppu->cgram[i], ppu) : ppu->cgram[i];
 		BG_PALETTE[i] = shade(color, brightness);
@@ -659,31 +665,78 @@ enum { kBg3SplitLine = 128 - 1 - kCropY };
 enum { kWinInside = 0x3f };
 
 static int bg3_split_on;
-static int iris_on;
 static int scanline_irq_on;
 static u16 bg3_top_x, bg3_top_y, bg3_bot_x, bg3_bot_y;
 
-/* hdma_table_dynamic[line] is WH0 then WH1: left, then inclusive right.
- * The DS right edge is stored plus one, and 0 means 256. */
-static void iris_apply_line(unsigned ds_line) {
-	unsigned left, right;
-	uint16 span;
+/* Two copies so the game can rebuild hdma_table_dynamic while a frame is
+ * still scanning the previous circle. Bit 0 of the publish word is "on",
+ * and the following byte is which copy the next frame should read. */
+static u16 iris_span[2][SCREEN_HEIGHT];
+static volatile uint32 iris_publish;
+static int iris_latched;
+static volatile int iris_on;
 
-	if (ds_line >= SCREEN_HEIGHT)
-		return;
-	span = hdma_table_dynamic[ds_line + kCropY];
-	left = span & 0xff;
-	right = span >> 8;
-	if (left > right) {
-		WIN0_X0 = 255;
-		WIN0_X1 = 255;
-		return;
-	}
-	WIN0_X0 = (u8)left;
-	WIN0_X1 = (u8)(right + 1);
+static int iris_wanted(void) {
+	return (HDMAEN_copy & 0x80) && W12SEL_copy == 0x33 && WOBJSEL_copy == 0x33;
 }
 
-/* Fires at the end of REG_VCOUNT, so the change applies to the next line. */
+/* One store. The low byte is the exclusive right edge (0 means 256) and
+ * the high byte is the left edge. Separate byte writes tear a scanline. */
+static void iris_set_x(unsigned left, unsigned right_exclusive) {
+	*(vu16 *)0x04000040 = (u16)((left << 8) | (right_exclusive & 0xff));
+}
+
+/* WH0 is the left edge and WH1 the inclusive right. 0x00FF (left past
+ * right) is the value zelda3 stores for a fully clipped line.
+ * A span of the whole screen is X1=0,X2=0, and the DS does not show the
+ * window on that line at all, so it becomes a solid bar. Show every layer
+ * outside the window instead. */
+static void iris_apply_span(u16 span) {
+	unsigned left = span & 0xff;
+	unsigned right = span >> 8;
+
+	if (left > right) {
+		WIN_OUT = 0;
+		iris_set_x(255, 255);
+		return;
+	}
+	if (left == 0 && right == 255) {
+		WIN_OUT = kWinInside;
+		iris_set_x(0, 1);
+		return;
+	}
+	WIN_OUT = 0;
+	iris_set_x(left, right + 1);
+}
+
+static void iris_apply_line(unsigned ds_line) {
+	if (ds_line >= SCREEN_HEIGHT)
+		return;
+	iris_apply_span(iris_span[iris_latched][ds_line]);
+}
+
+/* Called on the last vblank lines, before line 0 is drawn. */
+static void iris_latch_frame(void) {
+	uint32 pub = iris_publish;
+	int on = pub & 1;
+
+	iris_latched = (int)((pub >> 8) & 1);
+	iris_on = on;
+	if (!on) {
+		REG_DISPCNT &= ~DISPLAY_WIN0_ON;
+		return;
+	}
+	WIN0_Y0 = 0;
+	WIN0_Y1 = (u8)SCREEN_HEIGHT;
+	WIN_IN = kWinInside;
+	BG_PALETTE[0] = 0;
+	iris_apply_line(0);
+	REG_DISPCNT = (REG_DISPCNT & ~(DISPLAY_WIN1_ON | DISPLAY_SPR_WIN_ON)) |
+		DISPLAY_WIN0_ON;
+}
+
+/* Fires at the end of REG_VCOUNT, so the change applies to the next line.
+ * Lines 261 and 262 are the end of vblank; the next drawn line is line 0. */
 static void scanline_hblank(void) {
 	unsigned line = REG_VCOUNT;
 
@@ -696,12 +749,16 @@ static void scanline_hblank(void) {
 			REG_BG3VOFS = bg3_top_y;
 		}
 	}
+	if (line >= 261) {
+		iris_latch_frame();
+		return;
+	}
 	if (iris_on)
 		iris_apply_line(line + 1);
 }
 
 static void scanline_irq_sync(void) {
-	int on = bg3_split_on || iris_on;
+	int on = bg3_split_on || iris_on || (iris_publish & 1);
 
 	if (scanline_irq_on == on)
 		return;
@@ -721,23 +778,25 @@ static void bg3_split_set(int on) {
 	scanline_irq_sync();
 }
 
-/* Spotlight sets this window and fills hdma_table_dynamic for the circle. */
+/* Copy the finished circle. The scanline IRQ latches it before line 0.
+ * Writing the window here would clip whatever line the CPU happens to be
+ * on, which is the full-width bar through the iris. */
 static void present_iris(void) {
-	int on = (HDMAEN_copy & 0x80) && W12SEL_copy == 0x33 && WOBJSEL_copy == 0x33;
+	int on = iris_wanted();
+	int idx = (int)(((iris_publish >> 8) & 1) ^ 1);
+	int i;
 
-	iris_on = on;
-	scanline_irq_sync();
-	if (!on) {
-		REG_DISPCNT &= ~DISPLAY_WIN0_ON;
-		return;
+	if (on) {
+		for (i = 0; i < SCREEN_HEIGHT; i++)
+			iris_span[idx][i] = hdma_table_dynamic[i + kCropY];
+		BG_PALETTE[0] = 0;
 	}
-	WIN0_Y0 = 0;
-	WIN0_Y1 = SCREEN_HEIGHT;
-	WIN_IN = kWinInside;
-	WIN_OUT = 0;
-	BG_PALETTE[0] = 0;
-	iris_apply_line(0);
-	REG_DISPCNT |= DISPLAY_WIN0_ON;
+	iris_publish = ((uint32)idx << 8) | (on ? 1u : 0u);
+	scanline_irq_sync();
+	/* Blit normally finishes before this. If it didn't, line 0 is about
+	 * to start and the latch in the IRQ already ran with the old circle. */
+	if (REG_VCOUNT >= 261)
+		iris_latch_frame();
 }
 
 /* Overworld: BG1 is not on the main screen, so this layer can show the
