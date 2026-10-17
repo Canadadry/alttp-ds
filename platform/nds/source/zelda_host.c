@@ -2,9 +2,6 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-#include <sys/stat.h>
-#include <unistd.h>
-
 #include "types.h"
 #include "config.h"
 #include "assets.h"
@@ -14,6 +11,7 @@
 #include "variables.h"
 #include "snes/ppu.h"
 #include "zelda_video.h"
+#include "zelda_save.h"
 
 const uint8 *g_asset_ptrs[kNumberOfAssets];
 uint32 g_asset_sizes[kNumberOfAssets];
@@ -138,7 +136,6 @@ MemBlk __wrap_FindIndexInMemblk(MemBlk data, size_t i)
  * 4-7 Up Down Left Right, 8 SNES A dash, 9 SNES X, 10 SNES L, 11 SNES R.
  */
 static int paused;
-static int save_ok;
 static int hud_dirty = 1;
 
 static const char *item_name(unsigned id)
@@ -155,28 +152,6 @@ static const char *item_name(unsigned id)
 	if (id >= sizeof(names) / sizeof(names[0]))
 		return "?";
 	return names[id];
-}
-
-static void mount_save(void)
-{
-	if (chdir("fat:/") != 0) {
-		iprintf("Save: no SD\n");
-		return;
-	}
-	if (mkdir("saves", 0777) != 0) {
-		/* Already there is fine. */
-	}
-	save_ok = 1;
-	{
-		FILE *f = fopen("saves/sram.dat", "rb");
-		if (f) {
-			fclose(f);
-			ZeldaReadSram();
-			iprintf("Save: loaded\n");
-		} else {
-			iprintf("Save: new\n");
-		}
-	}
 }
 
 static int map_keys(u32 held)
@@ -233,16 +208,15 @@ void ZeldaHostInit(void)
 	g_wanted_zelda_features = 0;
 	ZeldaEnableMsu(0);
 	ZeldaSetLanguage(NULL);
-	mount_save();
 	ZeldaVideoInit();
+	ZeldaSaveMount();
 	iprintf("A sword  B item  Y dash\n");
 	iprintf("Start menu\n");
 }
 
 void ZeldaHostSave(void)
 {
-	if (save_ok)
-		ZeldaWriteSram();
+	ZeldaWriteSram();
 }
 
 void ZeldaHostOnKeys(u32 held, u32 down)
@@ -293,12 +267,14 @@ void ZeldaHostHud(void)
 	unsigned rupees = link_rupees_actual;
 	static unsigned p_hp, p_cap, p_magic, p_bombs, p_arrows, p_keys, p_item, p_sword, p_rupees;
 	static int p_paused;
+	const char *save = ZeldaSaveStatus();
+	static const char *p_save;
 
 	if (!hud_dirty &&
 	    p_hp == hp && p_cap == cap && p_magic == magic &&
 	    p_bombs == bombs && p_arrows == arrows && p_keys == keys &&
 	    p_item == item && p_sword == sword && p_rupees == rupees &&
-	    p_paused == paused)
+	    p_paused == paused && p_save == save)
 		return;
 	p_hp = hp;
 	p_cap = cap;
@@ -310,6 +286,7 @@ void ZeldaHostHud(void)
 	p_sword = sword;
 	p_rupees = rupees;
 	p_paused = paused;
+	p_save = save;
 
 	hud_dirty = 0;
 	consoleClear();
@@ -329,5 +306,5 @@ void ZeldaHostHud(void)
 	iprintf("Sel+Start pause\n");
 	iprintf("L+R+Sel reset\n");
 	iprintf("L+R+Start+Sel quit\n");
-	iprintf("Save %s\n", save_ok ? "SD" : "off");
+	iprintf("Save %s\n", save);
 }

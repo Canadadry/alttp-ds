@@ -110,7 +110,7 @@ The Nintendo logo is four 16×16 white sprites, not a background. `zelda3_assets
 
 Boots into the game loop. GBA-style buttons: **A** sword (SNES B), **B** item (SNES Y), **Y** dash (SNES A), **X** / **L** / **R** are the SNES X and shoulders, **Start** opens the game menu. Select+Start pauses the host. L+R+Select soft-resets and keeps SRAM. L+R+Start+Select quits and writes SRAM.
 
-SRAM is `fat:/saves/sram.dat` (the same file the game already opens as `saves/sram.dat`). Needs a mounted SD; NitroFS still supplies `zelda3_assets.dat`.
+SRAM is an 8 KB `lttp-ds.sav` on the DLDI SD card (beside the ROM when the loader passes its path, otherwise `fat:/lttp-ds.sav`). Homebrew has no cartridge backup, so melonDS only keeps this file when DLDI is on and pointed at a folder. NitroFS still supplies `zelda3_assets.dat`. An old `saves/sram.dat` is loaded once and copied into the `.sav`.
 
 Bottom screen is a RAM HUD: hearts, rupees, bombs, arrows, magic, keys, Y-item, sword. Audio is 11025 Hz mono, one game frame at a time, so it stutters until Phase 5.
 
