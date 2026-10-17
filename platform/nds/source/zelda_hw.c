@@ -38,7 +38,9 @@
  * add or subtract is applied to the palettes, which is the blue wash in
  * the opening and the dark rooms. Master brightness is INIDISP: one
  * register, latched in vblank, including while a load is still running,
- * so the whole picture fades or cuts to black in one frame. Mosaic uses
+ * so the whole picture fades or cuts to black in one frame. Coming back
+ * from black waits until that frame's tiles are uploaded, which is what
+ * keeps the file select hidden until it is drawn. Mosaic uses
  * the DS mosaic register, so
  * the pixelated fade when leaving the house is visible. The door iris is
  * the SNES window HDMA table: outside the circle the picture is black, and
@@ -476,20 +478,45 @@ static u16 inidisp_to_bright(unsigned inidisp) {
 
 /* The load that follows EnableForceBlank runs for several vblanks. The
  * SNES writes INIDISP in NMI anyway, so the picture is already black
- * while that load is still going. */
+ * while that load is still going. picture_covered stays set until the
+ * present that leaves that blank has finished copying tiles. */
 static volatile int use_master_bright = 1;
+static volatile int picture_covered = 1;
+
+static unsigned shown_inidisp(unsigned inidisp) {
+	if (picture_covered && !(inidisp & 0x80))
+		return 0x80;
+	return inidisp;
+}
 
 static void vblank_bright(void) {
 	if (use_master_bright)
-		REG_MASTER_BRIGHT = inidisp_to_bright(INIDISP_copy);
+		REG_MASTER_BRIGHT = inidisp_to_bright(shown_inidisp(INIDISP_copy));
 }
 
 void ZeldaHwUseMasterBright(int on) {
 	use_master_bright = on;
 	if (on)
-		REG_MASTER_BRIGHT = inidisp_to_bright(INIDISP_copy);
+		REG_MASTER_BRIGHT = inidisp_to_bright(shown_inidisp(INIDISP_copy));
 	else
 		REG_MASTER_BRIGHT = 0;
+}
+
+/* FileSelect_TriggerNameStripesAndAdvance clears the force blank in the
+ * same frame it queues the background. The save names are copied on the
+ * next frame, inside FileSelect_Main. Hold this frame black so the first
+ * picture is the one with those names, not the empty background. */
+static int file_select_primed;
+
+static int file_select_not_ready(const Ppu *ppu) {
+	if (main_module_index != 1 || ppu->forcedBlank) {
+		file_select_primed = 0;
+		return 0;
+	}
+	if (file_select_primed)
+		return 0;
+	file_select_primed = 1;
+	return 1;
 }
 
 static int clamp5(int v) {
@@ -999,15 +1026,19 @@ void ZeldaHwInit(void) {
 void ZeldaHwPresent(Ppu *ppu) {
 	int main_en;
 	int sub_en;
+	int cover;
 
 	/* Before the tile upload. The iris has to be armed first: Spotlight_open
 	 * leaves a closed circle, and the room upload otherwise shows one full
-	 * frame before that circle is latched. Brightness is the same kind of
-	 * latch. INIDISP covers every line of this frame. */
+	 * frame before that circle is latched. Brightness stays black through
+	 * the upload when this frame is what leaves a force blank. */
 	present_iris();
+	cover = ppu->forcedBlank || file_select_not_ready(ppu);
 	ZeldaHwUseMasterBright(1);
-	main_en = ppu->forcedBlank ? 0 : ppu->screenEnabled[0];
-	sub_en = ppu->forcedBlank ? 0 : ppu->screenEnabled[1];
+	if (cover)
+		REG_MASTER_BRIGHT = inidisp_to_bright(0x80);
+	main_en = cover ? 0 : ppu->screenEnabled[0];
+	sub_en = cover ? 0 : ppu->screenEnabled[1];
 	int bg1_main = (main_en & 0x01) != 0;
 	int bg1_sub = (sub_en & 0x01) != 0;
 	/* Rain and the other overworld covers: BG1 is subscreen-only, BG2 is
@@ -1113,4 +1144,12 @@ void ZeldaHwPresent(Ppu *ppu) {
 	REG_DISPCNT |= DISPLAY_SPR_ACTIVE | DISPLAY_SPR_1D | DISPLAY_SPR_1D_SIZE_32;
 	present_mosaic(ppu);
 	present_overlay_blend(ppu, overlay);
+	{
+		int ime = enterCriticalSection();
+
+		picture_covered = cover;
+		if (use_master_bright)
+			REG_MASTER_BRIGHT = inidisp_to_bright(cover ? 0x80 : INIDISP_copy);
+		leaveCriticalSection(ime);
+	}
 }
