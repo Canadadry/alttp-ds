@@ -35,7 +35,12 @@
  * is what SNES half-add color math does. That only happens when color math
  * targets the ground. Hyrule Castle puts BG1 on the subscreen with CGADSUB
  * 0x20, backdrop only, so the layer stays behind the floor and is not
- * blended: the stone and Link stay solid. A ledge jump
+ * blended: the stone and Link stay solid. Walking the castle stairs
+ * drops him to sprite priority 1, which exists to slip behind a
+ * main-screen BG1 lip. These rooms have no such lip, so that priority
+ * stays in front of the floor and behind the doorways. The same climb
+ * can take every sprite off the main screen and leave it on the
+ * subscreen; those are still drawn. A ledge jump
  * raises Link to sprite priority 3 (sideways, south, and diagonal), and
  * that still has to sit
  * under the rain. A fixed color
@@ -639,12 +644,15 @@ static int obj_tile(int name, int tx, int ty) {
 	return (((name >> 4) + ty) << 4) | (((name & 0xf) + tx) & 0xf);
 }
 
-static int ds_sprite_priority(int snes_priority) {
+static int ds_sprite_priority(int snes_priority, int bg1_main) {
 	/* Same interleave as PpuDrawBackgrounds: 3 above BG1-high, 2 above
-	 * BG1-low, 0 and 1 above only the back layer. */
+	 * BG1-low, 0 and 1 above only the back layer. Priority 1 is the
+	 * stair and lower-floor walk, meant to sit under a main-screen BG1.
+	 * Hyrule Castle keeps BG1 on the subscreen, so that priority would
+	 * be buried under the only floor. */
 	if (snes_priority >= 3)
 		return 1;
-	if (snes_priority == 2)
+	if (snes_priority == 2 || (snes_priority == 1 && !bg1_main))
 		return 2;
 	return 3;
 }
@@ -654,6 +662,7 @@ static int ds_sprite_priority(int snes_priority) {
  * during vblank, before the background upload can run the blank out. */
 static void compose_sprites(Ppu *ppu, int sprites_on) {
 	int sprite;
+	int bg1_main = (ppu->screenEnabled[0] & 0x01) != 0;
 
 	if (!sprites_on || ppu->forcedBlank) {
 		oamClear(&oamMain, 0, 128);
@@ -721,7 +730,8 @@ static void compose_sprites(Ppu *ppu, int sprites_on) {
 			spr_dirty = 1;
 		}
 
-		oamSet(&oamMain, sprite, x, y, ds_sprite_priority((oam1 >> 12) & 3),
+		oamSet(&oamMain, sprite, x, y,
+			ds_sprite_priority((oam1 >> 12) & 3, bg1_main),
 			(oam1 >> 9) & 7,
 			size == 16 ? SpriteSize_16x16 : SpriteSize_8x8,
 			SpriteColorFormat_16Color, SPRITE_GFX + sprite * 64, -1, false, false,
@@ -732,8 +742,10 @@ static void compose_sprites(Ppu *ppu, int sprites_on) {
 void ZeldaHwComposeSprites(void) {
 	if (!g_zenv.ppu)
 		return;
+	/* Spiral stairs from a lower floor take OBJ off the main screen and
+	 * leave it on the subscreen. The OAM is the same either way. */
 	compose_sprites(g_zenv.ppu,
-		(g_zenv.ppu->screenEnabled[0] & 0x10) != 0);
+		((g_zenv.ppu->screenEnabled[0] | g_zenv.ppu->screenEnabled[1]) & 0x10) != 0);
 }
 
 void ZeldaHwCommitSprites(int sprites_on) {
@@ -1082,7 +1094,7 @@ void ZeldaHwPresent(Ppu *ppu) {
 	sub_en = cover ? 0 : ppu->screenEnabled[1];
 	/* Already built before this vblank. Copy it up before the background
 	 * upload, or a room of guards is still being written while it is drawn. */
-	ZeldaHwCommitSprites((main_en & 0x10) != 0);
+	ZeldaHwCommitSprites(((main_en | sub_en) & 0x10) != 0);
 	int bg1_main = (main_en & 0x01) != 0;
 	int bg1_sub = (sub_en & 0x01) != 0;
 	/* Rain and the other overworld covers: BG1 is subscreen-only, BG2 is
