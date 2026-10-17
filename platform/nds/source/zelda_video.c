@@ -20,6 +20,7 @@ static u16 pixel_buffer[kSnesW * kSnesH] __attribute__((aligned(8)));
 
 void ZeldaHwInit(void);
 void ZeldaHwPresent(Ppu *ppu);
+void ZeldaHwUseMasterBright(int on);
 
 /* Rows 0..15 and 208..223 are cropped. ppu_runLine(n) draws row n-1. */
 void __real_ppu_runLine(Ppu *ppu, int line);
@@ -80,6 +81,9 @@ static void draw_software(void)
 	u16 *dst_base;
 	int pitch = g_snes_width * (int)sizeof(u16);
 	u16 *src;
+
+	/* The scanline renderer already applied INIDISP. */
+	ZeldaHwUseMasterBright(0);
 
 	if (hw_bound) {
 		videoSetMode(MODE_5_2D);

@@ -36,7 +36,10 @@
  * priority 3 (sideways, south, and diagonal), and that still has to sit
  * under the rain. A fixed color
  * add or subtract is applied to the palettes, which is the blue wash in
- * the opening and the dark rooms. Mosaic uses the DS mosaic register, so
+ * the opening and the dark rooms. Master brightness is INIDISP: one
+ * register, latched in vblank, including while a load is still running,
+ * so the whole picture fades or cuts to black in one frame. Mosaic uses
+ * the DS mosaic register, so
  * the pixelated fade when leaving the house is visible. The door iris is
  * the SNES window HDMA table: outside the circle the picture is black, and
  * the circle closes on Link, then opens again outside. That window is
@@ -453,17 +456,40 @@ static void present_bg3(Ppu *ppu, int show_low) {
 	}
 }
 
-static u16 shade(u16 color, int brightness) {
-	int r, g, b;
+/* Palettes stay at full intensity. INIDISP is REG_MASTER_BRIGHT, which
+ * scales the finished picture the way the SNES brightness register does.
+ * 0..15 maps onto the DS fade factor 16..0. */
+static u16 inidisp_to_bright(unsigned inidisp) {
+	unsigned b;
+	unsigned factor;
 
-	if (brightness >= 15)
-		return (u16)(color & 0x7fff);
-	if (brightness <= 0)
+	if (inidisp & 0x80)
+		return (u16)((1u << 15) | 16);
+	b = inidisp & 0xf;
+	if (b >= 15)
 		return 0;
-	r = (color & 31) * brightness / 15;
-	g = ((color >> 5) & 31) * brightness / 15;
-	b = ((color >> 10) & 31) * brightness / 15;
-	return (u16)(r | (g << 5) | (b << 10));
+	if (b == 0)
+		return (u16)((1u << 15) | 16);
+	factor = (16u * (15u - b) + 7u) / 15u;
+	return (u16)((1u << 15) | factor);
+}
+
+/* The load that follows EnableForceBlank runs for several vblanks. The
+ * SNES writes INIDISP in NMI anyway, so the picture is already black
+ * while that load is still going. */
+static volatile int use_master_bright = 1;
+
+static void vblank_bright(void) {
+	if (use_master_bright)
+		REG_MASTER_BRIGHT = inidisp_to_bright(INIDISP_copy);
+}
+
+void ZeldaHwUseMasterBright(int on) {
+	use_master_bright = on;
+	if (on)
+		REG_MASTER_BRIGHT = inidisp_to_bright(INIDISP_copy);
+	else
+		REG_MASTER_BRIGHT = 0;
 }
 
 static int clamp5(int v) {
@@ -510,7 +536,6 @@ static int math_active(const Ppu *ppu) {
 
 static void present_palettes(const Ppu *ppu) {
 	int i;
-	int brightness = ppu->brightness;
 	int on = math_active(ppu);
 	int bg = on && (ppu->mathEnabled & 0x07);
 	int obj = on && (ppu->mathEnabled & 0x10);
@@ -518,16 +543,16 @@ static void present_palettes(const Ppu *ppu) {
 	u16 color;
 
 	color = back ? math_color(ppu->cgram[0], ppu) : ppu->cgram[0];
-	/* The backdrop cannot be windowed. While the iris is up it has to stay
-	 * black, or the area outside the circle picks up this color. */
-	BG_PALETTE[0] = iris_wanted() ? 0 : shade(color, brightness);
+	/* The backdrop cannot be windowed. While the iris is up, or the SNES
+	 * picture is forced blank, it has to stay black. */
+	BG_PALETTE[0] = (iris_wanted() || ppu->forcedBlank) ? 0 : (u16)(color & 0x7fff);
 	for (i = 1; i < 128; i++) {
 		color = bg ? math_color(ppu->cgram[i], ppu) : ppu->cgram[i];
-		BG_PALETTE[i] = shade(color, brightness);
+		BG_PALETTE[i] = (u16)(color & 0x7fff);
 	}
 	for (i = 0; i < 128; i++) {
 		color = obj ? math_color(ppu->cgram[128 + i], ppu) : ppu->cgram[128 + i];
-		SPRITE_PALETTE[i] = shade(color, brightness);
+		SPRITE_PALETTE[i] = (u16)(color & 0x7fff);
 	}
 }
 
@@ -933,6 +958,7 @@ void ZeldaHwInit(void) {
 	videoSetMode(MODE_0_2D);
 	vramSetBankA(VRAM_A_MAIN_BG);
 	vramSetBankE(VRAM_E_MAIN_SPRITE);
+	irqSet(IRQ_VBLANK, vblank_bright);
 	irqEnable(IRQ_VBLANK);
 	oamInit(&oamMain, SpriteMapping_1D_32, false);
 	lcdMainOnTop();
@@ -971,8 +997,14 @@ void ZeldaHwInit(void) {
 }
 
 void ZeldaHwPresent(Ppu *ppu) {
-	int main_en = ppu->forcedBlank ? 0 : ppu->screenEnabled[0];
-	int sub_en = ppu->forcedBlank ? 0 : ppu->screenEnabled[1];
+	int main_en;
+	int sub_en;
+
+	/* Before the tile upload. A brightness step or a forced blank then
+	 * covers every line of this frame, which is what INIDISP does. */
+	ZeldaHwUseMasterBright(1);
+	main_en = ppu->forcedBlank ? 0 : ppu->screenEnabled[0];
+	sub_en = ppu->forcedBlank ? 0 : ppu->screenEnabled[1];
 	int bg1_main = (main_en & 0x01) != 0;
 	int bg1_sub = (sub_en & 0x01) != 0;
 	/* Rain and the other overworld covers: BG1 is subscreen-only, BG2 is
