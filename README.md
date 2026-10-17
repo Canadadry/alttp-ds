@@ -10,7 +10,7 @@ The top screen is the game (256×224 cropped to 256×192). The bottom screen is 
 
 **A** sword, **B** item, **Y** dash, **X** / **L** / **R** match the SNES X and shoulder buttons, **Start** opens the menu. Select+Start pauses. L+R+Select resets and keeps the save. L+R+Start+Select quits.
 
-SRAM is an 8 KB `lttp-ds.sav` on the SD card. In melonDS, turn on DLDI (Emu settings → DLDI), enable folder sync, and point it at a folder. The save appears there as `lttp-ds.sav`. Naming a file, saving in game, and quitting all write that file. Assets still come from NitroFS.
+SRAM is an 8 KB `lttp-ds.sav` on the SD card. In melonDS, turn on DLDI (Emu settings → DLDI), enable folder sync, and point it at a folder. The save appears there as `lttp-ds.sav`. Naming a file returns to the file screen at once; the `.sav` is written on the next frame. Assets still come from NitroFS.
 
 `build.bat` copies `zelda3_assets.dat` from the project root into NitroFS when that file exists (gitignored).
 

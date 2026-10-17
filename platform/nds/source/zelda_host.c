@@ -217,6 +217,7 @@ void ZeldaHostInit(void)
 void ZeldaHostSave(void)
 {
 	ZeldaWriteSram();
+	ZeldaSaveFlush();
 }
 
 void ZeldaHostOnKeys(u32 held, u32 down)

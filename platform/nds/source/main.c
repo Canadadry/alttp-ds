@@ -5,6 +5,7 @@
 #include <stdio.h>
 
 #include "zelda_host.h"
+#include "zelda_save.h"
 #include "zelda_video.h"
 
 int main(int argc, char **argv)
@@ -45,6 +46,7 @@ int main(int argc, char **argv)
 
 		ZeldaHostOnKeys(held, down);
 		ZeldaHostTick(held);
+		ZeldaSaveFlush();
 		ZeldaHostBlit(framebuffer);
 		ZeldaHostAudio();
 		ZeldaHostHud();
