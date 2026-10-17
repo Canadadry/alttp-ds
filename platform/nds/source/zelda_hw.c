@@ -17,9 +17,10 @@
  *   BG3 priority 1        HUD, in front of every sprite
  *   sprites priority 3
  *   BG1 priority 1        overhangs, and the file-select wallpaper
+ *   BG2 priority 1        doorways and other tiles that cover Link
  *   sprites priority 2    Link
  *   BG1 priority 0
- *   BG2                   ground, in front of sprites 0 and 1
+ *   BG2 priority 0        ground, in front of sprites 0 and 1
  *   sprites priority 1
  *   sprites priority 0
  *   BG3 priority 0        name letters. Behind the wallpaper.
@@ -30,8 +31,10 @@
  * that hardware layer: the letters use it while BG2 is off. A subscreen-only
  * picture with nothing behind it (the title art) stays at priority 3. A
  * subscreen BG1 over an opaque BG2 is the rain and the other overworld
- * overlays: it is drawn in front of the playfield and alpha-blended, which
- * is what SNES half-add color math does to those pixels. A fixed color
+ * overlays: it is drawn in front of every sprite and alpha-blended, which
+ * is what SNES half-add color math does. A ledge jump raises Link to sprite
+ * priority 3 (sideways, south, and diagonal), and that still has to sit
+ * under the rain. A fixed color
  * add or subtract is applied to the palettes, which is the blue wash in
  * the opening and the dark rooms. Mosaic uses the DS mosaic register, so
  * the pixelated fade when leaving the house is visible. The door iris is
@@ -76,6 +79,11 @@ static int back_mode;
 static uint32 spr_hash[128];
 
 static u16 map_buf[4][4096] __attribute__((aligned(4)));
+/* BG2 tiles with the priority bit. Doorways live here, in front of Link. */
+static u16 bg2_hi[4096] __attribute__((aligned(4)));
+static int bg2_blank;
+static int bg2_lift_mode = -1;
+static int bg2_front_on_slot1;
 
 static uint32 hash_words(const uint16 *vram, uint16 addr, int n) {
 	uint32 h = 2166136261u;
@@ -203,9 +211,12 @@ static void present_bg1(Ppu *ppu, int split) {
 	u16 *gfx;
 	int tile;
 
-	ensure_size(1, layer->tilemapWider, layer->tilemapHigher, 4, 2);
+	/* Slot 1 stays on BG2 graphics while it is showing doorways. BG1 tiles
+	 * always live with slot 2. */
+	if (split)
+		ensure_size(1, layer->tilemapWider, layer->tilemapHigher, 4, 2);
 	ensure_size(2, layer->tilemapWider, layer->tilemapHigher, 8, 2);
-	gfx = bgGetGfxPtr(bg_id[1]);
+	gfx = bgGetGfxPtr(bg_id[2]);
 
 	if (last_adr[0] != layer->tileAdr) {
 		memset(tile_hash[0], 0, sizeof tile_hash[0]);
@@ -251,10 +262,12 @@ static void present_bg1(Ppu *ppu, int split) {
 				map_buf[2][i] = swizzle4(entry);
 			}
 		}
-		DC_FlushRange(map_buf[1], (uint32)words * 2);
 		DC_FlushRange(map_buf[2], (uint32)words * 2);
-		dmaCopyWords(3, map_buf[1], bgGetMapPtr(bg_id[1]), (uint32)words * 2);
 		dmaCopyWords(3, map_buf[2], bgGetMapPtr(bg_id[2]), (uint32)words * 2);
+		if (split) {
+			DC_FlushRange(map_buf[1], (uint32)words * 2);
+			dmaCopyWords(3, map_buf[1], bgGetMapPtr(bg_id[1]), (uint32)words * 2);
+		}
 		map_sig[0] = sig;
 		map_valid[0] = 1;
 	}
@@ -273,7 +286,7 @@ static void present_bg1(Ppu *ppu, int split) {
 	}
 }
 
-static void present_bg2(Ppu *ppu) {
+static void present_bg2(Ppu *ppu, int lift) {
 	BgLayer *layer = &ppu->bgLayer[1];
 	int words = map_words(layer->tilemapWider, layer->tilemapHigher);
 	uint32 sig = sig_map(ppu, layer->tilemapAdr, words);
@@ -289,21 +302,45 @@ static void present_bg2(Ppu *ppu) {
 		last_adr[1] = layer->tileAdr;
 		map_valid[1] = 0;
 	}
+	if (bg2_lift_mode != lift) {
+		bg2_lift_mode = lift;
+		map_valid[1] = 0;
+	}
 
 	memset(used, 0, sizeof used);
 	if (!map_valid[1] || map_sig[1] != sig) {
 		int i;
 
+		for (i = 0; i < words; i++)
+			used[ppu->vram[(layer->tilemapAdr + i) & 0x7fff] & 0x3ff] = 1;
+		bg2_blank = 0;
+		for (i = 1; i < 1024; i++) {
+			if (!used[i]) {
+				bg2_blank = i;
+				break;
+			}
+		}
 		for (i = 0; i < words; i++) {
 			uint16 entry = ppu->vram[(layer->tilemapAdr + i) & 0x7fff];
 
-			used[entry & 0x3ff] = 1;
-			map_buf[3][i] = swizzle4(entry);
+			/* Same split as PpuDrawBackground: 0xb100 is in front of Link,
+			 * 0x7100 stays on the ground behind him. */
+			if (lift && (entry & 0x2000)) {
+				bg2_hi[i] = swizzle4(entry);
+				map_buf[3][i] = (u16)bg2_blank;
+			} else {
+				bg2_hi[i] = (u16)bg2_blank;
+				map_buf[3][i] = swizzle4(entry);
+			}
 		}
 		DC_FlushRange(map_buf[3], (uint32)words * 2);
 		dmaCopyWords(3, map_buf[3], bgGetMapPtr(bg_id[3]), (uint32)words * 2);
 		map_sig[1] = sig;
 		map_valid[1] = 1;
+		if (!used[bg2_blank]) {
+			clear_tile(gfx, bg2_blank);
+			tile_hash[1][bg2_blank] = 0;
+		}
 	} else {
 		int i;
 
@@ -703,6 +740,103 @@ static void present_iris(void) {
 	REG_DISPCNT |= DISPLAY_WIN0_ON;
 }
 
+/* Overworld: BG1 is not on the main screen, so this layer can show the
+ * priority-1 ground tiles with BG2's own graphics. */
+static void show_bg2_front(const Ppu *ppu) {
+	const BgLayer *layer = &ppu->bgLayer[1];
+	int words = map_words(layer->tilemapWider, layer->tilemapHigher);
+
+	ensure_size(1, layer->tilemapWider, layer->tilemapHigher, 4, 4);
+	DC_FlushRange(bg2_hi, (uint32)words * 2);
+	dmaCopyWords(3, bg2_hi, bgGetMapPtr(bg_id[1]), (uint32)words * 2);
+	bg2_front_on_slot1 = 1;
+}
+
+static void upload4_reloc(const Ppu *ppu, u16 *gfx, uint16 tile_adr, int src, int dst) {
+	uint16 addr = (uint16)((tile_adr + src * 16) & 0x7fff);
+	uint32 h = hash_words(ppu->vram, addr, 16) ^ 0x9e3779b9u;
+	uint16 tmp[16];
+	int i;
+
+	if (!h)
+		h = 1;
+	if (tile_hash[0][dst] == h)
+		return;
+	for (i = 0; i < 16; i++)
+		tmp[i] = ppu->vram[(addr + i) & 0x7fff];
+	conv4(tmp, gfx + dst * 16, 0);
+	tile_hash[0][dst] = h;
+}
+
+static u16 swizzle_as(uint16 entry, int tile) {
+	return swizzle4((uint16)((entry & ~0x3ff) | (tile & 0x3ff)));
+}
+
+/* Dungeon BG1 already uses both spare layers. Copy doorway tiles into free
+ * slots of that tileset and put them on the priority-1 map, which is the
+ * layer zelda3 draws above Link and below sprite priority 3. */
+static void bake_bg2_doors(Ppu *ppu) {
+	BgLayer *top = &ppu->bgLayer[0];
+	BgLayer *ground = &ppu->bgLayer[1];
+	int words = map_words(top->tilemapWider, top->tilemapHigher);
+	static int remap[1024];
+	static int free_tile[1024];
+	int free_n = 0;
+	int free_i = 0;
+	int patched = 0;
+	u16 *gfx;
+	u16 blank;
+	int i;
+
+	if (top->hScroll != ground->hScroll || top->vScroll != ground->vScroll ||
+	    top->tilemapWider != ground->tilemapWider ||
+	    top->tilemapHigher != ground->tilemapHigher)
+		return;
+	gfx = bgGetGfxPtr(bg_id[1]);
+	blank = (u16)(blank_bg1 < 0 ? 0 : blank_bg1);
+	for (i = 0; i < 1024; i++)
+		remap[i] = -1;
+	for (i = 1; i < 1024; i++) {
+		if (!used_bg1[i] && i != blank_bg1)
+			free_tile[free_n++] = i;
+	}
+	for (i = 0; i < words; i++) {
+		uint16 above = ppu->vram[(top->tilemapAdr + i) & 0x7fff];
+		uint16 door;
+		int src, dst;
+
+		if (above & 0x2000) {
+			map_buf[1][i] = swizzle4(above);
+			continue;
+		}
+		door = ppu->vram[(ground->tilemapAdr + i) & 0x7fff];
+		if (!(door & 0x2000)) {
+			map_buf[1][i] = blank;
+			continue;
+		}
+		src = door & 0x3ff;
+		dst = remap[src];
+		if (dst < 0) {
+			if (free_i >= free_n) {
+				map_buf[1][i] = blank;
+				map_buf[3][i] = swizzle4(door);
+				patched = 1;
+				continue;
+			}
+			dst = free_tile[free_i++];
+			remap[src] = dst;
+			upload4_reloc(ppu, gfx, ground->tileAdr, src, dst);
+		}
+		map_buf[1][i] = swizzle_as(door, dst);
+	}
+	DC_FlushRange(map_buf[1], (uint32)words * 2);
+	dmaCopyWords(3, map_buf[1], bgGetMapPtr(bg_id[1]), (uint32)words * 2);
+	if (patched) {
+		DC_FlushRange(map_buf[3], (uint32)words * 2);
+		dmaCopyWords(3, map_buf[3], bgGetMapPtr(bg_id[3]), (uint32)words * 2);
+	}
+}
+
 static void present_scroll(const Ppu *ppu, int back_bg3) {
 	int sy0 = (int)ppu->bgLayer[0].vScroll + kCropY;
 	int sy1 = (int)ppu->bgLayer[1].vScroll + kCropY;
@@ -710,7 +844,10 @@ static void present_scroll(const Ppu *ppu, int back_bg3) {
 	int split = back_bg3 && irq_flag != 0;
 	int ime = enterCriticalSection();
 
-	bgSetScroll(bg_id[1], ppu->bgLayer[0].hScroll, sy0);
+	if (bg2_front_on_slot1)
+		bgSetScroll(bg_id[1], ppu->bgLayer[1].hScroll, sy1);
+	else
+		bgSetScroll(bg_id[1], ppu->bgLayer[0].hScroll, sy0);
 	bgSetScroll(bg_id[2], ppu->bgLayer[0].hScroll, sy0);
 	bgSetScroll(bg_id[0], ppu->bgLayer[2].hScroll, sy2);
 	if (back_bg3)
@@ -785,7 +922,16 @@ void ZeldaHwPresent(Ppu *ppu) {
 	int overlay = bg1_sub && !bg1_main && (main_en & 0x02) &&
 		ppu->addSubscreen && ppu->preventMathMode != 3 &&
 		(ppu->mathEnabled & 0x3f) != 0;
+	int bg2_main = (main_en & 0x02) != 0;
 	int bg2_on = ((main_en | sub_en) & 0x02) != 0;
+	/* Door frames are BG2 priority tiles. Lift them whenever the ground is
+	 * on the main screen. In a dungeon that also needs its own BG1, the
+	 * scrolls have to match so the tiles can share BG1's front layer. */
+	int lift_bg2 = bg2_main && (!bg1_main ||
+		(ppu->bgLayer[0].hScroll == ppu->bgLayer[1].hScroll &&
+		 ppu->bgLayer[0].vScroll == ppu->bgLayer[1].vScroll &&
+		 ppu->bgLayer[0].tilemapWider == ppu->bgLayer[1].tilemapWider &&
+		 ppu->bgLayer[0].tilemapHigher == ppu->bgLayer[1].tilemapHigher));
 	int bg3_on = ((main_en | sub_en) & 0x04) != 0;
 	int show_bg3_lo = bg3_on && !bg2_on;
 
@@ -805,9 +951,14 @@ void ZeldaHwPresent(Ppu *ppu) {
 
 	/* Main-screen BG1 keeps the priority split. A subscreen-only BG1 is the
 	 * title art, which is added behind the sprites instead of covering them. */
+	bg2_front_on_slot1 = 0;
 	present_bg1(ppu, bg1_main);
 	if (bg2_on)
-		present_bg2(ppu);
+		present_bg2(ppu, lift_bg2);
+	if (lift_bg2 && bg1_main)
+		bake_bg2_doors(ppu);
+	else if (lift_bg2)
+		show_bg2_front(ppu);
 	present_bg3(ppu, show_bg3_lo);
 	present_palettes(ppu);
 	present_sprites(ppu, (main_en & 0x10) != 0);
@@ -829,14 +980,24 @@ void ZeldaHwPresent(Ppu *ppu) {
 		bgShow(bg_id[1]);
 		bgShow(bg_id[2]);
 	} else if (overlay) {
-		/* Behind the HUD, in front of Link and the ground. */
-		bgSetPriority(bg_id[2], 1);
-		bgHide(bg_id[1]);
+		/* In front of every sprite, including a priority-3 ledge jump,
+		 * and behind the HUD. Doorways sit between the rain and Link. */
+		bgSetPriority(bg_id[2], 0);
 		bgShow(bg_id[2]);
+		if (bg2_front_on_slot1) {
+			bgSetPriority(bg_id[1], 1);
+			bgShow(bg_id[1]);
+		} else {
+			bgHide(bg_id[1]);
+		}
 	} else if (bg1_sub) {
 		bgSetPriority(bg_id[2], 3);
 		bgHide(bg_id[1]);
 		bgShow(bg_id[2]);
+	} else if (bg2_front_on_slot1) {
+		bgSetPriority(bg_id[1], 1);
+		bgShow(bg_id[1]);
+		bgHide(bg_id[2]);
 	} else {
 		bgHide(bg_id[1]);
 		bgHide(bg_id[2]);
