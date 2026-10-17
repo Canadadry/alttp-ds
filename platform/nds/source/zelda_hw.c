@@ -88,6 +88,11 @@ static int bg3_next;
 static u16 bg3_lo[4096] __attribute__((aligned(4)));
 static int back_mode;
 static uint32 spr_hash[128];
+/* Built in main RAM, then copied in one DMA. Writing each tile into sprite
+ * VRAM while the screen is scanning tears the picture, and the hash would
+ * keep that torn copy. A room of guards is enough to spill past vblank. */
+static u16 spr_gfx[128 * 64] __attribute__((aligned(4)));
+static int spr_dirty;
 
 static u16 map_buf[4][4096] __attribute__((aligned(4)));
 /* BG2 tiles with the priority bit. Doorways live here, in front of Link. */
@@ -644,12 +649,14 @@ static int ds_sprite_priority(int snes_priority) {
 	return 3;
 }
 
-static void present_sprites(Ppu *ppu, int sprites_on) {
+/* Fills shadow OAM and spr_gfx. Safe while the picture is on screen:
+ * nothing here touches sprite VRAM. ZeldaHwCommitSprites copies both
+ * during vblank, before the background upload can run the blank out. */
+static void compose_sprites(Ppu *ppu, int sprites_on) {
 	int sprite;
 
 	if (!sprites_on || ppu->forcedBlank) {
 		oamClear(&oamMain, 0, 128);
-		oamUpdate(&oamMain);
 		return;
 	}
 
@@ -686,7 +693,7 @@ static void present_sprites(Ppu *ppu, int sprites_on) {
 		size = (high & 2) ? 16 : 8;
 		name = oam1 & 0xff;
 		base = (oam1 & 0x100) ? ppu->objTileAdr2 : ppu->objTileAdr1;
-		gfx = SPRITE_GFX + sprite * 64;
+		gfx = spr_gfx + sprite * 64;
 
 		h = 2166136261u;
 		for (ty = 0; ty < size; ty += 8) {
@@ -711,13 +718,34 @@ static void present_sprites(Ppu *ppu, int sprites_on) {
 				}
 			}
 			spr_hash[sprite] = h;
+			spr_dirty = 1;
 		}
 
 		oamSet(&oamMain, sprite, x, y, ds_sprite_priority((oam1 >> 12) & 3),
 			(oam1 >> 9) & 7,
 			size == 16 ? SpriteSize_16x16 : SpriteSize_8x8,
-			SpriteColorFormat_16Color, gfx, -1, false, false,
+			SpriteColorFormat_16Color, SPRITE_GFX + sprite * 64, -1, false, false,
 			(oam1 & 0x4000) != 0, (oam1 & 0x8000) != 0, false);
+	}
+}
+
+void ZeldaHwComposeSprites(void) {
+	if (!g_zenv.ppu)
+		return;
+	compose_sprites(g_zenv.ppu,
+		(g_zenv.ppu->screenEnabled[0] & 0x10) != 0);
+}
+
+void ZeldaHwCommitSprites(int sprites_on) {
+	if (!sprites_on) {
+		oamClear(&oamMain, 0, 128);
+		oamUpdate(&oamMain);
+		return;
+	}
+	if (spr_dirty) {
+		DC_FlushRange(spr_gfx, sizeof spr_gfx);
+		dmaCopyWords(3, spr_gfx, SPRITE_GFX, sizeof spr_gfx);
+		spr_dirty = 0;
 	}
 	oamUpdate(&oamMain);
 }
@@ -1052,6 +1080,9 @@ void ZeldaHwPresent(Ppu *ppu) {
 		REG_MASTER_BRIGHT = inidisp_to_bright(0x80);
 	main_en = cover ? 0 : ppu->screenEnabled[0];
 	sub_en = cover ? 0 : ppu->screenEnabled[1];
+	/* Already built before this vblank. Copy it up before the background
+	 * upload, or a room of guards is still being written while it is drawn. */
+	ZeldaHwCommitSprites((main_en & 0x10) != 0);
 	int bg1_main = (main_en & 0x01) != 0;
 	int bg1_sub = (sub_en & 0x01) != 0;
 	/* Rain and the other overworld covers: BG1 is subscreen-only, BG2 is
@@ -1111,7 +1142,6 @@ void ZeldaHwPresent(Ppu *ppu) {
 		show_bg2_front(ppu);
 	present_bg3(ppu, show_bg3_lo);
 	present_palettes(ppu);
-	present_sprites(ppu, (main_en & 0x10) != 0);
 	present_scroll(ppu, show_bg3_lo);
 
 	if (main_en & 0x04) {

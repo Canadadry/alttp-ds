@@ -20,6 +20,7 @@ static u16 pixel_buffer[kSnesW * kSnesH] __attribute__((aligned(8)));
 
 void ZeldaHwInit(void);
 void ZeldaHwPresent(Ppu *ppu);
+void ZeldaHwComposeSprites(void);
 void ZeldaHwUseMasterBright(int on);
 
 /* Rows 0..15 and 208..223 are cropped. ppu_runLine(n) draws row n-1. */
@@ -102,6 +103,12 @@ static void draw_software(void)
 	dmaCopyWords(3, src, dst_base, SCREEN_HEIGHT * SCREEN_WIDTH * sizeof(u16));
 }
 
+void ZeldaVideoComposeSprites(void)
+{
+	if (g_zenv.ppu && g_zenv.ppu->mode != 7)
+		ZeldaHwComposeSprites();
+}
+
 void ZeldaVideoDrawPpuFrame(void)
 {
 	if (g_zenv.ppu->mode == 7) {
@@ -112,6 +119,8 @@ void ZeldaVideoDrawPpuFrame(void)
 		ZeldaHwInit();
 		hw_bound = 1;
 		bg_main = 0;
+		/* oamInit just cleared the shadow OAM composed before this blank. */
+		ZeldaHwComposeSprites();
 	}
 	ZeldaHwPresent(g_zenv.ppu);
 }

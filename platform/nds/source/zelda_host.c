@@ -243,6 +243,9 @@ void ZeldaHostTick(u32 held)
 	if (paused)
 		return;
 	ZeldaRunFrame(map_keys(held));
+	/* Sprite tiles are built here, while the previous picture is still
+	 * up. The vblank blit only has to DMA them. */
+	ZeldaVideoComposeSprites();
 }
 
 void ZeldaHostBlit(u16 *fb)
