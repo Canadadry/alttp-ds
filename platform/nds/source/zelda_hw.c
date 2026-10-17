@@ -32,8 +32,12 @@
  * picture with nothing behind it (the title art) stays at priority 3. A
  * subscreen BG1 over an opaque BG2 is the rain and the other overworld
  * overlays: it is drawn in front of every sprite and alpha-blended, which
- * is what SNES half-add color math does. A ledge jump raises Link to sprite
- * priority 3 (sideways, south, and diagonal), and that still has to sit
+ * is what SNES half-add color math does. That only happens when color math
+ * targets the ground. Hyrule Castle puts BG1 on the subscreen with CGADSUB
+ * 0x20, backdrop only, so the layer stays behind the floor and is not
+ * blended: the stone and Link stay solid. A ledge jump
+ * raises Link to sprite priority 3 (sideways, south, and diagonal), and
+ * that still has to sit
  * under the rain. A fixed color
  * add or subtract is applied to the palettes, which is the blue wash in
  * the opening and the dark rooms. Master brightness is INIDISP: one
@@ -602,18 +606,27 @@ static void present_mosaic(const Ppu *ppu) {
 		bgMosaicEnable(bg_id[i]);
 }
 
-/* Half-add is (front + back) / 2. A full add clamps the sum. */
-static void present_overlay_blend(const Ppu *ppu, int overlay) {
+/* Half-add is (front + back) / 2. A full add clamps the sum.
+ * overlay: the subscreen is in front of every sprite (rain).
+ * back_add: the subscreen is behind the ground and added into it
+ * (Translucent and Addition rooms). Sprites are not a destination, so
+ * Link stays solid. */
+static void present_overlay_blend(const Ppu *ppu, int overlay, int back_add) {
 	int coef;
 
-	if (!overlay || ppu->subtractColor) {
+	if (ppu->subtractColor || (!overlay && !back_add)) {
 		REG_BLDCNT = 0;
 		return;
 	}
 	coef = ppu->halfColor ? 8 : 16;
-	REG_BLDCNT = BLEND_ALPHA | BLEND_SRC_BG2 |
-		BLEND_DST_BG0 | BLEND_DST_BG1 | BLEND_DST_BG3 |
-		BLEND_DST_SPRITE | BLEND_DST_BACKDROP;
+	if (back_add) {
+		REG_BLDCNT = BLEND_ALPHA | BLEND_SRC_BG1 | BLEND_SRC_BG3 |
+			BLEND_DST_BG2 | BLEND_DST_BACKDROP;
+	} else {
+		REG_BLDCNT = BLEND_ALPHA | BLEND_SRC_BG2 |
+			BLEND_DST_BG0 | BLEND_DST_BG1 | BLEND_DST_BG3 |
+			BLEND_DST_SPRITE | BLEND_DST_BACKDROP;
+	}
 	REG_BLDALPHA = (u16)(coef | (coef << 8));
 }
 
@@ -1042,11 +1055,23 @@ void ZeldaHwPresent(Ppu *ppu) {
 	int bg1_main = (main_en & 0x01) != 0;
 	int bg1_sub = (sub_en & 0x01) != 0;
 	/* Rain and the other overworld covers: BG1 is subscreen-only, BG2 is
-	 * the opaque ground, and color math is on. The title picture has no
-	 * ground layer, so it stays behind the sprites. */
+	 * the opaque ground, and color math targets that ground (or another
+	 * main layer). Bit 5 is the backdrop in this PPU, which is all Hyrule
+	 * Castle writes (CGADSUB 0x20). That must not become the rain blend.
+	 * The title picture has no ground layer, so it stays behind the sprites. */
+	int layer_math = (ppu->mathEnabled & 0x1f) != 0;
 	int overlay = bg1_sub && !bg1_main && (main_en & 0x02) &&
 		ppu->addSubscreen && ppu->preventMathMode != 3 &&
-		(ppu->mathEnabled & 0x3f) != 0;
+		layer_math;
+	/* Rooms whose header really adds the subscreen into BG2 (Translucent,
+	 * Addition). The copy is blended into the floor behind Link. Rain stays
+	 * in front of him. */
+	int back_add = overlay && player_is_indoors && (ppu->mathEnabled & 0x02) &&
+		!ppu->subtractColor &&
+		ppu->bgLayer[0].hScroll == ppu->bgLayer[1].hScroll &&
+		ppu->bgLayer[0].vScroll == ppu->bgLayer[1].vScroll;
+	if (back_add)
+		overlay = 0;
 	int bg2_main = (main_en & 0x02) != 0;
 	int bg2_on = ((main_en | sub_en) & 0x02) != 0;
 	/* Door frames are BG2 priority tiles. Lift them whenever the ground is
@@ -1115,10 +1140,30 @@ void ZeldaHwPresent(Ppu *ppu) {
 		} else {
 			bgHide(bg_id[1]);
 		}
-	} else if (bg1_sub) {
+	} else if (back_add) {
+		/* Behind the ground. The blend adds this into the floor and the
+		 * doorways, and Link is drawn on top of that result. */
 		bgSetPriority(bg_id[2], 3);
-		bgHide(bg_id[1]);
 		bgShow(bg_id[2]);
+		if (bg2_front_on_slot1) {
+			bgSetPriority(bg_id[1], 1);
+			bgShow(bg_id[1]);
+		} else {
+			bgHide(bg_id[1]);
+		}
+	} else if (bg1_sub) {
+		/* Behind the ground, and not blended. Castle's subscreen sits here:
+		 * the opaque floor covers it, so the room and Link stay solid.
+		 * With no ground (the title), this layer is the picture. Doorways
+		 * stay in front of Link. */
+		bgSetPriority(bg_id[2], 3);
+		bgShow(bg_id[2]);
+		if (bg2_front_on_slot1) {
+			bgSetPriority(bg_id[1], 1);
+			bgShow(bg_id[1]);
+		} else {
+			bgHide(bg_id[1]);
+		}
 	} else if (bg2_front_on_slot1) {
 		bgSetPriority(bg_id[1], 1);
 		bgShow(bg_id[1]);
@@ -1143,7 +1188,7 @@ void ZeldaHwPresent(Ppu *ppu) {
 	}
 	REG_DISPCNT |= DISPLAY_SPR_ACTIVE | DISPLAY_SPR_1D | DISPLAY_SPR_1D_SIZE_32;
 	present_mosaic(ppu);
-	present_overlay_blend(ppu, overlay);
+	present_overlay_blend(ppu, overlay, back_add);
 	{
 		int ime = enterCriticalSection();
 
