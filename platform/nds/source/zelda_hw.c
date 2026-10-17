@@ -28,9 +28,14 @@
  * The DS has four backgrounds, so BG2 priority 1 stays on the ground layer
  * (it has its own scroll and cannot move onto BG1) and BG3 priority 0 shares
  * that hardware layer: the letters use it while BG2 is off. A subscreen-only
- * picture is priority 3, behind every sprite, because color math adds it
- * instead of covering them. Color math itself has no DS equivalent here.
- * Mode 7 stays on the scanline renderer.
+ * picture with nothing behind it (the title art) stays at priority 3. A
+ * subscreen BG1 over an opaque BG2 is the rain and the other overworld
+ * overlays: it is drawn in front of the playfield and alpha-blended, which
+ * is what SNES half-add color math does to those pixels. A fixed color
+ * add or subtract is applied to the palettes, which is the blue wash in
+ * the opening and the dark rooms. Mosaic uses the DS mosaic register, so
+ * the pixelated fade when leaving the house is visible. Mode 7 stays on
+ * the scanline renderer.
  *
  * Naming a file scrolls the letter grid without moving the name. An IRQ at
  * SNES line 128 switches BG3 from the name scroll to selectfile_var8. That
@@ -428,16 +433,22 @@ static int clamp5(int v) {
 	return v;
 }
 
-/* Sword impact adds red, green, or blue to the backdrop for a few frames. */
-static u16 backdrop_color(const Ppu *ppu) {
-	u16 color = ppu->cgram[0];
-	int r, g, b;
+/* Fixed-color math. A transparent subscreen keeps the fixed color and
+ * skips the half; half only applies when the subscreen itself is off. */
+static u16 math_color(u16 color, const Ppu *ppu) {
+	int r = color & 31;
+	int g = (color >> 5) & 31;
+	int b = (color >> 10) & 31;
 
-	if ((ppu->mathEnabled & 0x20) == 0 || ppu->preventMathMode == 3)
-		return color;
-	r = (color & 31) + (ppu->subtractColor ? -(int)ppu->fixedColorR : (int)ppu->fixedColorR);
-	g = ((color >> 5) & 31) + (ppu->subtractColor ? -(int)ppu->fixedColorG : (int)ppu->fixedColorG);
-	b = ((color >> 10) & 31) + (ppu->subtractColor ? -(int)ppu->fixedColorB : (int)ppu->fixedColorB);
+	if (ppu->subtractColor) {
+		r -= ppu->fixedColorR;
+		g -= ppu->fixedColorG;
+		b -= ppu->fixedColorB;
+	} else {
+		r += ppu->fixedColorR;
+		g += ppu->fixedColorG;
+		b += ppu->fixedColorB;
+	}
 	if (ppu->halfColor && !ppu->addSubscreen) {
 		r >>= 1;
 		g >>= 1;
@@ -446,15 +457,67 @@ static u16 backdrop_color(const Ppu *ppu) {
 	return (u16)(clamp5(r) | (clamp5(g) << 5) | (clamp5(b) << 10));
 }
 
+static int math_active(const Ppu *ppu) {
+	if (ppu->preventMathMode == 3 || (ppu->mathEnabled & 0x3f) == 0)
+		return 0;
+	if (ppu->fixedColorR | ppu->fixedColorG | ppu->fixedColorB)
+		return 1;
+	return ppu->halfColor && !ppu->addSubscreen;
+}
+
 static void present_palettes(const Ppu *ppu) {
 	int i;
 	int brightness = ppu->brightness;
+	int on = math_active(ppu);
+	int bg = on && (ppu->mathEnabled & 0x07);
+	int obj = on && (ppu->mathEnabled & 0x10);
+	int back = on && (ppu->mathEnabled & 0x20);
+	u16 color;
 
-	BG_PALETTE[0] = shade(backdrop_color(ppu), brightness);
-	for (i = 1; i < 128; i++)
-		BG_PALETTE[i] = shade(ppu->cgram[i], brightness);
-	for (i = 0; i < 128; i++)
-		SPRITE_PALETTE[i] = shade(ppu->cgram[128 + i], brightness);
+	color = back ? math_color(ppu->cgram[0], ppu) : ppu->cgram[0];
+	BG_PALETTE[0] = shade(color, brightness);
+	for (i = 1; i < 128; i++) {
+		color = bg ? math_color(ppu->cgram[i], ppu) : ppu->cgram[i];
+		BG_PALETTE[i] = shade(color, brightness);
+	}
+	for (i = 0; i < 128; i++) {
+		color = obj ? math_color(ppu->cgram[128 + i], ppu) : ppu->cgram[128 + i];
+		SPRITE_PALETTE[i] = shade(color, brightness);
+	}
+}
+
+/* SNES mosaic size 1 is one pixel. The DS register is that size minus one. */
+static void present_mosaic(const Ppu *ppu) {
+	int i;
+	int size;
+
+	if (ppu->forcedBlank || ppu->mosaicSize <= 1 || (ppu->mosaicEnabled & 7) == 0) {
+		for (i = 0; i < 4; i++)
+			bgMosaicDisable(bg_id[i]);
+		bgSetMosaic(0, 0);
+		return;
+	}
+	size = ppu->mosaicSize - 1;
+	if (size > 15)
+		size = 15;
+	bgSetMosaic((unsigned)size, (unsigned)size);
+	for (i = 0; i < 4; i++)
+		bgMosaicEnable(bg_id[i]);
+}
+
+/* Half-add is (front + back) / 2. A full add clamps the sum. */
+static void present_overlay_blend(const Ppu *ppu, int overlay) {
+	int coef;
+
+	if (!overlay || ppu->subtractColor) {
+		REG_BLDCNT = 0;
+		return;
+	}
+	coef = ppu->halfColor ? 8 : 16;
+	REG_BLDCNT = BLEND_ALPHA | BLEND_SRC_BG2 |
+		BLEND_DST_BG0 | BLEND_DST_BG1 | BLEND_DST_BG3 |
+		BLEND_DST_SPRITE | BLEND_DST_BACKDROP;
+	REG_BLDALPHA = (u16)(coef | (coef << 8));
 }
 
 static int obj_tile(int name, int tx, int ty) {
@@ -659,6 +722,12 @@ void ZeldaHwPresent(Ppu *ppu) {
 	int sub_en = ppu->forcedBlank ? 0 : ppu->screenEnabled[1];
 	int bg1_main = (main_en & 0x01) != 0;
 	int bg1_sub = (sub_en & 0x01) != 0;
+	/* Rain and the other overworld covers: BG1 is subscreen-only, BG2 is
+	 * the opaque ground, and color math is on. The title picture has no
+	 * ground layer, so it stays behind the sprites. */
+	int overlay = bg1_sub && !bg1_main && (main_en & 0x02) &&
+		ppu->addSubscreen && ppu->preventMathMode != 3 &&
+		(ppu->mathEnabled & 0x3f) != 0;
 	int bg2_on = ((main_en | sub_en) & 0x02) != 0;
 	int bg3_on = ((main_en | sub_en) & 0x04) != 0;
 	int show_bg3_lo = bg3_on && !bg2_on;
@@ -702,6 +771,11 @@ void ZeldaHwPresent(Ppu *ppu) {
 		bgSetPriority(bg_id[2], 2);
 		bgShow(bg_id[1]);
 		bgShow(bg_id[2]);
+	} else if (overlay) {
+		/* Behind the HUD, in front of Link and the ground. */
+		bgSetPriority(bg_id[2], 1);
+		bgHide(bg_id[1]);
+		bgShow(bg_id[2]);
 	} else if (bg1_sub) {
 		bgSetPriority(bg_id[2], 3);
 		bgHide(bg_id[1]);
@@ -725,4 +799,6 @@ void ZeldaHwPresent(Ppu *ppu) {
 		bgHide(bg_id[3]);
 	}
 	REG_DISPCNT |= DISPLAY_SPR_ACTIVE | DISPLAY_SPR_1D | DISPLAY_SPR_1D_SIZE_32;
+	present_mosaic(ppu);
+	present_overlay_blend(ppu, overlay);
 }
