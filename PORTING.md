@@ -108,7 +108,7 @@ The Nintendo logo is four 16×16 white sprites, not a background. `zelda3_assets
 
 ### Phase 4 — Make it a game (in progress)
 
-Boots into the game loop. GBA-style buttons: **A** sword (SNES B), **B** item (SNES Y), **Y** dash (SNES A), **X** / **L** / **R** are the SNES X and shoulders, **Start** opens the game menu. Select+Start pauses the host. L+R+Select soft-resets and keeps SRAM. L+R+Start+Select quits and writes SRAM.
+Boots into the game loop. **B** is the sword (SNES B), **A** lifts, opens chests, and dashes (SNES A), **Y** uses the equipped item (SNES Y). **X** / **L** / **R** are the SNES X and shoulders, **Start** opens the game menu. Select+Start pauses the host. L+R+Select soft-resets and keeps SRAM. L+R+Start+Select quits and writes SRAM.
 
 SRAM is an 8 KB `lttp-ds.sav` in the root of the DLDI card. Naming a file only marks that image dirty; the bytes are written after the frame, because a melonDS DLDI write from inside the frame never returns. NitroFS still supplies `zelda3_assets.dat`. An old `saves/sram.dat` is loaded into RAM and written to `lttp-ds.sav` on the next save.
 

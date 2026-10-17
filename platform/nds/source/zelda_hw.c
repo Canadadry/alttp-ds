@@ -34,7 +34,9 @@
  * is what SNES half-add color math does to those pixels. A fixed color
  * add or subtract is applied to the palettes, which is the blue wash in
  * the opening and the dark rooms. Mosaic uses the DS mosaic register, so
- * the pixelated fade when leaving the house is visible. Mode 7 stays on
+ * the pixelated fade when leaving the house is visible. The door iris is
+ * the SNES window HDMA table: outside the circle the picture is black, and
+ * the circle closes on Link, then opens again outside. Mode 7 stays on
  * the scanline renderer.
  *
  * Naming a file scrolls the letter grid without moving the name. An IRQ at
@@ -616,34 +618,89 @@ static void present_sprites(Ppu *ppu, int sprites_on) {
  * with the post-IRQ scroll, and the top 16 SNES rows are cropped. */
 enum { kBg3SplitLine = 128 - 1 - kCropY };
 
+/* Inside the window: every layer, sprites, and the blender. Outside: nothing. */
+enum { kWinInside = 0x3f };
+
 static int bg3_split_on;
+static int iris_on;
+static int scanline_irq_on;
 static u16 bg3_top_x, bg3_top_y, bg3_bot_x, bg3_bot_y;
 
-/* Fires at the end of REG_VCOUNT, so the scroll applies to the next line. */
-static void bg3_split_hblank(void) {
-	unsigned line = REG_VCOUNT;
+/* hdma_table_dynamic[line] is WH0 then WH1: left, then inclusive right.
+ * The DS right edge is stored plus one, and 0 means 256. */
+static void iris_apply_line(unsigned ds_line) {
+	unsigned left, right;
+	uint16 span;
 
-	if (line >= (unsigned)(kBg3SplitLine - 1) && line < SCREEN_HEIGHT - 1) {
-		REG_BG3HOFS = bg3_bot_x;
-		REG_BG3VOFS = bg3_bot_y;
-	} else {
-		REG_BG3HOFS = bg3_top_x;
-		REG_BG3VOFS = bg3_top_y;
+	if (ds_line >= SCREEN_HEIGHT)
+		return;
+	span = hdma_table_dynamic[ds_line + kCropY];
+	left = span & 0xff;
+	right = span >> 8;
+	if (left > right) {
+		WIN0_X0 = 255;
+		WIN0_X1 = 255;
+		return;
 	}
+	WIN0_X0 = (u8)left;
+	WIN0_X1 = (u8)(right + 1);
 }
 
-static void bg3_split_set(int on) {
-	if (bg3_split_on == on)
+/* Fires at the end of REG_VCOUNT, so the change applies to the next line. */
+static void scanline_hblank(void) {
+	unsigned line = REG_VCOUNT;
+
+	if (bg3_split_on) {
+		if (line >= (unsigned)(kBg3SplitLine - 1) && line < SCREEN_HEIGHT - 1) {
+			REG_BG3HOFS = bg3_bot_x;
+			REG_BG3VOFS = bg3_bot_y;
+		} else {
+			REG_BG3HOFS = bg3_top_x;
+			REG_BG3VOFS = bg3_top_y;
+		}
+	}
+	if (iris_on)
+		iris_apply_line(line + 1);
+}
+
+static void scanline_irq_sync(void) {
+	int on = bg3_split_on || iris_on;
+
+	if (scanline_irq_on == on)
 		return;
-	bg3_split_on = on;
+	scanline_irq_on = on;
 	if (on) {
-		irqSet(IRQ_HBLANK, bg3_split_hblank);
+		irqSet(IRQ_HBLANK, scanline_hblank);
 		irqEnable(IRQ_HBLANK);
 		REG_DISPSTAT |= DISP_HBLANK_IRQ;
 	} else {
 		irqDisable(IRQ_HBLANK);
 		REG_DISPSTAT &= ~DISP_HBLANK_IRQ;
 	}
+}
+
+static void bg3_split_set(int on) {
+	bg3_split_on = on;
+	scanline_irq_sync();
+}
+
+/* Spotlight sets this window and fills hdma_table_dynamic for the circle. */
+static void present_iris(void) {
+	int on = (HDMAEN_copy & 0x80) && W12SEL_copy == 0x33 && WOBJSEL_copy == 0x33;
+
+	iris_on = on;
+	scanline_irq_sync();
+	if (!on) {
+		REG_DISPCNT &= ~DISPLAY_WIN0_ON;
+		return;
+	}
+	WIN0_Y0 = 0;
+	WIN0_Y1 = SCREEN_HEIGHT;
+	WIN_IN = kWinInside;
+	WIN_OUT = 0;
+	BG_PALETTE[0] = 0;
+	iris_apply_line(0);
+	REG_DISPCNT |= DISPLAY_WIN0_ON;
 }
 
 static void present_scroll(const Ppu *ppu, int back_bg3) {
@@ -801,4 +858,5 @@ void ZeldaHwPresent(Ppu *ppu) {
 	REG_DISPCNT |= DISPLAY_SPR_ACTIVE | DISPLAY_SPR_1D | DISPLAY_SPR_1D_SIZE_32;
 	present_mosaic(ppu);
 	present_overlay_blend(ppu, overlay);
+	present_iris();
 }

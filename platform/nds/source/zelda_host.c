@@ -133,7 +133,8 @@ MemBlk __wrap_FindIndexInMemblk(MemBlk data, size_t i)
 
 /* kKeys "AXsSUDLRBY" before the 16-bit reverse in NMI_ReadJoypads.
  * bit 0 SNES B sword, 1 SNES Y item, 2 Select, 3 Start,
- * 4-7 Up Down Left Right, 8 SNES A dash, 9 SNES X, 10 SNES L, 11 SNES R.
+ * 4-7 Up Down Left Right, 8 SNES A lift/chest/dash, 9 SNES X, 10 SNES L, 11 SNES R.
+ * DS B is the sword, DS A lifts, DS Y uses the equipped item.
  */
 static int paused;
 static int hud_dirty = 1;
@@ -163,9 +164,9 @@ static int map_keys(u32 held)
 	if ((held & (KEY_L | KEY_R | KEY_SELECT)) == (KEY_L | KEY_R | KEY_SELECT))
 		held &= ~(KEY_L | KEY_R | KEY_SELECT);
 
-	if (held & KEY_A)
-		inputs |= 1 << 0;
 	if (held & KEY_B)
+		inputs |= 1 << 0;
+	if (held & KEY_Y)
 		inputs |= 1 << 1;
 	if (held & KEY_SELECT)
 		inputs |= 1 << 2;
@@ -179,7 +180,7 @@ static int map_keys(u32 held)
 		inputs |= 1 << 6;
 	if (held & KEY_RIGHT)
 		inputs |= 1 << 7;
-	if (held & KEY_Y)
+	if (held & KEY_A)
 		inputs |= 1 << 8;
 	if (held & KEY_X)
 		inputs |= 1 << 9;
@@ -210,7 +211,7 @@ void ZeldaHostInit(void)
 	ZeldaSetLanguage(NULL);
 	ZeldaVideoInit();
 	ZeldaSaveMount();
-	iprintf("A sword  B item  Y dash\n");
+	iprintf("A lift  B sword  Y item\n");
 	iprintf("Start menu\n");
 }
 
@@ -301,8 +302,8 @@ void ZeldaHostHud(void)
 	iprintf("Magic %u  Keys %u\n", magic, keys);
 	iprintf("Item %s\n", item_name(item));
 	iprintf("Sword %u\n", sword);
-	iprintf("\nA sword   B item\n");
-	iprintf("Y dash    X  L/R\n");
+	iprintf("\nA lift    B sword\n");
+	iprintf("Y item    X  L/R\n");
 	iprintf("Start menu\n");
 	iprintf("Sel+Start pause\n");
 	iprintf("L+R+Sel reset\n");
