@@ -222,14 +222,35 @@ static uint32 sig_map(const Ppu *ppu, uint16 adr, int words) {
 	return h ? h : 1u;
 }
 
+/* Text BG offsets take effect on the next scanline. They are committed at
+ * the start of vblank. bgInit writes 0 into the layer it rebuilds, so the
+ * committed offsets are written back before that 0 can cover a line. */
+static int hw_scroll_x[4];
+static int hw_scroll_y[4];
+static int hw_scroll_valid;
+
+static void hw_scroll_apply(void) {
+	int i;
+
+	if (!hw_scroll_valid)
+		return;
+	for (i = 0; i < 4; i++)
+		bgSetScroll(bg_id[i], hw_scroll_x[i], hw_scroll_y[i]);
+	bgUpdate();
+}
+
 static void ensure_size(int slot, int wider, int higher, int map_base, int tile_base) {
 	uint8 sid = (uint8)((wider ? 1 : 0) | (higher ? 2 : 0));
+	int ime;
 
 	if (bg_size[slot] == sid && bg_tilebase[slot] == (uint8)tile_base)
 		return;
+	ime = enterCriticalSection();
 	bg_id[slot] = bgInit(slot, BgType_Text4bpp, map_bg_size(wider, higher), map_base, tile_base);
 	bg_size[slot] = sid;
 	bg_tilebase[slot] = (uint8)tile_base;
+	hw_scroll_apply();
+	leaveCriticalSection(ime);
 }
 
 static int bg1_split_mode = -1;
@@ -1282,16 +1303,25 @@ static void present_scroll(const Ppu *ppu, int back_bg3) {
 	int split = back_bg3 && irq_flag != 0;
 	int ime = enterCriticalSection();
 
-	if (bg2_front_on_slot1)
-		bgSetScroll(bg_id[1], ppu->bgLayer[1].hScroll, sy1);
-	else
-		bgSetScroll(bg_id[1], ppu->bgLayer[0].hScroll, sy0);
-	bgSetScroll(bg_id[2], ppu->bgLayer[0].hScroll, sy0);
-	bgSetScroll(bg_id[0], ppu->bgLayer[2].hScroll, sy2);
-	if (back_bg3)
-		bgSetScroll(bg_id[3], ppu->bgLayer[2].hScroll, sy2);
-	else
-		bgSetScroll(bg_id[3], ppu->bgLayer[1].hScroll, sy1);
+	hw_scroll_x[2] = (int)ppu->bgLayer[0].hScroll;
+	hw_scroll_y[2] = sy0;
+	if (bg2_front_on_slot1) {
+		hw_scroll_x[1] = (int)ppu->bgLayer[1].hScroll;
+		hw_scroll_y[1] = sy1;
+	} else {
+		hw_scroll_x[1] = (int)ppu->bgLayer[0].hScroll;
+		hw_scroll_y[1] = sy0;
+	}
+	hw_scroll_x[0] = (int)ppu->bgLayer[2].hScroll;
+	hw_scroll_y[0] = sy2;
+	if (back_bg3) {
+		hw_scroll_x[3] = (int)ppu->bgLayer[2].hScroll;
+		hw_scroll_y[3] = sy2;
+	} else {
+		hw_scroll_x[3] = (int)ppu->bgLayer[1].hScroll;
+		hw_scroll_y[3] = sy1;
+	}
+	hw_scroll_valid = 1;
 
 	if (split) {
 		/* Above the IRQ the name stays on the normal BG3 scroll. Below it
@@ -1304,13 +1334,20 @@ static void present_scroll(const Ppu *ppu, int back_bg3) {
 	bg3_split_set(split);
 	if (irq_flag & 0x80)
 		irq_flag = 0;
-	/* Scroll shadow, then the lamp hole, before IRQs run. The hole is
-	 * screen space. Waiting for the vblank latch leaves the old hole on
-	 * the new room, which flickers as Link walks. The door iris is not
-	 * tied to the scroll. */
-	bgUpdate();
-	if (!iris_wanted() && (iris_publish & 1))
-		iris_latch_frame();
+	hw_scroll_apply();
+	leaveCriticalSection(ime);
+}
+
+/* The lamp hole is screen space. Latch it with the scroll just written.
+ * Waiting until the next vblank leaves the old hole on the new room, which
+ * slides as Link walks. The door iris uses its own table. */
+static void latch_scroll_window(void) {
+	int ime;
+
+	if (iris_wanted() || !(iris_publish & 1))
+		return;
+	ime = enterCriticalSection();
+	iris_latch_frame();
 	leaveCriticalSection(ime);
 }
 
@@ -1337,6 +1374,7 @@ void ZeldaHwInit(void) {
 	bg_tilebase[2] = 2;
 	bg_tilebase[3] = 4;
 	back_mode = -1;
+	hw_scroll_valid = 0;
 	bgSetPriority(bg_id[0], 0);
 	bgSetPriority(bg_id[1], 1);
 	bgSetPriority(bg_id[2], 2);
@@ -1361,20 +1399,17 @@ void ZeldaHwPresent(Ppu *ppu) {
 	int sub_en;
 	int cover;
 
-	/* Before the tile upload. The iris has to be armed first: Spotlight_open
-	 * leaves a closed circle, and the room upload otherwise shows one full
-	 * frame before that circle is latched. Brightness stays black through
-	 * the upload when this frame is what leaves a force blank. */
-	present_iris(ppu);
+	/* Offsets, then the iris, then sprites. All three land while VCOUNT is
+	 * still in vblank. The upload after them does not fit there. Brightness
+	 * stays black through that upload when this frame leaves a force blank.
+	 * Spotlight_open leaves a closed circle; the iris is armed before the
+	 * upload so that circle is already latched when line 0 is drawn. */
 	cover = ppu->forcedBlank || file_select_not_ready(ppu);
 	ZeldaHwUseMasterBright(1);
 	if (cover)
 		REG_MASTER_BRIGHT = inidisp_to_bright(0x80);
 	main_en = cover ? 0 : ppu->screenEnabled[0];
 	sub_en = cover ? 0 : ppu->screenEnabled[1];
-	/* Already built before this vblank. Copy it up before the background
-	 * upload, or a room of guards is still being written while it is drawn. */
-	ZeldaHwCommitSprites(((main_en | sub_en) & 0x10) != 0);
 	int bg1_main = (main_en & 0x01) != 0;
 	int bg1_sub = (sub_en & 0x01) != 0;
 	/* Rain and the other overworld covers: BG1 is subscreen-only, BG2 is
@@ -1433,8 +1468,17 @@ void ZeldaHwPresent(Ppu *ppu) {
 	}
 
 	/* Main-screen BG1 keeps the priority split. A subscreen-only BG1 is the
-	 * title art, which is added behind the sprites instead of covering them. */
-	bg2_front_on_slot1 = 0;
+	 * title art, which is added behind the sprites instead of covering them.
+	 * Scroll changes on the next line, so it has to be written before the
+	 * upload. Writing it afterwards splits the picture on whatever line the
+	 * upload has reached: running, and the pan into the next room. */
+	bg2_front_on_slot1 = lift_bg2 && !(bg1_main || stair_arch);
+	present_scroll(ppu, show_bg3_lo);
+	present_iris(ppu);
+	latch_scroll_window();
+	/* Already built before this vblank. Copy it up before the background
+	 * upload, or a room of guards is still being written while it is drawn. */
+	ZeldaHwCommitSprites(((main_en | sub_en) & 0x10) != 0);
 	if (!lamp)
 		present_bg1(ppu, bg1_main || stair_arch);
 	if (bg2_on)
@@ -1447,7 +1491,6 @@ void ZeldaHwPresent(Ppu *ppu) {
 	present_palettes(ppu);
 	if (lamp)
 		bgHide(bg_id[2]);
-	present_scroll(ppu, show_bg3_lo);
 
 	if (main_en & 0x04) {
 		bgSetPriority(bg_id[0], 0);
