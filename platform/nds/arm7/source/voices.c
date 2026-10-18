@@ -183,22 +183,39 @@ static void stop_channel(unsigned ch)
 	soundChStop(ch);
 }
 
+/* One BRR sample per 4096 pitch counts, at the 32 kHz DSP clock.
+ * Pitch 0x1000 is 32 kHz. Pitch 0x3FFF is just under 128 kHz.
+ * The channel timer is 16 bits, so the hardware cannot go below ~256 Hz. */
 static unsigned freq_from_pitch(unsigned pitch)
 {
-	unsigned freq = (32000u * pitch) >> 12;
+	unsigned freq;
 
-	if (freq < 1)
-		freq = 1;
-	if (freq > 32000)
-		freq = 32000;
+	if (!pitch)
+		return 0;
+	if (pitch > 0x3fff)
+		pitch = 0x3fff;
+	freq = (32000u * pitch) >> 12;
+	if (freq < 256)
+		freq = 256;
+	if (freq > 128000)
+		freq = 128000;
 	return freq;
 }
 
 static unsigned timer_from_freq(unsigned freq)
 {
-	unsigned timer = soundTimerFromHz(freq);
+	unsigned timer;
 
-	return timer ? timer : 1;
+	if (freq < 256)
+		freq = 256;
+	if (freq > 128000)
+		freq = 128000;
+	timer = soundTimerFromHz(freq);
+	if (timer < 1)
+		timer = 1;
+	if (timer > 65535)
+		timer = 65535;
+	return timer;
 }
 
 static void voice_level(const ZeldaApuIpc *ipc, const Voice *v,
@@ -432,10 +449,10 @@ static unsigned voice_freq(const ZeldaApuIpc *ipc, const Voice *v, const Voice *
 
 	if (v->flags & ZELDA_VOICE_NOISE) {
 		unsigned rate = ipc->noise_rate;
-		unsigned freq = rate ? 32000u / rate : 1;
+		unsigned freq = rate ? 32000u / rate : 0;
 
-		if (freq < 1)
-			freq = 1;
+		if (!freq)
+			return 0;
 		if (freq > 32000)
 			freq = 32000;
 		return freq;
@@ -521,6 +538,13 @@ static void program_voice(const ZeldaApuIpc *ipc, unsigned ch, Voice *v, unsigne
 	unsigned vol, pan, timer;
 
 	voice_level(ipc, v, &vol, &pan);
+	if (!freq) {
+		if (v->playing)
+			stop_channel(ch);
+		v->playing = 0;
+		v->restart = 0;
+		return;
+	}
 	if (v->state == 4 && v->gain == 0) {
 		if (v->playing)
 			stop_channel(ch);

@@ -7,7 +7,9 @@
 
 #define ZELDA_APU_MAGIC 0x5550415Au
 #define ZELDA_APU_VOICES 8
-#define ZELDA_APU_PCM_BYTES (96 * 1024)
+/* Intro bank decodes to about 350KB of PCM. A smaller pool keeps only
+ * the first instruments, so later voices have nothing to play. */
+#define ZELDA_APU_PCM_BYTES (384 * 1024)
 #define ZELDA_APU_ECHO_SAMPLES 2048
 #define ZELDA_APU_ECHO_DELAY 1024
 #define ZELDA_APU_NOISE_SAMPLES 256
