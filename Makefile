@@ -17,6 +17,9 @@ export LTTP_ROOT
 
 include $(DEVKITARM)/ds_rules
 
+ARM7_ELF := $(LTTP_ROOT)/platform/nds/arm7/zelda_arm7.elf
+_ARM7_ELF := -7 $(ARM7_ELF)
+
 #---------------------------------------------------------------------------------
 TARGET   := lttp-ds
 BUILD    := build
@@ -125,13 +128,17 @@ $(BUILD):
 clean:
 	@echo clean ...
 	@$(RM) -r $(BUILD) $(TARGET).elf $(TARGET).nds
+	@$(MAKE) -C platform/nds/arm7 clean
 
 #---------------------------------------------------------------------------------
 else
 #---------------------------------------------------------------------------------
 
-$(OUTPUT).nds: $(OUTPUT).elf $(NITRO_FILES) $(GAME_ICON)
+$(OUTPUT).nds: $(OUTPUT).elf $(NITRO_FILES) $(GAME_ICON) $(ARM7_ELF)
 $(OUTPUT).elf: $(OFILES)
+
+$(ARM7_ELF):
+	$(MAKE) -C $(LTTP_ROOT)/platform/nds/arm7
 
 $(OFILES_SOURCES) : $(HFILES)
 

@@ -12,11 +12,10 @@
 #include "snes/ppu.h"
 #include "zelda_video.h"
 #include "zelda_save.h"
+#include "zelda_audio.h"
 
 const uint8 *g_asset_ptrs[kNumberOfAssets];
 uint32 g_asset_sizes[kNumberOfAssets];
-
-enum { kAudioHz = 11025 };
 
 void NORETURN Die(const char *error)
 {
@@ -200,8 +199,9 @@ void ZeldaHostInit(void)
 	g_config.extended_aspect_ratio = 0;
 	g_config.new_renderer = true;
 	g_config.enable_audio = true;
-	g_config.audio_freq = kAudioHz;
-	g_config.audio_channels = 1;
+	/* Hardware voices run at the SPC rate. Nothing resamples a mixed buffer. */
+	g_config.audio_freq = 32000;
+	g_config.audio_channels = 2;
 
 	ZeldaLoadAssets();
 	ZeldaInitialize();
@@ -211,6 +211,7 @@ void ZeldaHostInit(void)
 	ZeldaSetLanguage(NULL);
 	ZeldaVideoInit();
 	ZeldaSaveMount();
+	ZeldaAudioInit();
 	iprintf("A lift  B sword  Y item\n");
 	iprintf("Start menu\n");
 }
@@ -257,6 +258,8 @@ void ZeldaHostBlit(u16 *fb)
 
 void ZeldaHostAudio(void)
 {
+	if (!paused)
+		ZeldaAudioFrame();
 }
 
 void ZeldaHostHud(void)
