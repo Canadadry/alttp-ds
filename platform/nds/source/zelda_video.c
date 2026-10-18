@@ -4,6 +4,7 @@
 #include "snes/ppu.h"
 #include "config.h"
 #include "zelda_video.h"
+#include "bottom-screen-idle.h"
 
 enum {
 	kSnesW = 256,
@@ -30,6 +31,17 @@ void __wrap_ppu_runLine(Ppu *ppu, int line)
 	if (line < (kCropY + 1) || line > (kCropY + SCREEN_HEIGHT))
 		return;
 	__real_ppu_runLine(ppu, line);
+}
+
+void ZeldaVideoShowBottom(void)
+{
+	int bg;
+
+	videoSetModeSub(MODE_5_2D);
+	vramSetBankC(VRAM_C_SUB_BG);
+	bg = bgInitSub(3, BgType_Bmp8, BgSize_B8_256x256, 0, 0);
+	dmaCopy(bottom_screen_idleBitmap, bgGetGfxPtr(bg), bottom_screen_idleBitmapLen);
+	dmaCopy(bottom_screen_idlePal, BG_PALETTE_SUB, bottom_screen_idlePalLen);
 }
 
 void ZeldaVideoInit(void)

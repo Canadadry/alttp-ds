@@ -26,7 +26,7 @@ BUILD    := build
 SOURCES  := platform/nds/source
 INCLUDES := platform/nds/include vendor/zelda3 vendor/zelda3/src vendor/zelda3/snes
 DATA     :=
-GRAPHICS :=
+GRAPHICS := platform/nds/bottom-screen/images
 AUDIO    :=
 ICON     :=
 NITRO    := platform/nds/nitrofiles
@@ -150,6 +150,9 @@ ppu.itcm.o: ppu.c
 %.bin.o %_bin.h : %.bin
 	@echo $(notdir $<)
 	@$(bin2o)
+
+%.s %.h: %.png %.grit
+	$(DEVKITPRO)/tools/bin/grit $< -fts -o$*
 
 -include $(DEPSDIR)/*.d
 

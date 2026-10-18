@@ -5,6 +5,7 @@
 
 /* SDL-style PPU present, cloned from vendor/zelda3/src/main.c. */
 void ZeldaVideoInit(void);
+void ZeldaVideoShowBottom(void);
 void ZeldaVideoComposeSprites(void);
 u16 *ZeldaVideoFramebuffer(void);
 void ZeldaVideoDrawPpuFrame(void);

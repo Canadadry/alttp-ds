@@ -447,19 +447,12 @@ void ZeldaSaveMount(void)
 	g_melon = g_envExtraInfo->dldi_io_type == kMelonIo;
 	if (!g_zenv.sram || !load_geometry() || !find_dir()) {
 		g_status = "off";
-		iprintf("Save: no SD\n");
 		return;
 	}
 
-	iprintf("Save: reading\n");
-	if (g_have_dir && g_cluster >= 2 && read_sram_chain(g_cluster)) {
-		iprintf("Save: %s\n", g_status);
+	if (g_have_dir && g_cluster >= 2 && read_sram_chain(g_cluster))
 		return;
-	}
-	if (read_legacy()) {
-		iprintf("Save: %s\n", g_status);
+	if (read_legacy())
 		return;
-	}
 	g_status = "new";
-	iprintf("Save: %s\n", g_status);
 }

@@ -2,8 +2,6 @@
 #include <fat.h>
 #include <filesystem.h>
 
-#include <stdio.h>
-
 #include "zelda_host.h"
 #include "zelda_save.h"
 #include "zelda_video.h"
@@ -16,19 +14,9 @@ int main(int argc, char **argv)
 	(void)argv;
 
 	lcdMainOnTop();
-	consoleDemoInit();
-
-	iprintf("LttP DS\n");
-
-	if (nitroFSInit(NULL))
-		iprintf("NitroFS: ok\n");
-	else
-		iprintf("NitroFS: FAIL\n");
-
-	if (fatInitDefault())
-		iprintf("FAT: mounted\n");
-	else
-		iprintf("FAT: not mounted\n");
+	ZeldaVideoShowBottom();
+	nitroFSInit(NULL);
+	fatInitDefault();
 
 	ZeldaHostInit();
 	framebuffer = ZeldaVideoFramebuffer();
@@ -48,7 +36,6 @@ int main(int argc, char **argv)
 		ZeldaHostTick(held);
 		ZeldaSaveFlush();
 		ZeldaHostAudio();
-		ZeldaHostHud();
 
 		/* Present during vblank. A window or palette write during the
 		 * picture shows up as a full-width bar. */

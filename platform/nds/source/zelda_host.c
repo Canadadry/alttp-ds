@@ -1,5 +1,4 @@
 #include <nds.h>
-#include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include "types.h"
@@ -8,7 +7,6 @@
 #include "util.h"
 #include "audio.h"
 #include "zelda_rtl.h"
-#include "variables.h"
 #include "snes/ppu.h"
 #include "zelda_video.h"
 #include "zelda_save.h"
@@ -19,9 +17,7 @@ uint32 g_asset_sizes[kNumberOfAssets];
 
 void NORETURN Die(const char *error)
 {
-	consoleClear();
-	iprintf("FATAL:\n%s\n", error ? error : "(null)");
-	iprintf("\nHalted.\n");
+	(void)error;
 	for (;;)
 		swiWaitForVBlank();
 }
@@ -32,12 +28,6 @@ void ZeldaApuLock(void)
 
 void ZeldaApuUnlock(void)
 {
-}
-
-static uint8 *try_read_asset_file(const char *path, size_t *length)
-{
-	iprintf("Trying %s\n", path);
-	return ReadWholeFile(path, length);
 }
 
 void ZeldaLoadAssets(void)
@@ -54,7 +44,7 @@ void ZeldaLoadAssets(void)
 	int i;
 
 	for (i = 0; paths[i] && !data; i++)
-		data = try_read_asset_file(paths[i], &length);
+		data = ReadWholeFile(paths[i], &length);
 
 	if (!data)
 		Die("Failed to read zelda3_assets.dat");
@@ -82,9 +72,6 @@ void ZeldaLoadAssets(void)
 			offset += size;
 		}
 	}
-
-	iprintf("Assets: %u blobs, %u KB\n",
-		(unsigned)kNumberOfAssets, (unsigned)(length / 1024));
 }
 
 MemBlk FindInAssetArray(int asset, int idx)
@@ -136,23 +123,6 @@ MemBlk __wrap_FindIndexInMemblk(MemBlk data, size_t i)
  * DS B is the sword, DS A lifts, DS Y uses the equipped item.
  */
 static int paused;
-static int hud_dirty = 1;
-
-static const char *item_name(unsigned id)
-{
-	static const char *const names[] = {
-		"none", "bow", "boomerang", "hookshot", "bombs",
-		"mushroom", "fire rod", "ice rod", "bombos", "ether",
-		"quake", "lamp", "hammer", "flute", "net",
-		"book", "bottle", "somaria", "byrna", "cape",
-		"mirror", "gloves", "boots", "flippers", "pearl",
-		"-", "sword", "shield", "tunic",
-		"bottle", "bottle", "bottle", "bottle"
-	};
-	if (id >= sizeof(names) / sizeof(names[0]))
-		return "?";
-	return names[id];
-}
 
 static int map_keys(u32 held)
 {
@@ -212,8 +182,6 @@ void ZeldaHostInit(void)
 	ZeldaVideoInit();
 	ZeldaSaveMount();
 	ZeldaAudioInit();
-	iprintf("A lift  B sword  Y item\n");
-	iprintf("Start menu\n");
 }
 
 void ZeldaHostSave(void)
@@ -227,7 +195,6 @@ void ZeldaHostOnKeys(u32 held, u32 down)
 	if ((down & (KEY_START | KEY_SELECT)) &&
 	    (held & (KEY_START | KEY_SELECT)) == (KEY_START | KEY_SELECT)) {
 		paused ^= 1;
-		hud_dirty = 1;
 	}
 	if (!(held & KEY_START) &&
 	    (down & (KEY_L | KEY_R | KEY_SELECT)) &&
@@ -235,7 +202,6 @@ void ZeldaHostOnKeys(u32 held, u32 down)
 		ZeldaHostSave();
 		ZeldaReset(true);
 		paused = 0;
-		hud_dirty = 1;
 	}
 }
 
@@ -260,59 +226,4 @@ void ZeldaHostAudio(void)
 {
 	if (!paused)
 		ZeldaAudioFrame();
-}
-
-void ZeldaHostHud(void)
-{
-	unsigned hp = link_health_current;
-	unsigned cap = link_health_capacity;
-	unsigned magic = link_magic_power;
-	unsigned bombs = link_item_bombs;
-	unsigned arrows = link_num_arrows;
-	unsigned keys = link_num_keys;
-	unsigned item = current_item_y;
-	unsigned sword = link_sword_type;
-	unsigned rupees = link_rupees_actual;
-	static unsigned p_hp, p_cap, p_magic, p_bombs, p_arrows, p_keys, p_item, p_sword, p_rupees;
-	static int p_paused;
-	const char *save = ZeldaSaveStatus();
-	static const char *p_save;
-
-	if (!hud_dirty &&
-	    p_hp == hp && p_cap == cap && p_magic == magic &&
-	    p_bombs == bombs && p_arrows == arrows && p_keys == keys &&
-	    p_item == item && p_sword == sword && p_rupees == rupees &&
-	    p_paused == paused && p_save == save)
-		return;
-	p_hp = hp;
-	p_cap = cap;
-	p_magic = magic;
-	p_bombs = bombs;
-	p_arrows = arrows;
-	p_keys = keys;
-	p_item = item;
-	p_sword = sword;
-	p_rupees = rupees;
-	p_paused = paused;
-	p_save = save;
-
-	hud_dirty = 0;
-	consoleClear();
-	iprintf("%s\n", paused ? "PAUSED" : "LttP DS");
-	if (hp % 8)
-		iprintf("Hearts %u+%u/%u\n", hp / 8, hp % 8, cap / 8);
-	else
-		iprintf("Hearts %u/%u\n", hp / 8, cap / 8);
-	iprintf("Rupees %u\n", rupees);
-	iprintf("Bombs %u  Arrows %u\n", bombs, arrows);
-	iprintf("Magic %u  Keys %u\n", magic, keys);
-	iprintf("Item %s\n", item_name(item));
-	iprintf("Sword %u\n", sword);
-	iprintf("\nA lift    B sword\n");
-	iprintf("Y item    X  L/R\n");
-	iprintf("Start menu\n");
-	iprintf("Sel+Start pause\n");
-	iprintf("L+R+Sel reset\n");
-	iprintf("L+R+Start+Sel quit\n");
-	iprintf("Save %s\n", save);
 }
