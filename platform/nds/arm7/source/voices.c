@@ -218,28 +218,38 @@ static unsigned timer_from_freq(unsigned freq)
 	return timer;
 }
 
-static void voice_level(const ZeldaApuIpc *ipc, const Voice *v,
-			unsigned *vol, unsigned *pan)
+static unsigned side_level(int gain, int vol, int master)
 {
-	int master = iabs8(ipc->master_l);
-	int other = iabs8(ipc->master_r);
-	int l = iabs8(v->volume_l);
-	int r = iabs8(v->volume_r);
-	int mag = l > r ? l : r;
-	int sum = l + r;
-	int amp;
+	int amp = (gain * iabs8(vol) * iabs8(master)) >> 18;
 
-	if (other > master)
-		master = other;
-	amp = ((int)v->gain * mag * master) >> 18;
 	if (amp < 0)
 		amp = 0;
 	if (amp > 127)
 		amp = 127;
-	*vol = (unsigned)amp;
-	*pan = sum ? (unsigned)((r * 127) / sum) : 64;
+	return (unsigned)amp;
+}
+
+/* Hardware pan splits one volume across both speakers. The channel
+ * volume has to carry both sides or a centered voice is half as loud. */
+static void voice_level(const ZeldaApuIpc *ipc, const Voice *v,
+			unsigned *vol, unsigned *pan)
+{
+	unsigned l = side_level(v->gain, v->volume_l, ipc->master_l);
+	unsigned r = side_level(v->gain, v->volume_r, ipc->master_r);
+	unsigned sum = l + r;
+
+	if (!sum) {
+		*vol = 0;
+		*pan = 64;
+		return;
+	}
+	*pan = (r * 127u) / sum;
 	if (*pan > 127)
 		*pan = 127;
+	if (sum > 126)
+		*vol = 127;
+	else
+		*vol = (sum * 128u) / 127u;
 }
 
 static const CachedSample *cache_find(uint16_t src)
@@ -530,7 +540,8 @@ static void advance_voice(Voice *v, unsigned freq)
 		v->frac %= 8000;
 	}
 	s = sample_at(v);
-	v->last_out = ((int)s * (int)v->gain) >> 3;
+	/* sampleOut is (BRR >> 1) * gain >> 11. PCM8 already dropped 8 bits. */
+	v->last_out = ((int)s * (int)v->gain) >> 4;
 }
 
 static void program_voice(const ZeldaApuIpc *ipc, unsigned ch, Voice *v, unsigned freq)
