@@ -37,15 +37,24 @@
  * 0x20, backdrop only, so the layer stays behind the floor and is not
  * blended: the stone and Link stay solid. Walking the castle stairs
  * drops him to sprite priority 1, which exists to slip behind a
- * main-screen BG1 lip. These rooms have no such lip, so that priority
- * stays in front of the floor and behind the doorways. The same climb
+ * main-screen BG1 lip. These rooms have no such lip, so for that climb
+ * only he stays in front of the stone. The arch over the stair is still
+ * a priority tile, and that part is drawn over him. Priority 1 everywhere
+ * else stays behind the floor, which is how he walks under a bridge.
+ * The same climb
  * can take every sprite off the main screen and leave it on the
  * subscreen; those are still drawn. A ledge jump
  * raises Link to sprite priority 3 (sideways, south, and diagonal), and
  * that still has to sit
  * under the rain. A fixed color
  * add or subtract is applied to the palettes, which is the blue wash in
- * the opening and the dark rooms. Master brightness is INIDISP: one
+ * the opening and a dark room with no lamp. The lamp is a subscreen the
+ * SNES subtracts from the room. The DS blender cannot do that, and drawing
+ * the cone in front just covers the picture with an opaque hole. The cone
+ * layer stays hidden. The dark part of that graphic is the hole, and the
+ * window is cut to it so the room shows through. That shape is read from
+ * the cone tiles when they change, and walking only slides it. The status
+ * bar is outside that window, so it stays drawn over the darkness. Master brightness is INIDISP: one
  * register, latched in vblank, including while a load is still running,
  * so the whole picture fades or cuts to black in one frame. Coming back
  * from black waits until that frame's tiles are uploaded, which is what
@@ -567,7 +576,23 @@ static u16 math_color(u16 color, const Ppu *ppu) {
 
 static int iris_wanted(void);
 
+/* Lamp cone: BG1 is on the subscreen and color math subtracts it. A
+ * transparent pixel uses the fixed color, 31 with no torches, so that
+ * part of the room goes black. The cone's opaque pixels are the hole.
+ * Baking the fixed color into the palettes blacks out the whole picture. */
+static int lamp_cone(const Ppu *ppu) {
+	if (main_module_index != 7 || submodule_index == 20 || ppu->forcedBlank)
+		return 0;
+	if (!hdr_dungeon_dark_with_lantern || (TS_copy & 0x01) == 0)
+		return 0;
+	if (!ppu->addSubscreen || !ppu->subtractColor || ppu->preventMathMode == 3)
+		return 0;
+	return 1;
+}
+
 static int math_active(const Ppu *ppu) {
+	if (lamp_cone(ppu))
+		return 0;
 	if (ppu->preventMathMode == 3 || (ppu->mathEnabled & 0x3f) == 0)
 		return 0;
 	if (ppu->fixedColorR | ppu->fixedColorG | ppu->fixedColorB)
@@ -584,9 +609,10 @@ static void present_palettes(const Ppu *ppu) {
 	u16 color;
 
 	color = back ? math_color(ppu->cgram[0], ppu) : ppu->cgram[0];
-	/* The backdrop cannot be windowed. While the iris is up, or the SNES
-	 * picture is forced blank, it has to stay black. */
-	BG_PALETTE[0] = (iris_wanted() || ppu->forcedBlank) ? 0 : (u16)(color & 0x7fff);
+	/* The backdrop cannot be windowed. While the iris or the lamp cone is
+	 * up, or the SNES picture is forced blank, it has to stay black. */
+	BG_PALETTE[0] = (iris_wanted() || lamp_cone(ppu) || ppu->forcedBlank) ? 0 :
+		(u16)(color & 0x7fff);
 	for (i = 1; i < 128; i++) {
 		color = bg ? math_color(ppu->cgram[i], ppu) : ppu->cgram[i];
 		BG_PALETTE[i] = (u16)(color & 0x7fff);
@@ -644,15 +670,35 @@ static int obj_tile(int name, int tx, int ty) {
 	return (((name >> 4) + ty) << 4) | (((name & 0xf) + tx) & 0xf);
 }
 
+/* Dungeon modules that are a stair climb. Priority 1 during these is Link
+ * passing the lip. It is not the under-a-bridge or lower-floor priority. */
+static int climbing_stairs(void) {
+	if (main_module_index != 7)
+		return 0;
+	switch (submodule_index) {
+	case 6:  /* fat inter-room */
+	case 8:  /* north intra-room */
+	case 14: /* spiral */
+	case 16: /* south intra-room */
+	case 17: /* straight inter-room */
+	case 18:
+	case 19:
+		return 1;
+	default:
+		return 0;
+	}
+}
+
 static int ds_sprite_priority(int snes_priority, int bg1_main) {
 	/* Same interleave as PpuDrawBackgrounds: 3 above BG1-high, 2 above
-	 * BG1-low, 0 and 1 above only the back layer. Priority 1 is the
-	 * stair and lower-floor walk, meant to sit under a main-screen BG1.
-	 * Hyrule Castle keeps BG1 on the subscreen, so that priority would
-	 * be buried under the only floor. */
+	 * BG1-low, 0 and 1 above only the back layer. Priority 1 sits under a
+	 * main-screen BG1 lip, and under a bridge. Hyrule Castle has no
+	 * main-screen BG1, so that priority would bury the stair sprite under
+	 * the only floor. Raise it for the climb only. */
 	if (snes_priority >= 3)
 		return 1;
-	if (snes_priority == 2 || (snes_priority == 1 && !bg1_main))
+	if (snes_priority == 2 ||
+	    (snes_priority == 1 && !bg1_main && climbing_stairs()))
 		return 2;
 	return 3;
 }
@@ -766,20 +812,23 @@ void ZeldaHwCommitSprites(int sprites_on) {
  * with the post-IRQ scroll, and the top 16 SNES rows are cropped. */
 enum { kBg3SplitLine = 128 - 1 - kCropY };
 
-/* Inside the window: every layer, sprites, and the blender. Outside: nothing. */
-enum { kWinInside = 0x3f };
+/* Inside the window: every layer, sprites, and the blender. Outside: nothing,
+ * except the lamp, which leaves hardware BG0 (the status bar) visible. */
+enum { kWinInside = 0x3f, kWinHud = 0x01 };
 
 static int bg3_split_on;
 static int scanline_irq_on;
 static u16 bg3_top_x, bg3_top_y, bg3_bot_x, bg3_bot_y;
 
-/* Two copies so the game can rebuild hdma_table_dynamic while a frame is
- * still scanning the previous circle. Bit 0 of the publish word is "on",
- * and the following byte is which copy the next frame should read. */
+/* Two copies so the game can rebuild the table while a frame is still
+ * scanning the previous one. Bit 0 of the publish word is "on". Bit 1 is
+ * the lamp: clipped lines still show the status bar. The following byte
+ * is which copy the next frame should read. */
 static u16 iris_span[2][SCREEN_HEIGHT];
 static volatile uint32 iris_publish;
 static int iris_latched;
 static volatile int iris_on;
+static u16 iris_outside;
 
 static int iris_wanted(void) {
 	return (HDMAEN_copy & 0x80) && W12SEL_copy == 0x33 && WOBJSEL_copy == 0x33;
@@ -801,7 +850,7 @@ static void iris_apply_span(u16 span) {
 	unsigned right = span >> 8;
 
 	if (left > right) {
-		WIN_OUT = 0;
+		WIN_OUT = iris_outside;
 		iris_set_x(255, 255);
 		return;
 	}
@@ -810,7 +859,7 @@ static void iris_apply_span(u16 span) {
 		iris_set_x(0, 1);
 		return;
 	}
-	WIN_OUT = 0;
+	WIN_OUT = iris_outside;
 	iris_set_x(left, right + 1);
 }
 
@@ -824,6 +873,7 @@ static void iris_apply_line(unsigned ds_line) {
 static void iris_latch_frame(void) {
 	uint32 pub = iris_publish;
 	int on = pub & 1;
+	unsigned line = REG_VCOUNT;
 
 	iris_latched = (int)((pub >> 8) & 1);
 	iris_on = on;
@@ -831,11 +881,18 @@ static void iris_latch_frame(void) {
 		REG_DISPCNT &= ~DISPLAY_WIN0_ON;
 		return;
 	}
+	iris_outside = (pub & 2) ? kWinHud : 0;
 	WIN0_Y0 = 0;
 	WIN0_Y1 = (u8)SCREEN_HEIGHT;
 	WIN_IN = kWinInside;
 	BG_PALETTE[0] = 0;
-	iris_apply_line(0);
+	/* Past the picture, the next line drawn is line 0. Mid-frame, this
+	 * line is on screen and has to take the span that matches the scroll
+	 * just written, or the hole slides for the rest of the frame. */
+	if (line >= (unsigned)SCREEN_HEIGHT)
+		iris_apply_line(0);
+	else
+		iris_apply_line(line);
 	REG_DISPCNT = (REG_DISPCNT & ~(DISPLAY_WIN1_ON | DISPLAY_SPR_WIN_ON)) |
 		DISPLAY_WIN0_ON;
 }
@@ -883,13 +940,227 @@ static void bg3_split_set(int on) {
 	scanline_irq_sync();
 }
 
-/* Copy the finished circle and arm the scanline IRQ. The latch itself
- * stays at the end of vblank: writing the window here would clip whatever
- * line the CPU happens to be on. Call this before the tile upload. The
- * upload of a freshly loaded room runs past line 0, and the circle has to
- * be waiting when that line is drawn. */
-static void present_iris(void) {
+/* Map-space hole, one span per row. Rebuilt when the cone tiles change.
+ * Walking only changes the scroll, so the per-frame work is 192 adds. */
+static u16 lamp_row_l[512];
+static u16 lamp_row_r[512];
+static uint16 lamp_mask[8];
+static uint32 lamp_map_sig;
+static uint16 lamp_sig_map_adr;
+static uint16 lamp_sig_tile_adr;
+static uint8 lamp_sig_geom;
+static int lamp_rows;
+static int lamp_cols;
+static int lamp_cache_ok;
+
+/* Bit i of palette p is a cone pixel dark enough to leave the room. */
+static void lamp_open_mask(const Ppu *ppu, uint16 mask[8]) {
+	int pal;
+	int i;
+
+	for (pal = 0; pal < 8; pal++) {
+		uint16 bits = 0;
+
+		for (i = 1; i < 16; i++) {
+			uint16 color = ppu->cgram[pal * 16 + i];
+			int r = color & 31;
+			int g = (color >> 5) & 31;
+			int b = (color >> 10) & 31;
+
+			if (r + g + b <= 30)
+				bits = (uint16)(bits | (1 << i));
+		}
+		mask[pal] = bits;
+	}
+}
+
+static int lamp_mask_same(const uint16 *a, const uint16 *b) {
+	int i;
+
+	for (i = 0; i < 8; i++)
+		if (a[i] != b[i])
+			return 0;
+	return 1;
+}
+
+static int lamp_tile_blank(const Ppu *ppu, int tile_adr) {
+	int i;
+
+	for (i = 0; i < 16; i++)
+		if (ppu->vram[(tile_adr + i) & 0x7fff])
+			return 0;
+	return 1;
+}
+
+static uint16 lamp_map_word(const BgLayer *layer, int tx, int ty) {
+	uint16 adr = (uint16)(layer->tilemapAdr + ((ty & 31) << 5 | (tx & 31)));
+
+	if ((tx & 32) && layer->tilemapWider)
+		adr = (uint16)(adr + 0x400);
+	if ((ty & 32) && layer->tilemapHigher)
+		adr = (uint16)(adr + (layer->tilemapWider ? 0x800 : 0x400));
+	return adr;
+}
+
+/* Tiles are visited left to right, so the first hit on a row is its left
+ * edge and the last hit is its right edge. */
+static void lamp_paint_tile(const Ppu *ppu, int tx, int ty, uint16 tile, uint16 bits) {
+	const BgLayer *layer = &ppu->bgLayer[0];
+	int base = (layer->tileAdr + (tile & 0x3ff) * 16) & 0x7fff;
+	int vflip = (tile & 0x8000) != 0;
+	int hflip = (tile & 0x4000) != 0;
+	int row;
+
+	for (row = 0; row < 8; row++) {
+		int src = vflip ? 7 - row : row;
+		uint16 plane0 = ppu->vram[(base + src) & 0x7fff];
+		uint16 plane1 = ppu->vram[(base + 8 + src) & 0x7fff];
+		int my = (ty << 3) + row;
+		int col;
+
+		if (plane0 == 0 && plane1 == 0)
+			continue;
+		for (col = 0; col < 8; col++) {
+			int bit = hflip ? col : 7 - col;
+			int pixel = ((plane0 >> bit) & 1) |
+				(((plane0 >> (8 + bit)) & 1) << 1) |
+				(((plane1 >> bit) & 1) << 2) |
+				(((plane1 >> (8 + bit)) & 1) << 3);
+			int x;
+
+			if (pixel == 0 || (bits & (1u << pixel)) == 0)
+				continue;
+			x = (tx << 3) + col;
+			if (lamp_row_l[my] == 0xffff)
+				lamp_row_l[my] = (u16)x;
+			lamp_row_r[my] = (u16)x;
+		}
+	}
+}
+
+static int lamp_build(const Ppu *ppu, const uint16 mask[8]) {
+	const BgLayer *layer = &ppu->bgLayer[0];
+	int wider = layer->tilemapWider;
+	int higher = layer->tilemapHigher;
+	int tw = wider ? 64 : 32;
+	int th = higher ? 64 : 32;
+	int height = th << 3;
+	int tile0_blank = lamp_tile_blank(ppu, layer->tileAdr);
+	int saw = 0;
+	int ty;
+	int tx;
+
+	lamp_rows = height;
+	lamp_cols = tw << 3;
+	for (ty = 0; ty < height; ty++)
+		lamp_row_l[ty] = 0xffff;
+	for (ty = 0; ty < th; ty++) {
+		for (tx = 0; tx < tw; tx++) {
+			uint16 tile = ppu->vram[lamp_map_word(layer, tx, ty) & 0x7fff];
+			uint16 bits = mask[(tile >> 10) & 7];
+
+			if (bits == 0)
+				continue;
+			if (tile0_blank && (tile & 0x3ff) == 0)
+				continue;
+			lamp_paint_tile(ppu, tx, ty, tile, bits);
+			saw = 1;
+		}
+	}
+	if (!saw)
+		return 0;
+	for (ty = 0; ty < height; ty++)
+		if (lamp_row_l[ty] != 0xffff)
+			return 1;
+	return 0;
+}
+
+static u16 lamp_screen_span(int left, int right, int scroll, int width) {
+	int mask = width - 1;
+	int rel_l;
+	int rel_r;
+
+	if (left == 0xffff)
+		return 0x00ff;
+	rel_l = (left - scroll) & mask;
+	rel_r = (right - scroll) & mask;
+	if (rel_l <= rel_r) {
+		if (rel_l >= 256)
+			return 0x00ff;
+		if (rel_r > 255)
+			rel_r = 255;
+		return (u16)(rel_l | (rel_r << 8));
+	}
+	/* The screen's left edge sits inside the hole, so the visible piece
+	 * starts at x = 0. A second piece on the right only happens when the
+	 * map wraps inside this screen; keep the longer of the two. */
+	if (rel_r >= 256)
+		return (u16)(0 | (255 << 8));
+	if (rel_l >= 256)
+		return (u16)(rel_r << 8);
+	if (rel_r + 1 >= 256 - rel_l)
+		return (u16)(rel_r << 8);
+	return (u16)(rel_l | (255 << 8));
+}
+
+static void lamp_project(const BgLayer *layer, u16 *span) {
+	int height = lamp_rows;
+	int width = lamp_cols;
+	int scroll_x = layer->hScroll;
+	int scroll_y = layer->vScroll;
+	int y;
+
+	for (y = 0; y < SCREEN_HEIGHT; y++) {
+		int map_y = ((y + kCropY) + scroll_y) & (height - 1);
+
+		span[y] = lamp_screen_span(lamp_row_l[map_y], lamp_row_r[map_y],
+			scroll_x, width);
+	}
+}
+
+/* The hole is the dark part of the cone. If the cone has no dark pixel,
+ * the opaque graphic itself is the hole. Either way the shape stays cached
+ * until the tilemap or those colors change. */
+static void lamp_fill_spans(const Ppu *ppu, u16 *span) {
+	const BgLayer *layer = &ppu->bgLayer[0];
+	uint16 mask[8];
+	int words = map_words(layer->tilemapWider, layer->tilemapHigher);
+	uint32 sig = hash_words(ppu->vram, layer->tilemapAdr, words);
+	uint8 geom = (uint8)((layer->tilemapWider ? 1 : 0) |
+		(layer->tilemapHigher ? 2 : 0));
+	int i;
+
+	lamp_open_mask(ppu, mask);
+	if (!lamp_cache_ok || sig != lamp_map_sig || geom != lamp_sig_geom ||
+	    layer->tilemapAdr != lamp_sig_map_adr ||
+	    layer->tileAdr != lamp_sig_tile_adr ||
+	    !lamp_mask_same(mask, lamp_mask)) {
+		if (!lamp_build(ppu, mask)) {
+			uint16 any[8];
+
+			for (i = 0; i < 8; i++)
+				any[i] = 0xfffe;
+			lamp_build(ppu, any);
+		}
+		for (i = 0; i < 8; i++)
+			lamp_mask[i] = mask[i];
+		lamp_map_sig = sig;
+		lamp_sig_geom = geom;
+		lamp_sig_map_adr = layer->tilemapAdr;
+		lamp_sig_tile_adr = layer->tileAdr;
+		lamp_cache_ok = 1;
+	}
+	lamp_project(layer, span);
+}
+
+/* Copy the finished iris, or build the lamp hole, and arm the scanline
+ * IRQ. The latch stays at the end of vblank: writing the window here would
+ * clip whatever line the CPU happens to be on. Call this before the tile
+ * upload. The upload of a freshly loaded room runs past line 0, and the
+ * circle has to be waiting when that line is drawn. */
+static void present_iris(const Ppu *ppu) {
 	int on = iris_wanted();
+	int lamp = !on && lamp_cone(ppu);
 	int idx = (int)(((iris_publish >> 8) & 1) ^ 1);
 	int i;
 
@@ -897,8 +1168,11 @@ static void present_iris(void) {
 		for (i = 0; i < SCREEN_HEIGHT; i++)
 			iris_span[idx][i] = hdma_table_dynamic[i + kCropY];
 		BG_PALETTE[0] = 0;
+	} else if (lamp) {
+		lamp_fill_spans(ppu, iris_span[idx]);
+		BG_PALETTE[0] = 0;
 	}
-	iris_publish = ((uint32)idx << 8) | (on ? 1u : 0u);
+	iris_publish = ((uint32)idx << 8) | ((on || lamp) ? 1u : 0u) | (lamp ? 2u : 0u);
 	scanline_irq_sync();
 	if (REG_VCOUNT >= 261)
 		iris_latch_frame();
@@ -1030,8 +1304,14 @@ static void present_scroll(const Ppu *ppu, int back_bg3) {
 	bg3_split_set(split);
 	if (irq_flag & 0x80)
 		irq_flag = 0;
-	leaveCriticalSection(ime);
+	/* Scroll shadow, then the lamp hole, before IRQs run. The hole is
+	 * screen space. Waiting for the vblank latch leaves the old hole on
+	 * the new room, which flickers as Link walks. The door iris is not
+	 * tied to the scroll. */
 	bgUpdate();
+	if (!iris_wanted() && (iris_publish & 1))
+		iris_latch_frame();
+	leaveCriticalSection(ime);
 }
 
 void ZeldaHwInit(void) {
@@ -1085,7 +1365,7 @@ void ZeldaHwPresent(Ppu *ppu) {
 	 * leaves a closed circle, and the room upload otherwise shows one full
 	 * frame before that circle is latched. Brightness stays black through
 	 * the upload when this frame is what leaves a force blank. */
-	present_iris();
+	present_iris(ppu);
 	cover = ppu->forcedBlank || file_select_not_ready(ppu);
 	ZeldaHwUseMasterBright(1);
 	if (cover)
@@ -1103,7 +1383,11 @@ void ZeldaHwPresent(Ppu *ppu) {
 	 * Castle writes (CGADSUB 0x20). That must not become the rain blend.
 	 * The title picture has no ground layer, so it stays behind the sprites. */
 	int layer_math = (ppu->mathEnabled & 0x1f) != 0;
-	int overlay = bg1_sub && !bg1_main && (main_en & 0x02) &&
+	int lamp = lamp_cone(ppu);
+	/* The lamp cone is subscreen BG1 with subtract math, which is the same
+	 * test as rain. It is not rain: the hole is a window, and the graphic
+	 * must not be drawn on top of the room. */
+	int overlay = !lamp && bg1_sub && !bg1_main && (main_en & 0x02) &&
 		ppu->addSubscreen && ppu->preventMathMode != 3 &&
 		layer_math;
 	/* Rooms whose header really adds the subscreen into BG2 (Translucent,
@@ -1120,11 +1404,17 @@ void ZeldaHwPresent(Ppu *ppu) {
 	/* Door frames are BG2 priority tiles. Lift them whenever the ground is
 	 * on the main screen. In a dungeon that also needs its own BG1, the
 	 * scrolls have to match so the tiles can share BG1's front layer. */
-	int lift_bg2 = bg2_main && (!bg1_main ||
-		(ppu->bgLayer[0].hScroll == ppu->bgLayer[1].hScroll &&
-		 ppu->bgLayer[0].vScroll == ppu->bgLayer[1].vScroll &&
-		 ppu->bgLayer[0].tilemapWider == ppu->bgLayer[1].tilemapWider &&
-		 ppu->bgLayer[0].tilemapHigher == ppu->bgLayer[1].tilemapHigher));
+	int scrolls_match =
+		ppu->bgLayer[0].hScroll == ppu->bgLayer[1].hScroll &&
+		ppu->bgLayer[0].vScroll == ppu->bgLayer[1].vScroll &&
+		ppu->bgLayer[0].tilemapWider == ppu->bgLayer[1].tilemapWider &&
+		ppu->bgLayer[0].tilemapHigher == ppu->bgLayer[1].tilemapHigher;
+	int lift_bg2 = bg2_main && (!bg1_main || scrolls_match);
+	/* The stair arch is a BG1 priority tile. On these floors BG1 is the
+	 * subscreen, so the arch would sit behind Link. For the climb, put
+	 * just those priority tiles in front of him. */
+	int stair_arch = !lamp && climbing_stairs() && player_is_indoors &&
+		bg1_sub && !bg1_main && !overlay && scrolls_match;
 	int bg3_on = ((main_en | sub_en) & 0x04) != 0;
 	int show_bg3_lo = bg3_on && !bg2_on;
 
@@ -1145,15 +1435,18 @@ void ZeldaHwPresent(Ppu *ppu) {
 	/* Main-screen BG1 keeps the priority split. A subscreen-only BG1 is the
 	 * title art, which is added behind the sprites instead of covering them. */
 	bg2_front_on_slot1 = 0;
-	present_bg1(ppu, bg1_main);
+	if (!lamp)
+		present_bg1(ppu, bg1_main || stair_arch);
 	if (bg2_on)
 		present_bg2(ppu, lift_bg2);
-	if (lift_bg2 && bg1_main)
+	if (lift_bg2 && (bg1_main || stair_arch))
 		bake_bg2_doors(ppu);
 	else if (lift_bg2)
 		show_bg2_front(ppu);
 	present_bg3(ppu, show_bg3_lo);
 	present_palettes(ppu);
+	if (lamp)
+		bgHide(bg_id[2]);
 	present_scroll(ppu, show_bg3_lo);
 
 	if (main_en & 0x04) {
@@ -1166,7 +1459,17 @@ void ZeldaHwPresent(Ppu *ppu) {
 		bgHide(bg_id[0]);
 	}
 
-	if (bg1_main) {
+	if (lamp) {
+		/* The cone lives on the subscreen layer. Door frames are BG2
+		 * priority tiles copied onto the front layer; those stay. */
+		bgHide(bg_id[2]);
+		if (bg2_front_on_slot1) {
+			bgSetPriority(bg_id[1], 1);
+			bgShow(bg_id[1]);
+		} else {
+			bgHide(bg_id[1]);
+		}
+	} else if (bg1_main) {
 		bgSetPriority(bg_id[1], 1);
 		bgSetPriority(bg_id[2], 2);
 		bgShow(bg_id[1]);
@@ -1187,7 +1490,7 @@ void ZeldaHwPresent(Ppu *ppu) {
 		 * doorways, and Link is drawn on top of that result. */
 		bgSetPriority(bg_id[2], 3);
 		bgShow(bg_id[2]);
-		if (bg2_front_on_slot1) {
+		if (bg2_front_on_slot1 || stair_arch) {
 			bgSetPriority(bg_id[1], 1);
 			bgShow(bg_id[1]);
 		} else {
@@ -1197,10 +1500,11 @@ void ZeldaHwPresent(Ppu *ppu) {
 		/* Behind the ground, and not blended. Castle's subscreen sits here:
 		 * the opaque floor covers it, so the room and Link stay solid.
 		 * With no ground (the title), this layer is the picture. Doorways
-		 * stay in front of Link. */
+		 * stay in front of Link. During a stair climb the arch is the
+		 * priority part of this layer, and it is on the front layer too. */
 		bgSetPriority(bg_id[2], 3);
 		bgShow(bg_id[2]);
-		if (bg2_front_on_slot1) {
+		if (bg2_front_on_slot1 || stair_arch) {
 			bgSetPriority(bg_id[1], 1);
 			bgShow(bg_id[1]);
 		} else {
