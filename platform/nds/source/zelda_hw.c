@@ -243,14 +243,74 @@ static void ensure_size(int slot, int wider, int higher, int map_base, int tile_
 	uint8 sid = (uint8)((wider ? 1 : 0) | (higher ? 2 : 0));
 	int ime;
 
+	int show;
+	unsigned pri;
+
 	if (bg_size[slot] == sid && bg_tilebase[slot] == (uint8)tile_base)
 		return;
+	/* bgInit enables the layer and clears its priority. Put both back so a
+	 * vblank commit does not leave the floor on top for the next picture. */
+	show = (REG_DISPCNT & (1u << (8 + slot))) != 0;
+	pri = (unsigned)(*bgControl[bg_id[slot]] & 3);
 	ime = enterCriticalSection();
 	bg_id[slot] = bgInit(slot, BgType_Text4bpp, map_bg_size(wider, higher), map_base, tile_base);
 	bg_size[slot] = sid;
 	bg_tilebase[slot] = (uint8)tile_base;
+	bgSetPriority(bg_id[slot], pri);
 	hw_scroll_apply();
+	if (!show)
+		bgHide(bg_id[slot]);
 	leaveCriticalSection(ime);
+}
+
+/* Map copies wait until vblank. A stair step rebuilds the front layer and
+ * the floor map, and copying either into VRAM while the picture is scanning
+ * snows the whole frame: it is the same bank the display is reading. */
+static struct {
+	const u16 *src;
+	int words;
+	int wider;
+	int higher;
+	int map_base;
+	int tile_base;
+	int on;
+} map_job[4];
+
+static int vblank_margin(void) {
+	unsigned line = REG_VCOUNT;
+
+	return line >= 192 && line < 250;
+}
+
+static void flush_map_jobs(void) {
+	int slot;
+
+	if (!vblank_margin())
+		return;
+	for (slot = 0; slot < 4; slot++) {
+		int bytes;
+
+		if (!map_job[slot].on)
+			continue;
+		ensure_size(slot, map_job[slot].wider, map_job[slot].higher,
+			map_job[slot].map_base, map_job[slot].tile_base);
+		bytes = map_job[slot].words * 2;
+		DC_FlushRange((void *)map_job[slot].src, (uint32)bytes);
+		dmaCopyWords(3, (void *)map_job[slot].src, bgGetMapPtr(bg_id[slot]),
+			(uint32)bytes);
+		map_job[slot].on = 0;
+	}
+}
+
+static void queue_map(int slot, const u16 *src, int words,
+	int wider, int higher, int map_base, int tile_base) {
+	map_job[slot].src = src;
+	map_job[slot].words = words;
+	map_job[slot].wider = wider;
+	map_job[slot].higher = higher;
+	map_job[slot].map_base = map_base;
+	map_job[slot].tile_base = tile_base;
+	map_job[slot].on = 1;
 }
 
 static int bg1_split_mode = -1;
@@ -263,11 +323,9 @@ static void present_bg1(Ppu *ppu, int split) {
 	int tile;
 
 	/* Slot 1 stays on BG2 graphics while it is showing doorways. BG1 tiles
-	 * always live with slot 2. */
-	if (split)
-		ensure_size(1, layer->tilemapWider, layer->tilemapHigher, 4, 2);
-	ensure_size(2, layer->tilemapWider, layer->tilemapHigher, 8, 2);
-	gfx = bgGetGfxPtr(bg_id[2]);
+	 * always live at tile base 2, with or without the hardware layer
+	 * pointing there yet. */
+	gfx = BG_GFX + 2 * 8192;
 
 	if (last_adr[0] != layer->tileAdr) {
 		memset(tile_hash[0], 0, sizeof tile_hash[0]);
@@ -313,12 +371,9 @@ static void present_bg1(Ppu *ppu, int split) {
 				map_buf[2][i] = swizzle4(entry);
 			}
 		}
-		DC_FlushRange(map_buf[2], (uint32)words * 2);
-		dmaCopyWords(3, map_buf[2], bgGetMapPtr(bg_id[2]), (uint32)words * 2);
-		if (split) {
-			DC_FlushRange(map_buf[1], (uint32)words * 2);
-			dmaCopyWords(3, map_buf[1], bgGetMapPtr(bg_id[1]), (uint32)words * 2);
-		}
+		queue_map(2, map_buf[2], words, layer->tilemapWider, layer->tilemapHigher, 8, 2);
+		if (split)
+			queue_map(1, map_buf[1], words, layer->tilemapWider, layer->tilemapHigher, 4, 2);
 		map_sig[0] = sig;
 		map_valid[0] = 1;
 	}
@@ -345,8 +400,7 @@ static void present_bg2(Ppu *ppu, int lift) {
 	uint8 used[1024];
 	int tile;
 
-	ensure_size(3, layer->tilemapWider, layer->tilemapHigher, 12, 4);
-	gfx = bgGetGfxPtr(bg_id[3]);
+	gfx = BG_GFX + 4 * 8192;
 
 	if (last_adr[1] != layer->tileAdr) {
 		memset(tile_hash[1], 0, sizeof tile_hash[1]);
@@ -384,8 +438,7 @@ static void present_bg2(Ppu *ppu, int lift) {
 				map_buf[3][i] = swizzle4(entry);
 			}
 		}
-		DC_FlushRange(map_buf[3], (uint32)words * 2);
-		dmaCopyWords(3, map_buf[3], bgGetMapPtr(bg_id[3]), (uint32)words * 2);
+		queue_map(3, map_buf[3], words, layer->tilemapWider, layer->tilemapHigher, 12, 4);
 		map_sig[1] = sig;
 		map_valid[1] = 1;
 		if (!used[bg2_blank]) {
@@ -424,10 +477,7 @@ static void present_bg3(Ppu *ppu, int show_low) {
 	u16 *gfx;
 	int i;
 
-	ensure_size(0, layer->tilemapWider, layer->tilemapHigher, 0, 6);
-	if (show_low)
-		ensure_size(3, layer->tilemapWider, layer->tilemapHigher, 12, 6);
-	gfx = bgGetGfxPtr(bg_id[0]);
+	gfx = BG_GFX + 6 * 8192;
 
 	if (last_adr[2] != layer->tileAdr) {
 		memset(tile_hash[2], 0, sizeof tile_hash[2]);
@@ -467,12 +517,9 @@ static void present_bg3(Ppu *ppu, int show_low) {
 				bg3_lo[i] = out;
 			}
 		}
-		DC_FlushRange(map_buf[0], (uint32)words * 2);
-		dmaCopyWords(3, map_buf[0], bgGetMapPtr(bg_id[0]), (uint32)words * 2);
-		if (show_low) {
-			DC_FlushRange(bg3_lo, (uint32)words * 2);
-			dmaCopyWords(3, bg3_lo, bgGetMapPtr(bg_id[3]), (uint32)words * 2);
-		}
+		queue_map(0, map_buf[0], words, layer->tilemapWider, layer->tilemapHigher, 0, 6);
+		if (show_low)
+			queue_map(3, bg3_lo, words, layer->tilemapWider, layer->tilemapHigher, 12, 6);
 		map_sig[2] = sig;
 		map_valid[2] = 1;
 	}
@@ -1205,9 +1252,7 @@ static void show_bg2_front(const Ppu *ppu) {
 	const BgLayer *layer = &ppu->bgLayer[1];
 	int words = map_words(layer->tilemapWider, layer->tilemapHigher);
 
-	ensure_size(1, layer->tilemapWider, layer->tilemapHigher, 4, 4);
-	DC_FlushRange(bg2_hi, (uint32)words * 2);
-	dmaCopyWords(3, bg2_hi, bgGetMapPtr(bg_id[1]), (uint32)words * 2);
+	queue_map(1, bg2_hi, words, layer->tilemapWider, layer->tilemapHigher, 4, 4);
 	bg2_front_on_slot1 = 1;
 }
 
@@ -1251,7 +1296,9 @@ static void bake_bg2_doors(Ppu *ppu) {
 	    top->tilemapWider != ground->tilemapWider ||
 	    top->tilemapHigher != ground->tilemapHigher)
 		return;
-	gfx = bgGetGfxPtr(bg_id[1]);
+	/* Door tiles are copied into the BG1 tileset. Slot 1 may still be
+	 * showing the BG2 doorway map until the queued map is committed. */
+	gfx = BG_GFX + 2 * 8192;
 	blank = (u16)(blank_bg1 < 0 ? 0 : blank_bg1);
 	for (i = 0; i < 1024; i++)
 		remap[i] = -1;
@@ -1288,12 +1335,9 @@ static void bake_bg2_doors(Ppu *ppu) {
 		}
 		map_buf[1][i] = swizzle_as(door, dst);
 	}
-	DC_FlushRange(map_buf[1], (uint32)words * 2);
-	dmaCopyWords(3, map_buf[1], bgGetMapPtr(bg_id[1]), (uint32)words * 2);
-	if (patched) {
-		DC_FlushRange(map_buf[3], (uint32)words * 2);
-		dmaCopyWords(3, map_buf[3], bgGetMapPtr(bg_id[3]), (uint32)words * 2);
-	}
+	queue_map(1, map_buf[1], words, top->tilemapWider, top->tilemapHigher, 4, 2);
+	if (patched)
+		queue_map(3, map_buf[3], words, top->tilemapWider, top->tilemapHigher, 12, 4);
 }
 
 static void present_scroll(const Ppu *ppu, int back_bg3) {
@@ -1375,6 +1419,7 @@ void ZeldaHwInit(void) {
 	bg_tilebase[3] = 4;
 	back_mode = -1;
 	hw_scroll_valid = 0;
+	memset(map_job, 0, sizeof map_job);
 	bgSetPriority(bg_id[0], 0);
 	bgSetPriority(bg_id[1], 1);
 	bgSetPriority(bg_id[2], 2);
@@ -1398,6 +1443,10 @@ void ZeldaHwPresent(Ppu *ppu) {
 	int main_en;
 	int sub_en;
 	int cover;
+
+	/* Last frame's maps, before this frame reuses the buffers. Still in
+	 * the blank main() just waited for, so the copy finishes before line 0. */
+	flush_map_jobs();
 
 	/* Offsets, then the iris, then sprites. All three land while VCOUNT is
 	 * still in vblank. The upload after them does not fit there. Brightness
@@ -1488,6 +1537,9 @@ void ZeldaHwPresent(Ppu *ppu) {
 	else if (lift_bg2)
 		show_bg2_front(ppu);
 	present_bg3(ppu, show_bg3_lo);
+	/* A stair rebuild does not fit in this blank. The copies stay queued
+	 * and land at the start of the next one. A short frame still can. */
+	flush_map_jobs();
 	present_palettes(ppu);
 	if (lamp)
 		bgHide(bg_id[2]);
