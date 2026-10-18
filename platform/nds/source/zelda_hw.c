@@ -52,8 +52,10 @@
  * SNES subtracts from the room. The DS blender cannot do that, and drawing
  * the cone in front just covers the picture with an opaque hole. The cone
  * layer stays hidden. The dark part of that graphic is the hole, and the
- * window is cut to it so the room shows through. That shape is read from
- * the cone tiles when they change, and walking only slides it. The status
+ * window is cut to it so the room shows through. The tilemap holds four
+ * cones, two on the same rows; only the one inside the scroll is the hole.
+ * That shape is read from the cone tiles when they change, and walking
+ * only slides it. The status
  * bar is outside that window, so it stays drawn over the darkness. Master brightness is INIDISP: one
  * register, latched in vblank, including while a load is still running,
  * so the whole picture fades or cuts to black in one frame. Coming back
@@ -1008,10 +1010,15 @@ static void bg3_split_set(int on) {
 	scanline_irq_sync();
 }
 
-/* Map-space hole, one span per row. Rebuilt when the cone tiles change.
- * Walking only changes the scroll, so the per-frame work is 192 adds. */
-static u16 lamp_row_l[512];
-static u16 lamp_row_r[512];
+/* Map-space hole. Each row can hold two cones (up/down share a band,
+ * left/right share the other). A single left-to-right span would light
+ * the gap between them, which is most of the screen. Rebuilt when the
+ * cone tiles change. Walking only changes the scroll. */
+enum { kLampSpans = 4 };
+
+static u16 lamp_span_l[kLampSpans][512];
+static u16 lamp_span_r[kLampSpans][512];
+static uint8 lamp_span_n[512];
 static uint16 lamp_mask[8];
 static uint32 lamp_map_sig;
 static uint16 lamp_sig_map_adr;
@@ -1070,8 +1077,25 @@ static uint16 lamp_map_word(const BgLayer *layer, int tx, int ty) {
 	return adr;
 }
 
-/* Tiles are visited left to right, so the first hit on a row is its left
- * edge and the last hit is its right edge. */
+/* Tiles are visited left to right. A pixel continues the open run, or
+ * starts another when a gap separates this cone from the next one. */
+static void lamp_mark(int y, int x) {
+	int n = lamp_span_n[y];
+
+	if (n > 0 && x <= (int)lamp_span_r[n - 1][y] + 1) {
+		if (x > (int)lamp_span_r[n - 1][y])
+			lamp_span_r[n - 1][y] = (u16)x;
+		return;
+	}
+	if (n >= kLampSpans) {
+		lamp_span_r[kLampSpans - 1][y] = (u16)x;
+		return;
+	}
+	lamp_span_l[n][y] = (u16)x;
+	lamp_span_r[n][y] = (u16)x;
+	lamp_span_n[y] = (uint8)(n + 1);
+}
+
 static void lamp_paint_tile(const Ppu *ppu, int tx, int ty, uint16 tile, uint16 bits) {
 	const BgLayer *layer = &ppu->bgLayer[0];
 	int base = (layer->tileAdr + (tile & 0x3ff) * 16) & 0x7fff;
@@ -1099,9 +1123,7 @@ static void lamp_paint_tile(const Ppu *ppu, int tx, int ty, uint16 tile, uint16 
 			if (pixel == 0 || (bits & (1u << pixel)) == 0)
 				continue;
 			x = (tx << 3) + col;
-			if (lamp_row_l[my] == 0xffff)
-				lamp_row_l[my] = (u16)x;
-			lamp_row_r[my] = (u16)x;
+			lamp_mark(my, x);
 		}
 	}
 }
@@ -1121,7 +1143,7 @@ static int lamp_build(const Ppu *ppu, const uint16 mask[8]) {
 	lamp_rows = height;
 	lamp_cols = tw << 3;
 	for (ty = 0; ty < height; ty++)
-		lamp_row_l[ty] = 0xffff;
+		lamp_span_n[ty] = 0;
 	for (ty = 0; ty < th; ty++) {
 		for (tx = 0; tx < tw; tx++) {
 			uint16 tile = ppu->vram[lamp_map_word(layer, tx, ty) & 0x7fff];
@@ -1138,7 +1160,7 @@ static int lamp_build(const Ppu *ppu, const uint16 mask[8]) {
 	if (!saw)
 		return 0;
 	for (ty = 0; ty < height; ty++)
-		if (lamp_row_l[ty] != 0xffff)
+		if (lamp_span_n[ty])
 			return 1;
 	return 0;
 }
@@ -1171,6 +1193,36 @@ static u16 lamp_screen_span(int left, int right, int scroll, int width) {
 	return (u16)(rel_l | (255 << 8));
 }
 
+static int lamp_visible_len(u16 span) {
+	unsigned left = span & 0xff;
+	unsigned right = span >> 8;
+
+	if (left > right)
+		return 0;
+	return (int)(right - left + 1);
+}
+
+/* One cone is in the scroll. The other sits a screen away and must not
+ * widen this line. */
+static u16 lamp_row_on_screen(int map_y, int scroll, int width) {
+	int n = lamp_span_n[map_y];
+	u16 best = 0x00ff;
+	int best_len = 0;
+	int i;
+
+	for (i = 0; i < n; i++) {
+		u16 piece = lamp_screen_span(lamp_span_l[i][map_y],
+			lamp_span_r[i][map_y], scroll, width);
+		int len = lamp_visible_len(piece);
+
+		if (len > best_len) {
+			best = piece;
+			best_len = len;
+		}
+	}
+	return best;
+}
+
 static void lamp_project(const BgLayer *layer, u16 *span) {
 	int height = lamp_rows;
 	int width = lamp_cols;
@@ -1181,8 +1233,7 @@ static void lamp_project(const BgLayer *layer, u16 *span) {
 	for (y = 0; y < SCREEN_HEIGHT; y++) {
 		int map_y = ((y + kCropY) + scroll_y) & (height - 1);
 
-		span[y] = lamp_screen_span(lamp_row_l[map_y], lamp_row_r[map_y],
-			scroll_x, width);
+		span[y] = lamp_row_on_screen(map_y, scroll_x, width);
 	}
 }
 
