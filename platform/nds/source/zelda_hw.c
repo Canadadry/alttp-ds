@@ -649,9 +649,14 @@ static int iris_wanted(void);
 /* Lamp cone: BG1 is on the subscreen and color math subtracts it. A
  * transparent pixel uses the fixed color, 31 with no torches, so that
  * part of the room goes black. The cone's opaque pixels are the hole.
- * Baking the fixed color into the palettes blacks out the whole picture. */
+ * Baking the fixed color into the palettes blacks out the whole picture.
+ * The inventory is BG3, which is not a math target. Dropping the cone
+ * while it is open would paint that black into the menu too. */
 static int lamp_cone(const Ppu *ppu) {
-	if (main_module_index != 7 || submodule_index == 20 || ppu->forcedBlank)
+	int playing = main_module_index == 7 && submodule_index != 20;
+	int inventory = main_module_index == 14 && submodule_index == 1;
+
+	if ((!playing && !inventory) || ppu->forcedBlank)
 		return 0;
 	if (!hdr_dungeon_dark_with_lantern || (TS_copy & 0x01) == 0)
 		return 0;
