@@ -39,7 +39,9 @@
  * drops him to sprite priority 1, which exists to slip behind a
  * main-screen BG1 lip. These rooms have no such lip, so for that climb
  * only he stays in front of the stone. The arch over the stair is still
- * a priority tile, and that part is drawn over him. Priority 1 everywhere
+ * a priority tile, and that part is drawn over him. The lower stair also
+ * sets that bit on the floor tiles south of him. Those stay on the ground:
+ * lifting them reprints that floor above the door. Priority 1 everywhere
  * else stays behind the floor, which is how he walks under a bridge.
  * The same climb
  * can take every sprite off the main screen and leave it on the
@@ -116,6 +118,13 @@ static u16 bg2_hi[4096] __attribute__((aligned(4)));
 static int bg2_blank;
 static int bg2_lift_mode = -1;
 static int bg2_front_on_slot1;
+/* Doorway map built for the current BG1 and BG2 tilemaps. A stair climb
+ * scrolls without changing those maps; rebuilding it every frame is what
+ * stalls the walk. */
+static int bake_valid;
+/* Tile names that tile the ground. A stair lip ORs priority onto that
+ * pattern; lifting those cells paints the floor over the doorway. */
+static uint8 common_floor[1024];
 
 static uint32 hash_words(const uint16 *vram, uint16 addr, int n) {
 	uint32 h = 2166136261u;
@@ -349,6 +358,7 @@ static void present_bg1(Ppu *ppu, int split) {
 	if (!map_valid[0] || map_sig[0] != sig) {
 		int i;
 
+		bake_valid = 0;
 		blank_bg1 = kBlankNone;
 		for (i = 0; i < 1024; i++) {
 			if (!used_bg1[i]) {
@@ -394,7 +404,30 @@ static void present_bg1(Ppu *ppu, int split) {
 	}
 }
 
-static void present_bg2(Ppu *ppu, int lift) {
+/* The ground pattern shows up dozens of times with priority clear. The
+ * arch and the door frame do not. */
+static void mark_common_floor(const Ppu *ppu, uint16 tilemap_adr, int words) {
+	static uint8 count[1024];
+	int i;
+
+	memset(count, 0, sizeof count);
+	memset(common_floor, 0, sizeof common_floor);
+	for (i = 0; i < words; i++) {
+		uint16 entry = ppu->vram[(tilemap_adr + i) & 0x7fff];
+		int name;
+
+		if (entry & 0x2000)
+			continue;
+		name = entry & 0x3ff;
+		if (count[name] < 255)
+			count[name]++;
+	}
+	for (i = 0; i < 1024; i++)
+		if (count[i] >= 8)
+			common_floor[i] = 1;
+}
+
+static void present_bg2(Ppu *ppu, int lift, int keep_floor) {
 	BgLayer *layer = &ppu->bgLayer[1];
 	int words = map_words(layer->tilemapWider, layer->tilemapHigher);
 	uint32 sig = sig_map(ppu, layer->tilemapAdr, words);
@@ -409,8 +442,8 @@ static void present_bg2(Ppu *ppu, int lift) {
 		last_adr[1] = layer->tileAdr;
 		map_valid[1] = 0;
 	}
-	if (bg2_lift_mode != lift) {
-		bg2_lift_mode = lift;
+	if (bg2_lift_mode != lift + keep_floor * 2) {
+		bg2_lift_mode = lift + keep_floor * 2;
 		map_valid[1] = 0;
 	}
 
@@ -418,6 +451,13 @@ static void present_bg2(Ppu *ppu, int lift) {
 	if (!map_valid[1] || map_sig[1] != sig) {
 		int i;
 
+		/* The floor set is the tilemap with priority ignored. It does not
+		 * change on the frames where this map is reused. */
+		bake_valid = 0;
+		if (keep_floor)
+			mark_common_floor(ppu, layer->tilemapAdr, words);
+		else
+			memset(common_floor, 0, sizeof common_floor);
 		for (i = 0; i < words; i++)
 			used[ppu->vram[(layer->tilemapAdr + i) & 0x7fff] & 0x3ff] = 1;
 		bg2_blank = 0;
@@ -429,10 +469,14 @@ static void present_bg2(Ppu *ppu, int lift) {
 		}
 		for (i = 0; i < words; i++) {
 			uint16 entry = ppu->vram[(layer->tilemapAdr + i) & 0x7fff];
+			int name = entry & 0x3ff;
 
 			/* Same split as PpuDrawBackground: 0xb100 is in front of Link,
-			 * 0x7100 stays on the ground behind him. */
-			if (lift && (entry & 0x2000)) {
+			 * 0x7100 stays on the ground behind him. The lower stair also
+			 * sets that bit on the floor tiles south of Link. Those stay
+			 * on the ground; lifting them reprints the floor on the door. */
+			if (lift && (entry & 0x2000) &&
+			    !(keep_floor && common_floor[name])) {
 				bg2_hi[i] = swizzle4(entry);
 				map_buf[3][i] = (u16)bg2_blank;
 			} else {
@@ -1355,6 +1399,14 @@ static void bake_bg2_doors(Ppu *ppu) {
 	/* Door tiles are copied into the BG1 tileset. Slot 1 may still be
 	 * showing the BG2 doorway map until the queued map is committed. */
 	gfx = BG_GFX + 2 * 8192;
+	if (bake_valid) {
+		/* Graphics can still animate. The map entries already point at them. */
+		for (i = 0; i < 1024; i++) {
+			if (remap[i] >= 0)
+				upload4_reloc(ppu, gfx, ground->tileAdr, i, remap[i]);
+		}
+		return;
+	}
 	blank = (u16)(blank_bg1 < 0 ? 0 : blank_bg1);
 	for (i = 0; i < 1024; i++)
 		remap[i] = -1;
@@ -1368,11 +1420,18 @@ static void bake_bg2_doors(Ppu *ppu) {
 		int src, dst;
 
 		if (above & 0x2000) {
-			map_buf[1][i] = swizzle4(above);
+			/* The subscreen's own copy of the floor pattern. It belongs
+			 * behind the ground. Promoting it covers the door. */
+			if (common_floor[above & 0x3ff]) {
+				map_buf[1][i] = blank;
+				map_buf[2][i] = swizzle4(above);
+			} else {
+				map_buf[1][i] = swizzle4(above);
+			}
 			continue;
 		}
 		door = ppu->vram[(ground->tilemapAdr + i) & 0x7fff];
-		if (!(door & 0x2000)) {
+		if (!(door & 0x2000) || common_floor[door & 0x3ff]) {
 			map_buf[1][i] = blank;
 			continue;
 		}
@@ -1394,6 +1453,7 @@ static void bake_bg2_doors(Ppu *ppu) {
 	queue_map(1, map_buf[1], words, top->tilemapWider, top->tilemapHigher, 4, 2);
 	if (patched)
 		queue_map(3, map_buf[3], words, top->tilemapWider, top->tilemapHigher, 12, 4);
+	bake_valid = 1;
 }
 
 static void present_scroll(const Ppu *ppu, int back_bg3) {
@@ -1587,7 +1647,8 @@ void ZeldaHwPresent(Ppu *ppu) {
 	if (!lamp)
 		present_bg1(ppu, bg1_main || stair_arch);
 	if (bg2_on)
-		present_bg2(ppu, lift_bg2);
+		present_bg2(ppu, lift_bg2,
+			climbing_stairs() && bg1_sub && !bg1_main);
 	if (lift_bg2 && (bg1_main || stair_arch))
 		bake_bg2_doors(ppu);
 	else if (lift_bg2)
