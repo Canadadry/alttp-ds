@@ -587,7 +587,7 @@ enum {
 	/* Inside the big panel's border. */
 	kPanelTop = 6,
 	kPanelBottom = 155,
-	kPanelRowsPerFrame = 40,
+	kPanelRowsPerFrame = 30,
 	kPanelStep = 2,
 	kPanelBlack = 16
 };
@@ -857,8 +857,35 @@ void ZeldaBottomInput(u32 *held, u32 down)
 	}
 }
 
-/* One screen row: the tiled background, then whatever sits on that row. */
-static void compose_row(u8 *line, int y)
+static void draw_image_row(u8 *line, int y, const HudImage *im)
+{
+	int top = im->y;
+	int left = im->x;
+	const u8 *src;
+	int x;
+
+	if (im->box >= 0) {
+		const HudBox *b = &kBoxes[im->box];
+
+		top = b->y + (b->h - im->h) / 2;
+		left = b->x + (b->w - im->w) / 2;
+	}
+	if (y < top || y >= top + im->h)
+		return;
+	src = im->pix + (y - top) * STRIDE(im->w);
+	for (x = 0; x < im->w; x++) {
+		if (src[x])
+			line[left + x] = im->color ? im->color : im->pal_base + src[x];
+	}
+}
+
+/* Everything that never changes while the HUD is up: the tiled background,
+ * the boxes, and the graphics that are always there. Drawing these pixel by
+ * pixel was most of the cost of a row, so they are drawn once into base and
+ * every row after that starts as a copy. */
+static u8 base[kHeight][kWidth] __attribute__((aligned(4)));
+
+static void compose_base_row(u8 *line, int y)
 {
 	const u8 *tex = (const u8 *)tex_menuBitmap + (y % kTexH) * kTexW;
 	unsigned i;
@@ -883,29 +910,31 @@ static void compose_row(u8 *line, int y)
 		}
 	}
 
-	for (i = 0; i < sizeof kImages / sizeof kImages[0]; i++) {
-		const HudImage *im = &kImages[i];
-		int top = im->y;
-		int left = im->x;
-		const u8 *src;
+	for (i = 0; i < sizeof kImages / sizeof kImages[0]; i++)
+		if (kImages[i].panel == kPanelAlways)
+			draw_image_row(line, y, &kImages[i]);
+}
 
-		if (im->panel != kPanelAlways && im->panel != panel_shown)
-			continue;
-		if (im->box >= 0) {
-			const HudBox *b = &kBoxes[im->box];
+static void build_base(void)
+{
+	int y;
 
-			top = b->y + (b->h - im->h) / 2;
-			left = b->x + (b->w - im->w) / 2;
-		}
-		if (y < top || y >= top + im->h)
-			continue;
-		src = im->pix + (y - top) * STRIDE(im->w);
-		for (x = 0; x < im->w; x++) {
-			if (src[x])
-				line[left + x] = im->color ? im->color : im->pal_base + src[x];
-		}
-	}
+	for (y = 0; y < kHeight; y++)
+		compose_base_row(base[y], y);
+}
 
+/* One screen row: the base, then whatever changes on that row. */
+static void compose_row(u8 *line, int y)
+{
+	unsigned i;
+	int x;
+
+	memcpy(line, base[y], kWidth);
+
+	/* The big panel's title text and items. */
+	for (i = 0; i < sizeof kImages / sizeof kImages[0]; i++)
+		if (kImages[i].panel == panel_shown)
+			draw_image_row(line, y, &kImages[i]);
 	if (panel_shown == kPanelItems)
 		compose_menu(line, y);
 
@@ -971,6 +1000,9 @@ static void put_rows(int from, int to)
 	}
 }
 
+/* Checksum of what the snapshots were last built from; see dyn_sig. */
+static u32 last_sig;
+
 static void draw_hud(void)
 {
 	int i;
@@ -1010,13 +1042,15 @@ static void draw_hud(void)
 	menu_was_open = menu_open();
 	build_menu(&shown_menu);
 	set_panel_palette();
+	build_base();
+	last_sig = 0;
 	put_rows(0, kHeight);
 }
 
 /* Counts tick up a point per frame while they fill, the player swaps items,
  * and the game can reload its tiles, so look every frame and touch the
  * screen only on a change, and only the rows that changed. */
-static void refresh_dynamic(void)
+static void refresh_counters(void)
 {
 	build_counters(&next);
 	if (memcmp(&next, &shown, sizeof shown)) {
@@ -1024,23 +1058,82 @@ static void refresh_dynamic(void)
 		set_counter_palette(&shown);
 		put_rows(kDynTop, kDynBottom);
 	}
+}
+
+static void refresh_item(void)
+{
 	build_item(&next_item);
 	if (memcmp(&next_item, &shown_item, sizeof shown_item)) {
 		memcpy(&shown_item, &next_item, sizeof shown_item);
 		set_item_palette(&shown_item);
 		put_rows(kItemY, kItemY + kItemSize);
 	}
+}
+
+static void refresh_hearts(void)
+{
 	build_hearts(&next_hearts);
 	if (memcmp(&next_hearts, &shown_hearts, sizeof shown_hearts)) {
 		memcpy(&shown_hearts, &next_hearts, sizeof shown_hearts);
 		set_heart_palette(&shown_hearts);
 		put_rows(kHeartY, kHeartY + kHeartH);
 	}
+}
+
+static void refresh_magic(void)
+{
 	build_magic(&next_magic);
 	if (memcmp(&next_magic, &shown_magic, sizeof shown_magic)) {
 		memcpy(&shown_magic, &next_magic, sizeof shown_magic);
 		set_magic_palette(&shown_magic);
 		put_rows(kMeterY, kMeterY + kMeterThick);
+	}
+}
+
+/* Building the four snapshots decodes a few thousand pixels, and doing all
+ * of it every frame is enough to push a frame past its time, which slows the
+ * game and the music with it. What they are built from is small: the HUD's
+ * tile entries, the BG3 palettes, and four counts. A checksum of those says
+ * whether anything changed, and only then is everything rebuilt. The tile
+ * graphics themselves can be reloaded without those changing, so otherwise
+ * one snapshot is checked each frame, round robin. */
+static u32 dyn_sig(void)
+{
+	const Ppu *ppu = g_zenv.ppu;
+	const u16 *buf = hud_tile_indices_buffer;
+	u32 h = 2166136261u;
+	int i;
+
+	for (i = 0; i < 6 * 32; i++)
+		h = (h ^ buf[i]) * 16777619u;
+	for (i = 0; i < 32; i++)
+		h = (h ^ ppu->cgram[i]) * 16777619u;
+	h = (h ^ (u32)link_rupees_actual) * 16777619u;
+	h = (h ^ (u32)link_item_bombs) * 16777619u;
+	h = (h ^ (u32)link_num_arrows) * 16777619u;
+	h = (h ^ (u32)link_magic_power) * 16777619u;
+	return h;
+}
+
+static int check_next;
+
+static void refresh_dynamic(void)
+{
+	u32 sig = dyn_sig();
+
+	if (sig != last_sig) {
+		last_sig = sig;
+		refresh_counters();
+		refresh_item();
+		refresh_hearts();
+		refresh_magic();
+		return;
+	}
+	switch (check_next++ & 3) {
+	case 0: refresh_counters(); break;
+	case 1: refresh_item(); break;
+	case 2: refresh_hearts(); break;
+	default: refresh_magic(); break;
 	}
 }
 
@@ -1160,10 +1253,41 @@ static void step_fade(int want)
 	set_bottom_fade(fade_level);
 }
 
+void ZeldaHwSetDim(int level);
+
+/* While the item menu is up on the bottom screen, the frozen game on the
+ * top screen is dimmed to half, easing in and out a step a frame. */
+enum {
+	kTopDimMax = 8,
+	kTopDimStep = 1
+};
+
+static int top_dim;
+
+static void update_top_dim(void)
+{
+	int target = (hud_up && !ZeldaHudOnTop() && menu_open()) ? kTopDimMax : 0;
+
+	if (top_dim == target)
+		return;
+	if (top_dim < target) {
+		top_dim += kTopDimStep;
+		if (top_dim > target)
+			top_dim = target;
+	} else {
+		top_dim -= kTopDimStep;
+		if (top_dim < target)
+			top_dim = target;
+	}
+	ZeldaHwSetDim(top_dim);
+}
+
 void ZeldaBottomUpdate(void)
 {
 	int want = hud_wanted();
 	int map = map_open();
+
+	update_top_dim();
 
 	if (fade_phase) {
 		map_was_open = map;

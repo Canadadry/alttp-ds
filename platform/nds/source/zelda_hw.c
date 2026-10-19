@@ -657,19 +657,41 @@ static void present_bg3(Ppu *ppu, int show_low) {
 /* Palettes stay at full intensity. INIDISP is REG_MASTER_BRIGHT, which
  * scales the finished picture the way the SNES brightness register does.
  * 0..15 maps onto the DS fade factor 16..0. */
+/* Extra darkening over the whole top screen, 0 none .. 16 black. The
+ * bottom screen's item menu dims the frozen game behind it with this. It
+ * stacks on whatever the game or a fade is already doing. */
+static volatile int menu_dim;
+
+void ZeldaHwSetDim(int level)
+{
+	if (level < 0)
+		level = 0;
+	if (level > 16)
+		level = 16;
+	menu_dim = level;
+}
+
+/* dark is the DS fade factor, 0 clear .. 16 black. */
+static u16 bright_reg(unsigned dark)
+{
+	unsigned d = dark + ((16u - dark) * (unsigned)menu_dim + 8u) / 16u;
+
+	if (d > 16)
+		d = 16;
+	return d ? (u16)((1u << 15) | d) : 0;
+}
+
 static u16 inidisp_to_bright(unsigned inidisp) {
 	unsigned b;
-	unsigned factor;
 
 	if (inidisp & 0x80)
-		return (u16)((1u << 15) | 16);
+		return bright_reg(16);
 	b = inidisp & 0xf;
 	if (b >= 15)
-		return 0;
+		return bright_reg(0);
 	if (b == 0)
-		return (u16)((1u << 15) | 16);
-	factor = (16u * (15u - b) + 7u) / 15u;
-	return (u16)((1u << 15) | factor);
+		return bright_reg(16);
+	return bright_reg((16u * (15u - b) + 7u) / 15u);
 }
 
 /* The load that follows EnableForceBlank runs for several vblanks. The
@@ -689,7 +711,7 @@ static void apply_forced_fade(void)
 		return;
 	if (level > 16)
 		level = 16;
-	REG_MASTER_BRIGHT = level == 0 ? 0 : (u16)((1u << 15) | level);
+	REG_MASTER_BRIGHT = bright_reg((unsigned)level);
 }
 
 void ZeldaHwSetFade(int level)
