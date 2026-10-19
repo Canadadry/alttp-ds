@@ -208,22 +208,33 @@ void ZeldaHostOnKeys(u32 held, u32 down)
 void ZeldaHostTick(u32 held)
 {
 	int spun;
+	int catching;
 
 	if (paused)
 		return;
-	/* A press before the sword drop runs the rest of the intro here, so
-	 * the picture and the title song land on the same frame. */
+	/* A press before the sword drop runs the rest of the intro here.
+	 * The sword stays on its cue. The half-second of music before that cue
+	 * plays while the old picture is still up. */
 	spun = 0;
+	catching = 0;
 	for (;;) {
 		ZeldaRunFrame(map_keys(held));
 		if (!ZeldaIntroCatchingUp())
 			break;
+		if (!catching) {
+			ZeldaAudioDropLeadIn();
+			catching = 1;
+		}
 		if (++spun >= 1000) {
 			ZeldaIntroCancelCatchup();
 			break;
 		}
 		ZeldaAudioCatchupFrame();
 	}
+	if (ZeldaIntroCatchupLanded())
+		ZeldaAudioPlayLeadIn();
+	else if (catching)
+		ZeldaAudioDropLeadIn();
 	/* Sprite tiles are built here, while the previous picture is still
 	 * up. The vblank blit only has to DMA them. */
 	ZeldaVideoComposeSprites();

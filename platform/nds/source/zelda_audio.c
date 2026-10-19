@@ -1,5 +1,6 @@
 #include <nds.h>
 #include <malloc.h>
+#include <stddef.h>
 #include <string.h>
 
 #include "zelda_audio.h"
@@ -101,6 +102,48 @@ static void publish(SpcPlayer *p)
 	DC_FlushRange(&ipc->seq, sizeof ipc->seq);
 }
 
+/* Half a second of title music, remembered so a skip can play it before the sword. */
+enum { kLeadFrames = 30 };
+
+typedef struct LeadSnap {
+	uint8 prefix[offsetof(SpcPlayer, ram)];
+	Dsp dsp;
+	uint8 epoch[8];
+} LeadSnap;
+
+static LeadSnap lead_ring[kLeadFrames];
+static int lead_count;
+static int lead_pos;
+
+static void lead_save(const SpcPlayer *p)
+{
+	LeadSnap *s = &lead_ring[lead_pos];
+
+	memcpy(s->prefix, p, sizeof s->prefix);
+	s->dsp = *p->dsp;
+	memcpy(s->epoch, dsp_voice_epoch, sizeof s->epoch);
+	lead_pos = (lead_pos + 1) % kLeadFrames;
+	if (lead_count < kLeadFrames)
+		lead_count++;
+}
+
+static void lead_load(const LeadSnap *s, SpcPlayer *p)
+{
+	Dsp *dsp = p->dsp;
+
+	memcpy(p, s->prefix, sizeof s->prefix);
+	p->dsp = dsp;
+	*dsp = s->dsp;
+	dsp->apu_ram = p->ram;
+	memcpy(dsp_voice_epoch, s->epoch, sizeof s->epoch);
+}
+
+void ZeldaAudioDropLeadIn(void)
+{
+	lead_count = 0;
+	lead_pos = 0;
+}
+
 void ZeldaAudioCatchupFrame(void)
 {
 	SpcPlayer *p = g_zenv.player;
@@ -108,7 +151,26 @@ void ZeldaAudioCatchupFrame(void)
 	if (!p || !p->dsp)
 		return;
 	ZeldaPopApuState();
+	lead_save(p);
 	SpcPlayer_Advance(p);
+}
+
+void ZeldaAudioPlayLeadIn(void)
+{
+	SpcPlayer *p = g_zenv.player;
+	int n, i, oldest;
+
+	if (!ipc || !p || !p->dsp || lead_count <= 0)
+		return;
+	n = lead_count;
+	oldest = (lead_pos - n + kLeadFrames) % kLeadFrames;
+	for (i = 0; i < n; i++) {
+		lead_load(&lead_ring[(oldest + i) % kLeadFrames], p);
+		SpcPlayer_Advance(p);
+		publish(p);
+		swiWaitForVBlank();
+	}
+	ZeldaAudioDropLeadIn();
 }
 
 void ZeldaAudioFrame(void)
