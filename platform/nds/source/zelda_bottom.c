@@ -6,6 +6,7 @@
 #include "variables.h"
 #include "snes/ppu.h"
 #include "zelda_bottom.h"
+#include "zelda_bottom_map.h"
 #include "zelda_save.h"
 #include "zelda_video.h"
 #include "tex_menu.h"
@@ -1049,6 +1050,14 @@ static void set_panel_palette(void)
 	const u16 *pal = panel_shown == kPanelGear ? shown_gear.pal : shown_menu.pal;
 	int i;
 
+	/* The map uses the same slots, and all it needs besides. */
+	if (panel_shown == kPanelNormal) {
+		const u16 *map = ZeldaMapColors();
+
+		for (i = 0; i < kMapColors; i++)
+			BG_PALETTE_SUB[ZeldaMapSlot(i)] = dim(map[i], panel_level);
+		return;
+	}
 	for (i = 0; i < 32; i++)
 		if (i & 3)
 			BG_PALETTE_SUB[kPalMenu + i] = dim(pal[i], panel_level);
@@ -1244,6 +1253,8 @@ static void compose_row(u8 *line, int y)
 		compose_menu(line, y);
 	else if (panel_shown == kPanelGear)
 		compose_gear(line, y);
+	else if (y >= kMapY && y < kMapY + kMapH)
+		ZeldaMapRow(line + kMapX, y);
 
 	if (y >= kMeterY && y < kMeterY + kMeterThick) {
 		const u8 *row = shown_magic.px[y - kMeterY];
@@ -1307,6 +1318,23 @@ static void put_rows(int from, int to)
 	}
 }
 
+/* The map alone, which moves with Link and is most of the panel. It touches
+ * only its own pixels, between the green borders, so the rest of each row is
+ * left as it is. */
+static void put_map_rows(int from, int to)
+{
+	static u8 seg[kMapW + 2] __attribute__((aligned(4)));
+	u8 *dst = (u8 *)ZeldaVideoBottomFramebuffer();
+	int y;
+
+	seg[0] = kPalGreen;
+	seg[kMapW + 1] = kPalGreen;
+	for (y = from; y < to; y++) {
+		ZeldaMapRow(seg + 1, y);
+		dmaCopy(seg, dst + y * kWidth + kMapX - 1, kMapW + 2);
+	}
+}
+
 /* Checksum of what the snapshots were last built from; see dyn_sig. */
 static u32 last_sig;
 
@@ -1349,6 +1377,12 @@ static void draw_hud(void)
 	menu_was_open = menu_open();
 	build_menu(&shown_menu);
 	build_gear(&shown_gear);
+	if (panel_shown == kPanelNormal) {
+		int lo, hi;
+
+		ZeldaMapInvalidate();
+		ZeldaMapUpdate(&lo, &hi);
+	}
 	set_panel_palette();
 	build_base();
 	last_sig = 0;
@@ -1476,6 +1510,12 @@ static void update_panel(void)
 			panel_shown = target;
 			build_menu(&shown_menu);
 			build_gear(&shown_gear);
+			if (panel_shown == kPanelNormal) {
+				int lo, hi;
+
+				ZeldaMapInvalidate();
+				ZeldaMapUpdate(&lo, &hi);
+			}
 			panel_redraw = kPanelTop;
 		}
 		set_panel_palette();
@@ -1507,6 +1547,14 @@ static void update_panel(void)
 			memcpy(&shown_gear, &next_gear, sizeof shown_gear);
 			set_panel_palette();
 			put_rows(lo, hi);
+		}
+	} else {
+		int lo, hi;
+
+		/* Link moving, the map scrolling, the marker blinking. */
+		if (ZeldaMapUpdate(&lo, &hi)) {
+			set_panel_palette();
+			put_map_rows(lo, hi);
 		}
 	}
 }
