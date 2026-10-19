@@ -21,6 +21,9 @@ void ZeldaHwInit(void);
 void ZeldaHwWake(void);
 void ZeldaHwConsoleSuspend(void);
 void ZeldaHwSetFade(int level);
+void ZeldaHwSetTransition(int level);
+void ZeldaHwHoldBrightness(int on);
+int ZeldaHwShownBlack(void);
 void ZeldaHwPresent(Ppu *ppu);
 void ZeldaHwPresentMode7(Ppu *ppu);
 void ZeldaHwPrepareMode7(const Ppu *ppu);
@@ -114,6 +117,21 @@ void ZeldaVideoPrepareMode7(void)
 void ZeldaVideoSetFade(int level)
 {
 	ZeldaHwSetFade(level);
+}
+
+void ZeldaVideoSetTransition(int level)
+{
+	ZeldaHwSetTransition(level);
+}
+
+void ZeldaVideoHoldBrightness(int on)
+{
+	ZeldaHwHoldBrightness(on);
+}
+
+int ZeldaVideoShownBlack(void)
+{
+	return ZeldaHwShownBlack();
 }
 
 /* Dialogue glyphs are 2bpp, 8 wide and 16 tall: one tile, then the tile

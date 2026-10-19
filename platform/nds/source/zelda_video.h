@@ -17,6 +17,13 @@ void ZeldaVideoDrawPpuFrame(void);
 /* 0 is the picture, 16 is black. -1 gives brightness back to the game.
  * Main engine only; the bottom screen is left alone. */
 void ZeldaVideoSetFade(int level);
+/* Screen-change fade laid over whatever the game does: 0 none .. 16 black. */
+void ZeldaVideoSetTransition(int level);
+/* Keep the brightness of the last picture shown while the game is ahead of
+ * the screen and its next frame is not presented yet. */
+void ZeldaVideoHoldBrightness(int on);
+/* The last picture shown was already black. */
+int ZeldaVideoShownBlack(void);
 /* Top-screen bitmap for the settings text. Does not reconfigure the sub engine. */
 void ZeldaVideoMenuBegin(void);
 void ZeldaVideoMenuEnd(void);

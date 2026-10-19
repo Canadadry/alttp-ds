@@ -403,6 +403,117 @@ static void note_lid(u32 held)
 	}
 }
 
+/* Screen changes that load a new picture: title to file select, and file
+ * select to spawn select. The game changes module in one frame and the
+ * first picture of the new screen can be half built, so the old picture
+ * is faded out first, with the game held, and the new one is faded in from
+ * black. The host watches the module number after each frame.
+ *
+ *   Out   Game stopped. The last picture shown is still on the screen and
+ *         fades to black. The frame that changed module is not presented.
+ *   Hold  Black. The game runs (loading the chosen file) until the spawn
+ *         select shows up.
+ *   In    The new picture fades in under whatever brightness the game sets.
+ */
+enum {
+	kModTitle = 20,
+	kModIntro = 0,
+	kModFileSelect = 1,
+	kModLoadFile = 5,
+	kModSpawnSelect = 27,
+	kTxOutStep = 2,
+	kTxInStep = 1
+};
+
+enum {
+	kTxNone = 0,
+	kTxOut,
+	kTxHold,
+	kTxIn
+};
+
+static int tx_phase;
+static int tx_level;
+static int tx_prev = -1;
+static int tx_after;
+
+static void tx_reset(void)
+{
+	tx_phase = kTxNone;
+	tx_level = 0;
+	tx_prev = -1;
+	ZeldaVideoHoldBrightness(0);
+	ZeldaVideoSetTransition(0);
+}
+
+static void tx_finish_out(void)
+{
+	tx_level = 16;
+	ZeldaVideoSetTransition(16);
+	ZeldaVideoHoldBrightness(0);
+	tx_phase = tx_after;
+}
+
+static void tx_begin_out(int after)
+{
+	tx_after = after;
+	if (ZeldaVideoShownBlack()) {
+		tx_finish_out();
+		return;
+	}
+	tx_phase = kTxOut;
+	tx_level = 0;
+	ZeldaVideoSetTransition(0);
+	ZeldaVideoHoldBrightness(1);
+}
+
+/* After each game frame, before it is presented. */
+static void tx_watch(void)
+{
+	int mod = main_module_index;
+	int prev = tx_prev;
+
+	tx_prev = mod;
+	if (mod == prev || prev < 0)
+		return;
+	if (mod == kModFileSelect && (prev == kModTitle || prev == kModIntro)) {
+		tx_begin_out(kTxIn);
+	} else if (mod == kModLoadFile && prev == kModFileSelect) {
+		tx_begin_out(kTxHold);
+	} else if (mod == kModSpawnSelect) {
+		if (tx_phase == kTxHold || tx_phase == kTxNone) {
+			tx_phase = kTxIn;
+			tx_level = 16;
+			ZeldaVideoSetTransition(16);
+		}
+	} else if (tx_phase == kTxHold) {
+		/* Loading went somewhere with no spawn select. The game fades
+		 * that in itself. */
+		tx_phase = kTxNone;
+		tx_level = 0;
+		ZeldaVideoSetTransition(0);
+	}
+}
+
+/* Once per presented frame, after the picture is up. */
+static void tx_step(void)
+{
+	if (tx_phase == kTxOut) {
+		tx_level += kTxOutStep;
+		if (tx_level >= 16)
+			tx_finish_out();
+		else
+			ZeldaVideoSetTransition(tx_level);
+	} else if (tx_phase == kTxIn) {
+		tx_level -= kTxInStep;
+		if (tx_level <= 0) {
+			tx_level = 0;
+			tx_phase = kTxNone;
+		}
+		ZeldaVideoSetTransition(tx_level);
+	}
+}
+
 static void ZeldaSettingsEnter(void)
 {
 	settings_open = 1;
@@ -518,6 +629,7 @@ void ZeldaHostOnKeys(u32 held, u32 down)
 		if (settings_menu)
 			ZeldaVideoMenuEnd();
 		ZeldaVideoSetFade(-1);
+		tx_reset();
 		settings_open = 0;
 		settings_menu = 0;
 		settings_eat = 0;
@@ -576,6 +688,9 @@ void ZeldaHostTick(u32 held)
 	lid_frozen = (held & KEY_LID) != 0;
 	if (settings_open || paused || ZeldaBottomHoldsGame())
 		return;
+	/* The old picture is fading out. The game waits for it. */
+	if (tx_phase == kTxOut)
+		return;
 	if (settings_eat) {
 		SelectMenu_LockInput = 1;
 		settings_eat--;
@@ -608,6 +723,7 @@ void ZeldaHostTick(u32 held)
 	else if (catching)
 		ZeldaAudioDropLeadIn();
 	SelectMenu_LockInput = 0;
+	tx_watch();
 	/* Sprite tiles are built here, while the previous picture is still
 	 * up. The vblank blit only has to DMA them. */
 	ZeldaVideoComposeSprites();
@@ -666,8 +782,12 @@ void ZeldaHostBlit(u16 *fb)
 		ui = kUiOff;
 		break;
 	default:
-		if (!paused && !ZeldaBottomHoldsGame())
-			ZeldaVideoDrawPpuFrame();
+		if (!paused && !ZeldaBottomHoldsGame()) {
+			/* Out: the frame that changed screen stays unshown. */
+			if (tx_phase != kTxOut)
+				ZeldaVideoDrawPpuFrame();
+			tx_step();
+		}
 		break;
 	}
 }

@@ -724,6 +724,14 @@ static void present_bg3(Ppu *ppu, int show_low) {
  * bottom screen's item menu dims the frozen game behind it with this. It
  * stacks on whatever the game or a fade is already doing. */
 static volatile int menu_dim;
+/* Screen-change fade (title to file select to spawn select). Stacks the
+ * same way, and the larger of the two wins. */
+static volatile int trans_dim;
+/* While set, the vblank handler keeps the brightness of the last picture
+ * that was shown instead of reading INIDISP, which already belongs to a
+ * frame that has not been presented yet. */
+static volatile int bright_hold;
+static volatile unsigned last_inidisp = 0x80;
 
 void ZeldaHwSetDim(int level)
 {
@@ -734,10 +742,33 @@ void ZeldaHwSetDim(int level)
 	menu_dim = level;
 }
 
+void ZeldaHwSetTransition(int level)
+{
+	if (level < 0)
+		level = 0;
+	if (level > 16)
+		level = 16;
+	trans_dim = level;
+}
+
+void ZeldaHwHoldBrightness(int on)
+{
+	bright_hold = on;
+}
+
+/* The last presented picture was already black (forced blank or brightness 0). */
+int ZeldaHwShownBlack(void)
+{
+	unsigned ini = last_inidisp;
+
+	return (ini & 0x80) || (ini & 0xf) == 0;
+}
+
 /* dark is the DS fade factor, 0 clear .. 16 black. */
 static u16 bright_reg(unsigned dark)
 {
-	unsigned d = dark + ((16u - dark) * (unsigned)menu_dim + 8u) / 16u;
+	unsigned dim = (unsigned)(menu_dim > trans_dim ? menu_dim : trans_dim);
+	unsigned d = dark + ((16u - dark) * dim + 8u) / 16u;
 
 	if (d > 16)
 		d = 16;
@@ -793,6 +824,11 @@ static unsigned shown_inidisp(unsigned inidisp) {
 static void vblank_bright(void) {
 	if (fade_level >= 0) {
 		apply_forced_fade();
+		return;
+	}
+	if (bright_hold) {
+		if (use_master_bright)
+			REG_MASTER_BRIGHT = inidisp_to_bright(last_inidisp);
 		return;
 	}
 	if (use_master_bright)
@@ -2189,6 +2225,7 @@ void ZeldaHwPresentMode7(Ppu *ppu) {
 	ZeldaHwCommitSprites(sprites);
 
 	picture_covered = cover;
+	last_inidisp = cover ? 0x80 : INIDISP_copy;
 	ZeldaHwUseMasterBright(1);
 	if (cover && fade_level < 0)
 		REG_MASTER_BRIGHT = inidisp_to_bright(0x80);
@@ -2483,11 +2520,11 @@ void ZeldaHwPresent(Ppu *ppu) {
 		int ime = enterCriticalSection();
 
 		picture_covered = cover;
+		last_inidisp = (cover || iris_fully_closed()) ? 0x80 : INIDISP_copy;
 		if (fade_level >= 0)
 			apply_forced_fade();
 		else if (use_master_bright)
-			REG_MASTER_BRIGHT = inidisp_to_bright(
-				(cover || iris_fully_closed()) ? 0x80 : INIDISP_copy);
+			REG_MASTER_BRIGHT = inidisp_to_bright(last_inidisp);
 		leaveCriticalSection(ime);
 	}
 }
