@@ -546,6 +546,13 @@ static int hud_strip_hidden(void)
 	return mod == 7 || mod == 9 || mod == 15 || mod == 16;
 }
 
+/* With the HUD on the bottom screen, the item menu is drawn there. The top
+ * screen keeps the frozen game and none of the menu's BG3. */
+static int item_menu_hidden(void)
+{
+	return !ZeldaHudOnTop() && main_module_index == 14 && submodule_index == 1;
+}
+
 static void present_bg3(Ppu *ppu, int show_low) {
 	BgLayer *layer = &ppu->bgLayer[2];
 	int words = map_words(layer->tilemapWider, layer->tilemapHigher);
@@ -553,13 +560,17 @@ static void present_bg3(Ppu *ppu, int show_low) {
 	u16 *gfx;
 	int i;
 	int hide;
+	int hide_all;
 	unsigned hud_at;
 	static int hud_hide_applied = -1;
+	static int menu_hide_applied = -1;
 
 	gfx = BG_GFX + 6 * 8192;
 	hide = hud_strip_hidden();
-	if (hide != hud_hide_applied) {
+	hide_all = item_menu_hidden();
+	if (hide != hud_hide_applied || hide_all != menu_hide_applied) {
 		hud_hide_applied = hide;
+		menu_hide_applied = hide_all;
 		map_valid[2] = 0;
 	}
 
@@ -581,7 +592,7 @@ static void present_bg3(Ppu *ppu, int show_low) {
 			int slot;
 			u16 out;
 
-			if (hide && at >= hud_at && at < hud_at + 165) {
+			if (hide_all || (hide && at >= hud_at && at < hud_at + 165)) {
 				map_buf[0][i] = 0;
 				bg3_lo[i] = 0;
 				continue;

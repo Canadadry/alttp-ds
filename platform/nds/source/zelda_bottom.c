@@ -35,6 +35,10 @@ enum {
 	kPalShadow = 126,
 	/* The selected-item border's own colors; index 0 is clear. */
 	kPalBorder = 188,
+	/* Thirty-two slots for the items on the item panel, and one for the
+	 * panel's title text. Both fade on their own. */
+	kPalMenu = 32,
+	kPalPanelText = 30,
 	kPalGreen = 252,
 	kPalText = 253,
 	kPalBlack = 254,
@@ -61,7 +65,15 @@ static const HudBox kBoxes[] = {
 /* A graphic, centered in one of the boxes, or at (x, y) when box is -1.
  * Palette index 0 is transparent. Every other pixel is drawn in color, or
  * when color is 0, in the slot pal_base plus its own index. Rows are padded
- * to 4 bytes. */
+ * to 4 bytes. panel says when it is drawn: always, or only while the big
+ * panel is showing that state. */
+enum {
+	kPanelNormal,
+	kPanelItems,
+	kPanelGear,
+	kPanelAlways = 0xff
+};
+
 typedef struct {
 	const u8 *pix;
 	int w, h;
@@ -69,15 +81,18 @@ typedef struct {
 	int x, y;
 	u8 color;
 	u8 pal_base;
+	u8 panel;
 } HudImage;
 
 #define STRIDE(w) (((w) + 3) & ~3)
 
 static const HudImage kImages[] = {
-	{ (const u8 *)gear_textBitmap, 26, 7, 0, 0, 0, kPalText, 0 },
-	{ (const u8 *)items_textBitmap, 34, 7, 1, 0, 0, kPalText, 0 },
-	{ (const u8 *)selected_item_borderBitmap, 50, 50, -1, 183, 52, 0, kPalBorder },
-	{ (const u8 *)life_textBitmap, 44, 8, -1, 186, 108, 0, kPalLife }
+	{ (const u8 *)gear_textBitmap, 26, 7, 0, 0, 0, kPalText, 0, kPanelAlways },
+	{ (const u8 *)items_textBitmap, 34, 7, 1, 0, 0, kPalText, 0, kPanelAlways },
+	{ (const u8 *)selected_item_borderBitmap, 50, 50, -1, 183, 52, 0, kPalBorder, kPanelAlways },
+	{ (const u8 *)life_textBitmap, 44, 8, -1, 186, 108, 0, kPalLife, kPanelAlways },
+	{ (const u8 *)gear_textBitmap, 26, 7, -1, 66, 11, kPalPanelText, 0, kPanelGear },
+	{ (const u8 *)items_textBitmap, 34, 7, -1, 63, 11, kPalPanelText, 0, kPanelItems }
 };
 
 /* The rupee, bomb and arrow counters. The icons and digits are the game's
@@ -539,6 +554,217 @@ static void set_magic_palette(const HudMagic *m)
 			BG_PALETTE_SUB[kPalMagic + i] = m->pal[i];
 }
 
+/* The item panel. The game keeps its item menu as a 32-word-wide tile map
+ * in uvram_screen: each of the 20 slots is a 2x2 block of BG3 tile entries
+ * at a fixed spot, and the blinking cursor is a ring of 12 more entries
+ * around the selected slot, drawn only while the blink is on. The game's
+ * own D-pad code runs the menu, so reading those entries gives the icons,
+ * their order, and the cursor with no menu logic here.
+ *
+ * Slots are laid out 16 wide with kMenuGapX between them and 16 tall with
+ * kMenuGapY between them, from (kMenuX, kMenuY). The cursor ring hugs its
+ * slot, 8 pixels out, as it does on the SNES.
+ *
+ * Tiles are decoded a row at a time as the screen row is built, so a
+ * snapshot is only tile entries and the palette. */
+enum {
+	kMenuX = 22,
+	kMenuY = 29,
+	kMenuGapX = 9,
+	kMenuGapY = 14,
+	kMenuCols = 5,
+	kMenuRows = 4,
+	kMenuItems = kMenuCols * kMenuRows,
+	kMenuIcon = 16,
+	kMenuPitchX = kMenuIcon + kMenuGapX,
+	kMenuPitchY = kMenuIcon + kMenuGapY,
+	/* Rows an icon or its ring can touch. */
+	kMenuTop = kMenuY - kTileH,
+	kMenuBottom = kMenuY + (kMenuRows - 1) * kMenuPitchY + kMenuIcon + kTileH,
+	/* Cursor ring corner, and the blank tile the box is filled with. */
+	kRingTile = 0x60,
+	kBlankTile = 0xf5,
+	/* Inside the big panel's border. */
+	kPanelTop = 6,
+	kPanelBottom = 155,
+	kPanelRowsPerFrame = 40,
+	kPanelStep = 2,
+	kPanelBlack = 16
+};
+
+typedef struct {
+	u16 icon[kMenuItems][4];
+	u16 ring[4][4];		/* entries at offsets -1..2; the middle is unused */
+	int ring_item;		/* -1 while the cursor is blinked off */
+	u16 pal[32];
+} HudMenu;
+
+static HudMenu shown_menu;
+static HudMenu next_menu;
+
+/* What the big panel is showing, and how far faded to black it is. */
+static int panel_shown;
+static int panel_level;
+/* Next row of the panel to draw while it is black, or -1. */
+static int panel_redraw = -1;
+
+/* HUDXY(4 + 3 * col, 7 + 3 * row) in uvram_screen. */
+static int menu_word(int i)
+{
+	return (7 + 3 * (i / kMenuCols)) * 32 + 4 + 3 * (i % kMenuCols);
+}
+
+static void build_menu(HudMenu *m)
+{
+	const Ppu *ppu = g_zenv.ppu;
+	const u16 *ui = (const u16 *)(g_ram + 0x1000);
+	int i, dx, dy;
+
+	memset(m, 0, sizeof *m);
+	m->ring_item = -1;
+	for (i = 0; i < 32; i++)
+		if (i & 3)
+			m->pal[i] = ppu->cgram[i] & 0x7fff;
+	for (i = 0; i < kMenuItems; i++) {
+		const u16 *p = ui + menu_word(i);
+
+		m->icon[i][0] = p[0];
+		m->icon[i][1] = p[1];
+		m->icon[i][2] = p[32];
+		m->icon[i][3] = p[33];
+		/* The ring's top-left corner is unflipped. The corner a slot
+		 * shares with its right neighbor is flipped, so this is the
+		 * selected slot alone. */
+		if ((p[-33] & 0xc3ff) != kRingTile)
+			continue;
+		m->ring_item = i;
+		for (dy = 0; dy < 4; dy++)
+			for (dx = 0; dx < 4; dx++)
+				if (dx == 0 || dx == 3 || dy == 0 || dy == 3)
+					m->ring[dy][dx] = p[(dy - 1) * 32 + dx - 1];
+	}
+}
+
+/* One pixel row of a BG3 tile entry, written at dst. Clear pixels are
+ * left alone. */
+static void draw_entry_row(u8 *dst, const Ppu *ppu, u16 entry, int ty)
+{
+	int tile = entry & 0x3ff;
+	int base = (entry >> 10) & 7;
+	u16 w;
+	int x;
+
+	if (tile == kBlankTile)
+		return;
+	if (entry & 0x8000)
+		ty = kTileH - 1 - ty;
+	w = ppu->vram[(ppu->bgLayer[2].tileAdr + tile * 8 + ty) & 0x7fff];
+	if (!w)
+		return;
+	for (x = 0; x < kTileH; x++) {
+		int bit = (entry & 0x4000) ? x : kTileH - 1 - x;
+		int v = ((w >> bit) & 1) | (((w >> (8 + bit)) & 1) << 1);
+
+		if (v)
+			dst[x] = kPalMenu + base * 4 + v;
+	}
+}
+
+static void compose_menu(u8 *line, int y)
+{
+	const Ppu *ppu = g_zenv.ppu;
+	const HudMenu *m = &shown_menu;
+	int i, dx, dy;
+
+	if (y < kMenuTop || y >= kMenuBottom)
+		return;
+	for (i = 0; i < kMenuItems; i++) {
+		int ix = kMenuX + (i % kMenuCols) * kMenuPitchX;
+		int r = y - (kMenuY + (i / kMenuCols) * kMenuPitchY);
+
+		if (r < 0 || r >= kMenuIcon)
+			continue;
+		draw_entry_row(line + ix, ppu, m->icon[i][(r >> 3) * 2], r & 7);
+		draw_entry_row(line + ix + kTileH, ppu, m->icon[i][(r >> 3) * 2 + 1], r & 7);
+	}
+	if (m->ring_item < 0)
+		return;
+	for (dy = -1; dy <= 2; dy++) {
+		int ix = kMenuX + (m->ring_item % kMenuCols) * kMenuPitchX;
+		int r = y - (kMenuY + (m->ring_item / kMenuCols) * kMenuPitchY + dy * kTileH);
+
+		if (r < 0 || r >= kTileH)
+			continue;
+		for (dx = -1; dx <= 2; dx++) {
+			if (dx >= 0 && dx <= 1 && dy >= 0 && dy <= 1)
+				continue;
+			draw_entry_row(line + ix + dx * kTileH, ppu,
+				       m->ring[dy + 1][dx + 1], r);
+		}
+	}
+}
+
+/* Rows of the menu that differ between two snapshots, as [*lo, *hi). */
+static void note_rows(int *lo, int *hi, int top, int bottom)
+{
+	if (top < *lo)
+		*lo = top;
+	if (bottom > *hi)
+		*hi = bottom;
+}
+
+static void item_rows(int i, int ring, int *lo, int *hi)
+{
+	int top = kMenuY + (i / kMenuCols) * kMenuPitchY;
+
+	if (ring)
+		note_rows(lo, hi, top - kTileH, top + kMenuIcon + kTileH);
+	else
+		note_rows(lo, hi, top, top + kMenuIcon);
+}
+
+static void menu_changed_rows(const HudMenu *a, const HudMenu *b, int *lo, int *hi)
+{
+	int i;
+
+	*lo = 9999;
+	*hi = -1;
+	if (memcmp(a->pal, b->pal, sizeof a->pal)) {
+		note_rows(lo, hi, kMenuTop, kMenuBottom);
+		return;
+	}
+	for (i = 0; i < kMenuItems; i++)
+		if (memcmp(a->icon[i], b->icon[i], sizeof a->icon[i]))
+			item_rows(i, 0, lo, hi);
+	if (a->ring_item != b->ring_item || memcmp(a->ring, b->ring, sizeof a->ring)) {
+		if (a->ring_item >= 0)
+			item_rows(a->ring_item, 1, lo, hi);
+		if (b->ring_item >= 0)
+			item_rows(b->ring_item, 1, lo, hi);
+	}
+}
+
+static u16 dim(u16 c, int level)
+{
+	int keep = kPanelBlack - level;
+
+	return RGB15(((c >> 0) & 31) * keep / kPanelBlack,
+		     ((c >> 5) & 31) * keep / kPanelBlack,
+		     ((c >> 10) & 31) * keep / kPanelBlack);
+}
+
+/* The panel's colors at the current fade. The box behind them is black, so
+ * dimming each color toward black is the same as fading the panel. */
+static void set_panel_palette(void)
+{
+	int i;
+
+	for (i = 0; i < 32; i++)
+		if (i & 3)
+			BG_PALETTE_SUB[kPalMenu + i] = dim(shown_menu.pal[i], panel_level);
+	BG_PALETTE_SUB[kPalPanelText] = dim(RGB15(31, 31, 31), panel_level);
+}
+
 static int hud_up;
 
 void ZeldaBottomNoteIdle(void)
@@ -569,6 +795,68 @@ static int hud_wanted(void)
 	return !ZeldaHudOnTop() && in_game() && !map_open();
 }
 
+/* The item menu is up from its first drawn frame until Start closes it.
+ * Map states 0 and 1 are still clearing and filling the tile map, and 5 and
+ * 6 are closing. The bottle list (7 to 12) is part of the open menu. */
+static int menu_open(void)
+{
+	int s = overworld_map_state;
+
+	return main_module_index == 14 && submodule_index == 1 &&
+		s >= 2 && s != 5 && s != 6;
+}
+
+/* Nonzero while a map is fading the whole screen; see step_fade. */
+static int fade_phase;
+
+/* Set by the gear button; the item menu or Start clears it. */
+static int gear_on;
+static int menu_was_open;
+
+static int panel_target(void)
+{
+	return menu_open() ? kPanelItems : gear_on ? kPanelGear : kPanelNormal;
+}
+
+/* Screen touches on the two buttons. Items is Start: it opens the game's own
+ * item menu, and again it closes it. Gear shows the gear panel, and closes
+ * the item menu first if that is up. Start is added to the keys for this
+ * one frame, so the game sees an ordinary press. */
+static int button_hit(const HudBox *b, int x, int y)
+{
+	return x >= b->x && x < b->x + b->w && y >= b->y && y < b->y + b->h;
+}
+
+static int start_will_work(void)
+{
+	if (menu_open())
+		return overworld_map_state == 4;
+	return (main_module_index == 7 || main_module_index == 9) &&
+		submodule_index == 0;
+}
+
+void ZeldaBottomInput(u32 *held, u32 down)
+{
+	touchPosition t;
+
+	if (!(down & KEY_TOUCH) || !hud_up || fade_phase)
+		return;
+	touchRead(&t);
+	if (button_hit(&kBoxes[1], t.px, t.py)) {
+		gear_on = 0;
+		if (start_will_work())
+			*held |= KEY_START;
+	} else if (button_hit(&kBoxes[0], t.px, t.py)) {
+		if (menu_open()) {
+			gear_on = 1;
+			if (start_will_work())
+				*held |= KEY_START;
+		} else {
+			gear_on = !gear_on;
+		}
+	}
+}
+
 /* One screen row: the tiled background, then whatever sits on that row. */
 static void compose_row(u8 *line, int y)
 {
@@ -576,8 +864,8 @@ static void compose_row(u8 *line, int y)
 	unsigned i;
 	int x;
 
-	for (x = 0; x < kWidth; x++)
-		line[x] = tex[x % kTexW];
+	for (x = 0; x < kWidth; x += kTexW)
+		memcpy(line + x, tex, kWidth - x < kTexW ? kWidth - x : kTexW);
 
 	for (i = 0; i < sizeof kBoxes / sizeof kBoxes[0]; i++) {
 		const HudBox *b = &kBoxes[i];
@@ -601,6 +889,8 @@ static void compose_row(u8 *line, int y)
 		int left = im->x;
 		const u8 *src;
 
+		if (im->panel != kPanelAlways && im->panel != panel_shown)
+			continue;
 		if (im->box >= 0) {
 			const HudBox *b = &kBoxes[im->box];
 
@@ -615,6 +905,9 @@ static void compose_row(u8 *line, int y)
 				line[left + x] = im->color ? im->color : im->pal_base + src[x];
 		}
 	}
+
+	if (panel_shown == kPanelItems)
+		compose_menu(line, y);
 
 	if (y >= kMeterY && y < kMeterY + kMeterThick) {
 		const u8 *row = shown_magic.px[y - kMeterY];
@@ -710,6 +1003,13 @@ static void draw_hud(void)
 	set_item_palette(&shown_item);
 	set_heart_palette(&shown_hearts);
 	set_magic_palette(&shown_magic);
+	/* The panel comes up already showing what the game is in. */
+	panel_shown = panel_target();
+	panel_level = 0;
+	panel_redraw = -1;
+	menu_was_open = menu_open();
+	build_menu(&shown_menu);
+	set_panel_palette();
 	put_rows(0, kHeight);
 }
 
@@ -744,6 +1044,61 @@ static void refresh_dynamic(void)
 	}
 }
 
+/* The big panel changes between normal, items and gear through black: its
+ * colors dim to nothing, then the new contents are drawn a slice of rows a
+ * frame (the colors are black, so the work cannot be seen), then they come
+ * back. While items is up, the cursor blink and any change in the menu
+ * redraw only the rows they touch. */
+static void update_panel(void)
+{
+	int target;
+
+	if (menu_open() && !menu_was_open)
+		gear_on = 0;
+	menu_was_open = menu_open();
+	target = panel_target();
+
+	if (panel_redraw >= 0) {
+		int to = panel_redraw + kPanelRowsPerFrame;
+
+		if (to > kPanelBottom)
+			to = kPanelBottom;
+		put_rows(panel_redraw, to);
+		panel_redraw = to >= kPanelBottom ? -1 : to;
+		return;
+	}
+
+	if (target != panel_shown) {
+		panel_level += kPanelStep;
+		if (panel_level >= kPanelBlack) {
+			panel_level = kPanelBlack;
+			panel_shown = target;
+			build_menu(&shown_menu);
+			panel_redraw = kPanelTop;
+		}
+		set_panel_palette();
+		return;
+	}
+
+	if (panel_level) {
+		panel_level -= kPanelStep;
+		if (panel_level < 0)
+			panel_level = 0;
+		set_panel_palette();
+	}
+	if (panel_shown == kPanelItems) {
+		int lo, hi;
+
+		build_menu(&next_menu);
+		menu_changed_rows(&shown_menu, &next_menu, &lo, &hi);
+		if (hi > lo) {
+			memcpy(&shown_menu, &next_menu, sizeof shown_menu);
+			set_panel_palette();
+			put_rows(lo, hi);
+		}
+	}
+}
+
 /* Opening or closing a map swaps the bottom screen between the HUD and the
  * idle picture through black: fade out what is up, swap, fade the other in.
  * It runs on the sub engine's master brightness, 0 clear to 16 black, two
@@ -756,7 +1111,6 @@ enum {
 	kFadeBlack = 16
 };
 
-static int fade_phase;
 static int fade_level;
 static int map_was_open;
 
@@ -829,8 +1183,11 @@ void ZeldaBottomUpdate(void)
 	}
 	if (want && hud_up) {
 		refresh_dynamic();
+		update_panel();
 		return;
 	}
+	if (!hud_up)
+		gear_on = 0;
 	if (want == hud_up)
 		return;
 	swap_picture(want);

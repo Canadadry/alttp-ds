@@ -8,3 +8,6 @@
 void ZeldaBottomUpdate(void);
 /* The idle picture was just put up (boot, lid wake). Forget what was shown. */
 void ZeldaBottomNoteIdle(void);
+
+/* Touches on the bottom screen's buttons. May add KEY_START to held. */
+void ZeldaBottomInput(u32 *held, u32 down);
