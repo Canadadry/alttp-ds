@@ -1033,6 +1033,8 @@ typedef struct M7Regs {
 static M7Regs m7_regs[2][SCREEN_HEIGHT + 1];
 static volatile int m7_pub;
 static volatile int m7_on;
+static int m7_pending;
+static int m7_prepared;
 static int m7_ready;
 static int m7_bg;
 static uint32 m7_sig;
@@ -1813,12 +1815,15 @@ static void m7_hw_init(void) {
 	m7_map_ptr = (u8 *)bgGetMapPtr(m7_bg);
 	m7_gfx_ptr = (u8 *)bgGetGfxPtr(m7_bg);
 	m7_ready = 1;
-	m7_sig = 0;
 }
 
-static void m7_upload(const Ppu *ppu) {
-	static u8 map_tmp[0x4000] __attribute__((aligned(4)));
-	static u8 gfx_tmp[0x4000] __attribute__((aligned(4)));
+static u8 m7_map_tmp[0x4000] __attribute__((aligned(4)));
+static u8 m7_gfx_tmp[0x4000] __attribute__((aligned(4)));
+static int m7_gfx_dirty;
+
+/* The hash and the matrix are built while the previous picture is still
+ * up. Vblank only copies bytes and stores line 0. */
+static void m7_prepare_gfx(const Ppu *ppu) {
 	const uint16 *src = ppu->vram;
 	uint32 h = 2166136261u;
 	int i;
@@ -1831,13 +1836,20 @@ static void m7_upload(const Ppu *ppu) {
 		return;
 	m7_sig = h;
 	for (i = 0; i < 0x4000; i++) {
-		map_tmp[i] = (u8)src[i];
-		gfx_tmp[i] = (u8)(src[i] >> 8);
+		m7_map_tmp[i] = (u8)src[i];
+		m7_gfx_tmp[i] = (u8)(src[i] >> 8);
 	}
-	DC_FlushRange(map_tmp, sizeof map_tmp);
-	DC_FlushRange(gfx_tmp, sizeof gfx_tmp);
-	dmaCopyWords(3, map_tmp, m7_map_ptr, sizeof map_tmp);
-	dmaCopyWords(3, gfx_tmp, m7_gfx_ptr, sizeof gfx_tmp);
+	m7_gfx_dirty = 1;
+}
+
+static void m7_flush_gfx(void) {
+	if (!m7_gfx_dirty || !m7_map_ptr)
+		return;
+	DC_FlushRange(m7_map_tmp, sizeof m7_map_tmp);
+	DC_FlushRange(m7_gfx_tmp, sizeof m7_gfx_tmp);
+	dmaCopyWords(3, m7_map_tmp, m7_map_ptr, sizeof m7_map_tmp);
+	dmaCopyWords(3, m7_gfx_tmp, m7_gfx_ptr, sizeof m7_gfx_tmp);
+	m7_gfx_dirty = 0;
 }
 
 static void m7_palettes(const Ppu *ppu, int cover) {
@@ -1912,25 +1924,35 @@ static void m7_build(const Ppu *ppu, int buf) {
 }
 
 /* Four stores, in ITCM, so this finishes inside HBlank. A late store
- * resets the texture X mid-row, which is the torn horizontal line. */
+ * resets the texture X mid-row, which is the torn horizontal line.
+ * Line 0 is stored from vblank. Rewriting it from the last blanking
+ * lines races the start of the picture and tears the top row. */
 static ITCM_CODE void m7_hblank(void) {
 	unsigned line = REG_VCOUNT;
 	const M7Regs *s;
 	vu32 *dst;
 	const u32 *src;
 
-	if (line >= 261)
-		s = &m7_regs[m7_pub][0];
-	else if (line < SCREEN_HEIGHT - 1)
-		s = &m7_regs[m7_pub][line + 1];
-	else
+	if (!(REG_DISPSTAT & DISP_IN_HBLANK))
 		return;
+	if (line >= SCREEN_HEIGHT - 1)
+		return;
+	s = &m7_regs[m7_pub][line + 1];
 	dst = (vu32 *)0x04000020;
 	src = (const u32 *)s;
 	dst[0] = src[0];
 	dst[1] = src[1];
 	dst[2] = src[2];
 	dst[3] = src[3];
+}
+
+void ZeldaHwPrepareMode7(const Ppu *ppu) {
+	int buf = m7_pub ^ 1;
+
+	m7_prepare_gfx(ppu);
+	m7_build(ppu, buf);
+	m7_pending = buf;
+	m7_prepared = 1;
 }
 
 static void m7_regs_write(const M7Regs *s) {
@@ -1948,7 +1970,7 @@ static void m7_dma_stop(void) {
 }
 
 void ZeldaHwPresentMode7(Ppu *ppu) {
-	int buf = m7_pub ^ 1;
+	int buf;
 	int cover = ppu->forcedBlank;
 	int sprites = !cover &&
 		((ppu->screenEnabled[0] | ppu->screenEnabled[1]) & 0x10) != 0;
@@ -1957,12 +1979,11 @@ void ZeldaHwPresentMode7(Ppu *ppu) {
 	m7_dma_stop();
 	if (!m7_ready)
 		m7_hw_init();
-
-	m7_upload(ppu);
-	m7_build(ppu, buf);
+	if (!m7_prepared)
+		ZeldaHwPrepareMode7(ppu);
+	buf = m7_pending;
+	m7_prepared = 0;
 	m7_pub = buf;
-	m7_palettes(ppu, cover);
-	ZeldaHwCommitSprites(sprites);
 
 	REG_DISPCNT = MODE_2_2D | DISPLAY_BG2_ACTIVE | DISPLAY_SPR_ACTIVE |
 		DISPLAY_SPR_1D | DISPLAY_SPR_1D_SIZE_32;
@@ -1976,10 +1997,13 @@ void ZeldaHwPresentMode7(Ppu *ppu) {
 
 	m7_on = cover ? 0 : 1;
 	scanline_irq_sync();
-	/* Still in vblank: line 0's matrix has to be in the registers before
-	 * the picture starts. Writing them once the row has started tears it. */
+	/* Start of vblank, before any copy. Line 0 is not touched again. */
 	if (!cover && REG_VCOUNT >= (unsigned)SCREEN_HEIGHT)
 		m7_regs_write(&m7_regs[buf][0]);
+
+	m7_flush_gfx();
+	m7_palettes(ppu, cover);
+	ZeldaHwCommitSprites(sprites);
 
 	picture_covered = cover;
 	ZeldaHwUseMasterBright(1);
@@ -1991,7 +2015,9 @@ void ZeldaHwInit(void) {
 	m7_dma_stop();
 	m7_on = 0;
 	m7_ready = 0;
+	m7_prepared = 0;
 	m7_sig = 0;
+	m7_gfx_dirty = 0;
 	scanline_irq_sync();
 	videoSetMode(MODE_0_2D);
 	vramSetBankA(VRAM_A_MAIN_BG);

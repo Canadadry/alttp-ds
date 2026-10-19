@@ -17,6 +17,7 @@ static uint32 g_ppu_render_flags;
 void ZeldaHwInit(void);
 void ZeldaHwPresent(Ppu *ppu);
 void ZeldaHwPresentMode7(Ppu *ppu);
+void ZeldaHwPrepareMode7(const Ppu *ppu);
 void ZeldaHwComposeSprites(void);
 void ZeldaHwUseMasterBright(int on);
 
@@ -81,6 +82,12 @@ void ZeldaVideoComposeSprites(void)
 {
 	if (g_zenv.ppu)
 		ZeldaHwComposeSprites();
+}
+
+void ZeldaVideoPrepareMode7(void)
+{
+	if (g_zenv.ppu && g_zenv.ppu->mode == 7)
+		ZeldaHwPrepareMode7(g_zenv.ppu);
 }
 
 void ZeldaVideoDrawPpuFrame(void)

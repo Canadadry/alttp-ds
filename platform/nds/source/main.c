@@ -36,6 +36,9 @@ int main(int argc, char **argv)
 		ZeldaHostTick(held);
 		ZeldaSaveFlush();
 		ZeldaHostAudio();
+		/* Matrix for the map, before the blank, so vblank only stores
+		 * line 0. Building it in the blank was running into that line. */
+		ZeldaVideoPrepareMode7();
 
 		/* Present during vblank. A window or palette write during the
 		 * picture shows up as a full-width bar. */

@@ -7,6 +7,7 @@
 void ZeldaVideoInit(void);
 void ZeldaVideoShowBottom(void);
 void ZeldaVideoComposeSprites(void);
+void ZeldaVideoPrepareMode7(void);
 u16 *ZeldaVideoFramebuffer(void);
 void ZeldaVideoDrawPpuFrame(void);
 uint32 ZeldaVideoRenderFlags(void);
