@@ -90,7 +90,9 @@
 
 enum {
 	kCropY = 16,
-	kBlankNone = -1
+	kBlankNone = -1,
+	/* Status bar, below the cropped top of the picture. */
+	kHudDrop = 3
 };
 
 static int bg_id[4];
@@ -1727,7 +1729,7 @@ static void present_scroll(const Ppu *ppu, int back_bg3) {
 		hw_scroll_y[1] = sy0;
 	}
 	hw_scroll_x[0] = (int)ppu->bgLayer[2].hScroll;
-	hw_scroll_y[0] = sy2;
+	hw_scroll_y[0] = sy2 - kHudDrop;
 	if (back_bg3) {
 		hw_scroll_x[3] = (int)ppu->bgLayer[2].hScroll;
 		hw_scroll_y[3] = sy2;
