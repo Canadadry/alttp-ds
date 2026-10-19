@@ -161,8 +161,11 @@ ppu.itcm.o: ppu.c
 	@echo $(notdir $<)
 	@$(bin2o)
 
+# grit ignores alpha, so transparent pixels are matted to FF00FF first.
 %.s %.h: %.png %.grit
-	$(DEVKITPRO)/tools/bin/grit $< -fts -o$*
+	$(SILENTCMD)python $(LTTP_ROOT)/platform/nds/png_matte.py $< $*.matte.png
+	$(DEVKITPRO)/tools/bin/grit $*.matte.png -ff $(filter %.grit,$^) -fts -o$*
+	@$(RM) $*.matte.png
 
 -include $(DEPSDIR)/*.d
 

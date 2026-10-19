@@ -1,4 +1,5 @@
-# 8-bit bitmap with alpha. Palette index 0 is transparent.
+# 8-bit bitmap. Transparent pixels become FF00FF (see png_matte.py), which
+# grit puts at palette index 0.
 -gB8
 -gb
--gT!
+-gTFF00FF
