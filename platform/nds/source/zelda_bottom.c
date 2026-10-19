@@ -29,6 +29,8 @@ enum {
 	kPalHeart = 128,
 	/* The LIFE text's own colors; index 0 is clear. */
 	kPalLife = 120,
+	/* Thirty-two slots for the magic meter, again one group per palette. */
+	kPalMagic = 64,
 	/* The hearts' shadow over each of the two background colors. */
 	kPalShadow = 126,
 	/* The selected-item border's own colors; index 0 is clear. */
@@ -378,6 +380,165 @@ static void set_heart_palette(const HudHearts *h)
 			BG_PALETTE_SUB[kPalHeart + i] = h->pal[i];
 }
 
+/* A BG3 tile entry as pixels, with its flips applied. */
+static void read_entry(const Ppu *ppu, u16 entry, u8 out[kTileH][kTileH])
+{
+	u8 raw[kTileH][kTileH];
+	int r, c;
+
+	read_tile(ppu, entry & 0x3ff, raw);
+	for (r = 0; r < kTileH; r++) {
+		for (c = 0; c < kTileH; c++) {
+			int sr = (entry & 0x8000) ? kTileH - 1 - r : r;
+			int sc = (entry & 0x4000) ? kTileH - 1 - c : c;
+
+			out[r][c] = raw[sr][sc];
+		}
+	}
+}
+
+/* The magic meter, turned a quarter turn clockwise so it lies on its side
+ * and fills left to right, and made longer in the middle.
+ *
+ * The game's meter is a capsule 16 pixels across inside a block of 3 x 6
+ * tiles, standing up and filling from the bottom. Its ends are rounded
+ * caps and between them is a straight pocket of 32 rows. Here the caps keep
+ * their pixels and only the pocket grows, from 32 to kMeterPocket, so a full
+ * sprite is 5 + 69 + 5 = 79 long (the top cap has 3 more blank rows, which
+ * the half-magic label uses).
+ *
+ * The game fills its pocket in steps of 8 magic, which would stretch to
+ * steps 2 or 3 pixels wide. Instead the fill is drawn from link_magic_power
+ * itself, 0 to 128, over the whole pocket. Pocket rows are cut from the
+ * game's own tiles: an empty row, a filled row, and the bright row that
+ * leads the fill. The frame and the caps are read live from the HUD buffer,
+ * so the half-magic cap shows up by itself. */
+enum {
+	kMeterX = 169,
+	kMeterY = 140,
+	kMeterThick = 16,
+	/* Where the capsule sits in its 3-tile-wide block. */
+	kSrcLeft = 4,
+	kTopRows = 8,		/* source rows 0..7, 5 of them drawn normally */
+	kBottomRows = 5,	/* source rows 40..44 */
+	kMeterPocket = 69,
+	kMeterLen = kBottomRows + kMeterPocket + kTopRows,
+	kMagicMax = 128,
+	/* HUDXY(2, 0) in the 32-word-wide HUD buffer. */
+	kMagicWord = 2,
+	/* Fill tiles from the game's own meter table. */
+	kFillEmpty = 0x3cf5,
+	kFillFull = 0x3c5e,
+	kFillEdge = 0x3c4e
+};
+
+typedef struct {
+	u8 px[kMeterThick][kMeterLen];	/* palette slot, 0 is clear */
+	u16 pal[32];
+} HudMagic;
+
+static HudMagic shown_magic;
+static HudMagic next_magic;
+
+static void note_pal(HudMagic *m, const Ppu *ppu, u16 entry)
+{
+	int pal = (entry >> 10) & 7;
+	int p;
+
+	for (p = 1; p < 4; p++)
+		m->pal[pal * 4 + p] = ppu->cgram[pal * 4 + p] & 0x7fff;
+}
+
+static u8 slot_for(u16 entry, u8 v)
+{
+	return v ? kPalMagic + ((entry >> 10) & 7) * 4 + v : 0;
+}
+
+/* One cross-section of the pocket, 16 pixels, with the given fill tile
+ * between the frame's two sides. */
+static void pocket_section(HudMagic *m, const Ppu *ppu, const u16 *buf,
+			   u16 fill, u8 out[kMeterThick])
+{
+	/* Tile row 1 is straight pocket: frame, fill, frame. */
+	u16 entry[3] = { buf[32 + kMagicWord], fill, buf[32 + kMagicWord + 2] };
+	u8 tile[3][kTileH][kTileH];
+	int i, ty;
+
+	for (i = 0; i < 3; i++) {
+		read_entry(ppu, entry[i], tile[i]);
+		note_pal(m, ppu, entry[i]);
+	}
+	for (ty = 0; ty < kMeterThick; ty++) {
+		int x = ty + kSrcLeft;
+
+		out[ty] = slot_for(entry[x >> 3], tile[x >> 3][0][x & 7]);
+	}
+}
+
+static void build_magic(HudMagic *m)
+{
+	const Ppu *ppu = g_zenv.ppu;
+	const u16 *buf = &hud_tile_indices_buffer[0];
+	u8 section_empty[kMeterThick], section_full[kMeterThick], section_edge[kMeterThick];
+	int power = link_magic_power;
+	int filled, tx, ty, i, t;
+	u8 caps[2][3][kTileH][kTileH];
+	u16 cap_entry[2][3];
+
+	memset(m, 0, sizeof *m);
+	if (power > kMagicMax)
+		power = kMagicMax;
+	/* Round up, so any magic at all shows. */
+	filled = (power * kMeterPocket + kMagicMax - 1) / kMagicMax;
+
+	/* Tile rows 0 and 5 of the block hold the two caps. */
+	for (t = 0; t < 2; t++) {
+		for (i = 0; i < 3; i++) {
+			cap_entry[t][i] = buf[(t ? 5 : 0) * 32 + kMagicWord + i];
+			read_entry(ppu, cap_entry[t][i], caps[t][i]);
+			note_pal(m, ppu, cap_entry[t][i]);
+		}
+	}
+	pocket_section(m, ppu, buf, kFillEmpty, section_empty);
+	pocket_section(m, ppu, buf, kFillFull, section_full);
+	pocket_section(m, ppu, buf, kFillEdge, section_edge);
+
+	for (tx = 0; tx < kMeterLen; tx++) {
+		for (ty = 0; ty < kMeterThick; ty++) {
+			int x = ty + kSrcLeft;
+			u8 v;
+
+			if (tx < kBottomRows) {
+				/* Source row 44 - tx, row 4 - tx of the bottom tiles. */
+				v = slot_for(cap_entry[1][x >> 3],
+					     caps[1][x >> 3][kBottomRows - 1 - tx][x & 7]);
+			} else if (tx < kBottomRows + kMeterPocket) {
+				int k = tx - kBottomRows;
+
+				v = k < filled - 1 ? section_full[ty] :
+				    k == filled - 1 ? section_edge[ty] :
+				    section_empty[ty];
+			} else {
+				/* Source row 7 - j of the top tiles. */
+				int j = tx - kBottomRows - kMeterPocket;
+
+				v = slot_for(cap_entry[0][x >> 3],
+					     caps[0][x >> 3][kTopRows - 1 - j][x & 7]);
+			}
+			m->px[ty][tx] = v;
+		}
+	}
+}
+
+static void set_magic_palette(const HudMagic *m)
+{
+	int i;
+
+	for (i = 0; i < 32; i++)
+		if (i & 3)
+			BG_PALETTE_SUB[kPalMagic + i] = m->pal[i];
+}
+
 static int hud_up;
 
 void ZeldaBottomNoteIdle(void)
@@ -445,6 +606,15 @@ static void compose_row(u8 *line, int y)
 		}
 	}
 
+	if (y >= kMeterY && y < kMeterY + kMeterThick) {
+		const u8 *row = shown_magic.px[y - kMeterY];
+
+		for (x = 0; x < kMeterLen; x++) {
+			if (row[x])
+				line[kMeterX + x] = row[x];
+		}
+	}
+
 	if (y >= kHeartY && y < kHeartY + kHeartH) {
 		const u8 *row = shown_hearts.px[y - kHeartY];
 
@@ -505,6 +675,7 @@ static void draw_hud(void)
 	build_counters(&shown);
 	build_item(&shown_item);
 	build_hearts(&shown_hearts);
+	build_magic(&shown_magic);
 	dmaCopy(tex_menuPal, BG_PALETTE_SUB, tex_menuPalLen);
 	for (i = 1; i < 4; i++) {
 		BG_PALETTE_SUB[kPalBorder + i] = selected_item_borderPal[i];
@@ -528,6 +699,7 @@ static void draw_hud(void)
 	set_counter_palette(&shown);
 	set_item_palette(&shown_item);
 	set_heart_palette(&shown_hearts);
+	set_magic_palette(&shown_magic);
 	put_rows(0, kHeight);
 }
 
@@ -553,6 +725,12 @@ static void refresh_dynamic(void)
 		memcpy(&shown_hearts, &next_hearts, sizeof shown_hearts);
 		set_heart_palette(&shown_hearts);
 		put_rows(kHeartY, kHeartY + kHeartH);
+	}
+	build_magic(&next_magic);
+	if (memcmp(&next_magic, &shown_magic, sizeof shown_magic)) {
+		memcpy(&shown_magic, &next_magic, sizeof shown_magic);
+		set_magic_palette(&shown_magic);
+		put_rows(kMeterY, kMeterY + kMeterThick);
 	}
 }
 
