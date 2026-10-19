@@ -20,6 +20,7 @@
 #include "types.h"
 #include "zelda_rtl.h"
 #include "features.h"
+#include "hud.h"
 #include "select_file.h"
 #include "zelda_save.h"
 
@@ -52,15 +53,24 @@ const char *ZeldaSaveStatus(void)
 }
 
 /* Past the three slots and their mirrors (last byte 0x1DFF). A display
- * choice, not part of a slot checksum. */
-enum { kSetOff = 0x1E00, kSetVersion = 1 };
+ * choice, not part of a slot checksum.
+ * Version 1: hud, beep, checksum at byte 7.
+ * Version 2 adds bomb and arrow caps and stores the checksum at byte 9. */
+enum { kSetOff = 0x1E00, kSetVersion = 2 };
 
 static int g_hud_top = 1;
 static int g_low_hp_beep = 1;
+static int g_bomb_cap = 10;
+static int g_arrow_cap = 30;
 
-static uint8 settings_sum(const uint8 *p)
+static uint8 settings_sum(const uint8 *p, int n)
 {
-	return (uint8)(p[0] ^ p[1] ^ p[2] ^ p[3] ^ p[4] ^ p[5] ^ p[6]);
+	uint8 s = 0;
+	int i;
+
+	for (i = 0; i < n; i++)
+		s ^= p[i];
+	return s;
 }
 
 static void apply_low_hp_beep(void)
@@ -69,6 +79,11 @@ static void apply_low_hp_beep(void)
 		g_wanted_zelda_features &= ~kFeatures0_DisableLowHealthBeep;
 	else
 		g_wanted_zelda_features |= kFeatures0_DisableLowHealthBeep;
+}
+
+static void apply_carry_caps(void)
+{
+	Hud_SetCarryCaps((uint8)g_bomb_cap, (uint8)g_arrow_cap);
 }
 
 static void settings_store(void)
@@ -85,7 +100,9 @@ static void settings_store(void)
 	p[4] = kSetVersion;
 	p[5] = (uint8)(g_hud_top ? 0 : 1);
 	p[6] = (uint8)(g_low_hp_beep ? 0 : 1);
-	p[7] = settings_sum(p);
+	p[7] = (uint8)(g_bomb_cap == 99);
+	p[8] = (uint8)(g_arrow_cap == 99);
+	p[9] = settings_sum(p, 9);
 	ZeldaWriteSram();
 }
 
@@ -95,13 +112,23 @@ static void settings_load(void)
 
 	g_hud_top = 1;
 	g_low_hp_beep = 1;
+	g_bomb_cap = 10;
+	g_arrow_cap = 30;
 	if (p[0] == 'L' && p[1] == 'T' && p[2] == 'D' && p[3] == 'S' &&
-	    p[4] == kSetVersion && p[5] <= 1 && p[6] <= 1 &&
-	    p[7] == settings_sum(p)) {
-		g_hud_top = p[5] == 0;
-		g_low_hp_beep = p[6] == 0;
+	    p[5] <= 1 && p[6] <= 1) {
+		if (p[4] == 1 && p[7] == settings_sum(p, 7)) {
+			g_hud_top = p[5] == 0;
+			g_low_hp_beep = p[6] == 0;
+		} else if (p[4] == kSetVersion && p[7] <= 1 && p[8] <= 1 &&
+			   p[9] == settings_sum(p, 9)) {
+			g_hud_top = p[5] == 0;
+			g_low_hp_beep = p[6] == 0;
+			g_bomb_cap = p[7] ? 99 : 10;
+			g_arrow_cap = p[8] ? 99 : 30;
+		}
 	}
 	apply_low_hp_beep();
+	apply_carry_caps();
 }
 
 int ZeldaHudOnTop(void)
@@ -124,6 +151,30 @@ void ZeldaLowHpBeepSet(int on)
 {
 	g_low_hp_beep = on != 0;
 	apply_low_hp_beep();
+	settings_store();
+}
+
+int ZeldaBombCap(void)
+{
+	return g_bomb_cap;
+}
+
+void ZeldaBombCapSet(int cap)
+{
+	g_bomb_cap = cap == 99 ? 99 : 10;
+	apply_carry_caps();
+	settings_store();
+}
+
+int ZeldaArrowCap(void)
+{
+	return g_arrow_cap;
+}
+
+void ZeldaArrowCapSet(int cap)
+{
+	g_arrow_cap = cap == 99 ? 99 : 30;
+	apply_carry_caps();
 	settings_store();
 }
 

@@ -16,3 +16,9 @@ void ZeldaHudSetOnTop(int on);
 /* 1: the low-health beep plays. 0: it stays quiet. */
 int ZeldaLowHpBeep(void);
 void ZeldaLowHpBeepSet(int on);
+
+/* Carry limits. Bombs are 10 or 99. Arrows are 30 or 99. */
+int ZeldaBombCap(void);
+void ZeldaBombCapSet(int cap);
+int ZeldaArrowCap(void);
+void ZeldaArrowCapSet(int cap);
