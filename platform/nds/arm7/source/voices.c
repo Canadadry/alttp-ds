@@ -231,7 +231,7 @@ static unsigned side_level(int gain, int vol, int master)
 
 /* Hardware pan splits one volume across both speakers. The channel
  * volume has to carry both sides or a centered voice is half as loud.
- * Pan 0 is the right speaker and 127 is the left. */
+ * Pan 0 is the left speaker and 127 is the right. */
 static void voice_level(const ZeldaApuIpc *ipc, const Voice *v,
 			unsigned *vol, unsigned *pan)
 {
@@ -244,7 +244,7 @@ static void voice_level(const ZeldaApuIpc *ipc, const Voice *v,
 		*pan = 64;
 		return;
 	}
-	*pan = (l * 127u) / sum;
+	*pan = (r * 127u) / sum;
 	if (*pan > 127)
 		*pan = 127;
 	if (sum > 126)
@@ -623,10 +623,10 @@ static void echo_start(ZeldaApuIpc *ipc)
 	memset(ipc->echo_r_buf, 0, ZELDA_APU_ECHO_SAMPLES);
 	s_echo_done = 0;
 	s_echo_t0 = tickGetCount();
-	soundChPreparePcm(8, vol_l, SoundVolDiv_1, 127, timer, SoundMode_Repeat,
+	soundChPreparePcm(8, vol_l, SoundVolDiv_1, 0, timer, SoundMode_Repeat,
 			  SoundFmt_Pcm8, ipc->echo_l_buf, 0,
 			  ZELDA_APU_ECHO_SAMPLES / 4);
-	soundChPreparePcm(9, vol_r, SoundVolDiv_1, 0, timer, SoundMode_Repeat,
+	soundChPreparePcm(9, vol_r, SoundVolDiv_1, 127, timer, SoundMode_Repeat,
 			  SoundFmt_Pcm8, ipc->echo_r_buf, 0,
 			  ZELDA_APU_ECHO_SAMPLES / 4);
 	soundChStart(8);

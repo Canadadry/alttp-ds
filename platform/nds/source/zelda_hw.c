@@ -702,6 +702,18 @@ static int lamp_held_in_dark(void) {
 		dung_hdr_bg2_properties != 2;
 }
 
+static int lamp_transition(void) {
+	return main_module_index == 7 && submodule_index != 0 &&
+		submodule_index != 20;
+}
+
+/* The lit room's header is loaded before the scroll finishes, and its
+ * color math is not subtract. The picture is still the dark room. */
+static int lamp_leaving_dark(void) {
+	return lamp_transition() && dung_want_lights_out_copy &&
+		!dung_want_lights_out && link_item_torch && !dung_num_lit_torches;
+}
+
 static int lamp_cone(const Ppu *ppu) {
 	int playing = main_module_index == 7 && submodule_index != 20;
 	int inventory = main_module_index == 14 && submodule_index == 1;
@@ -709,8 +721,9 @@ static int lamp_cone(const Ppu *ppu) {
 	 * cone graphic in front of the room, and that graphic is the grey shape. */
 	int text = main_module_index == 14 && submodule_index == 2 &&
 		saved_module_for_menu == 7;
+	int leaving = lamp_leaving_dark();
 	int cone = hdr_dungeon_dark_with_lantern ||
-		((playing || text) && lamp_held_in_dark());
+		((playing || text) && lamp_held_in_dark()) || leaving;
 
 	if ((!playing && !inventory && !text) || ppu->forcedBlank)
 		return 0;
@@ -719,7 +732,9 @@ static int lamp_cone(const Ppu *ppu) {
 	/* Lit torches replace the cone with a global brightness. */
 	if (dung_num_lit_torches && (TS_copy & 0x01) == 0)
 		return 0;
-	if (!ppu->addSubscreen || !ppu->subtractColor || ppu->preventMathMode == 3)
+	if (!ppu->addSubscreen || ppu->preventMathMode == 3)
+		return 0;
+	if (!ppu->subtractColor && !leaving)
 		return 0;
 	return 1;
 }
@@ -1367,24 +1382,34 @@ static int lamp_mask_relevant_same(const uint16 *mask) {
 	return 1;
 }
 
+static void lamp_closed(u16 *span) {
+	int y;
+
+	for (y = 0; y < SCREEN_HEIGHT; y++)
+		span[y] = 0x00ff;
+}
+
 /* The hole is the dark part of the cone. If the cone has no dark pixel,
  * the opaque graphic itself is the hole. A door fade rewrites the other
  * palettes on every step, and each quadrant of the new room lands in its
- * own frame. Rebuilding the 64x64 hole for either of those is the stall,
- * and a room whose floor graphic is not empty (the water rooms) makes
- * every one of those rebuilds walk the whole map. Hold the hole already
- * on screen until the pan is over, then build once. */
+ * own frame. Scanning that half-loaded map treats the previous room as
+ * the hole, so the first dark room stays fully lit until the pan ends.
+ * Hold a cone we already have. Otherwise keep the room black until the
+ * real cone is on screen. */
 static void lamp_fill_spans(const Ppu *ppu, u16 *span) {
 	const BgLayer *layer = &ppu->bgLayer[0];
-	int transitioning = main_module_index == 7 && submodule_index != 0;
+	int transitioning = lamp_transition();
 	uint16 mask[8];
 	int words;
 	uint32 sig;
 	uint8 geom;
 	int i;
 
-	if (transitioning && lamp_cache_ok) {
-		lamp_project(layer, span);
+	if (transitioning) {
+		if (lamp_cache_ok)
+			lamp_project(layer, span);
+		else
+			lamp_closed(span);
 		return;
 	}
 	words = map_words(layer->tilemapWider, layer->tilemapHigher);
