@@ -707,25 +707,63 @@ static int lamp_transition(void) {
 		submodule_index != 20;
 }
 
-/* The lit room's header is loaded before the scroll finishes, and its
- * color math is not subtract. The picture is still the dark room. */
+/* Set on the first frame of a transition, before the next header
+ * replaces the flag. dung_want_lights_out_copy stays from the room
+ * before this one, so a lit room entered from the dark still looks
+ * like a dark exit. */
+static int lamp_left_dark;
+
+static void lamp_watch_transition(void) {
+	static int watching;
+
+	if (!lamp_transition()) {
+		watching = 0;
+		return;
+	}
+	if (watching)
+		return;
+	watching = 1;
+	lamp_left_dark = dung_want_lights_out && link_item_torch &&
+		!dung_num_lit_torches;
+}
+
+/* Door load replaces the header before the scroll. The picture is
+ * still the dark room until that scroll lands. */
 static int lamp_leaving_dark(void) {
-	return lamp_transition() && dung_want_lights_out_copy &&
-		!dung_want_lights_out && link_item_torch && !dung_num_lit_torches;
+	lamp_watch_transition();
+	if (!lamp_left_dark || dung_want_lights_out)
+		return 0;
+	return submodule_index == 2 && subsubmodule_index < 9;
+}
+
+/* The next room may already be marked dark. Until the scroll, this
+ * screen is still the lit one, and a cone on it is the lantern outline. */
+static int lamp_lit_room_still_up(void) {
+	lamp_watch_transition();
+	if (!lamp_transition() || lamp_left_dark)
+		return 0;
+	if (submodule_index == 2 || submodule_index == 6 ||
+	    submodule_index == 14 || submodule_index == 17 ||
+	    submodule_index == 18)
+		return subsubmodule_index < 8;
+	return 0;
 }
 
 static int lamp_cone(const Ppu *ppu) {
 	int playing = main_module_index == 7 && submodule_index != 20;
 	int inventory = main_module_index == 14 && submodule_index == 1;
-	/* A message switches to module 14. Dropping the window there draws the
-	 * cone graphic in front of the room, and that graphic is the grey shape. */
-	int text = main_module_index == 14 && submodule_index == 2 &&
-		saved_module_for_menu == 7;
+	/* A message or the save menu switches to module 14. Dropping the
+	 * window there draws the cone graphic in front of the room, and
+	 * that graphic is the grey shape. Submodule 11 is continue / quit. */
+	int dungeon_ui = main_module_index == 14 && saved_module_for_menu == 7 &&
+		(submodule_index == 2 || submodule_index == 11);
 	int leaving = lamp_leaving_dark();
 	int cone = hdr_dungeon_dark_with_lantern ||
-		((playing || text) && lamp_held_in_dark()) || leaving;
+		((playing || dungeon_ui) && lamp_held_in_dark()) || leaving;
 
-	if ((!playing && !inventory && !text) || ppu->forcedBlank)
+	if (lamp_lit_room_still_up())
+		return 0;
+	if ((!playing && !inventory && !dungeon_ui) || ppu->forcedBlank)
 		return 0;
 	if (!cone)
 		return 0;
@@ -740,7 +778,7 @@ static int lamp_cone(const Ppu *ppu) {
 }
 
 static int math_active(const Ppu *ppu) {
-	if (lamp_cone(ppu))
+	if (lamp_cone(ppu) || lamp_lit_room_still_up())
 		return 0;
 	if (ppu->preventMathMode == 3 || (ppu->mathEnabled & 0x3f) == 0)
 		return 0;
@@ -1406,7 +1444,9 @@ static void lamp_fill_spans(const Ppu *ppu, u16 *span) {
 	int i;
 
 	if (transitioning) {
-		if (lamp_cache_ok)
+		/* A cone cached from an earlier dark room is the wrong
+		 * hole once this transition started in a lit room. */
+		if (lamp_cache_ok && lamp_left_dark)
 			lamp_project(layer, span);
 		else
 			lamp_closed(span);
@@ -1460,7 +1500,12 @@ static void present_iris(const Ppu *ppu) {
 	}
 	iris_publish = ((uint32)idx << 8) | ((on || lamp) ? 1u : 0u) | (lamp ? 2u : 0u);
 	scanline_irq_sync();
-	if (REG_VCOUNT >= 261)
+	/* Present runs at the start of vblank, before the room upload.
+	 * Spotlight_open leaves a closed circle. Waiting for line 261 lets
+	 * that upload draw one full frame of the room with the old window.
+	 * Mid-frame the scanline IRQ owns the window, so a latch here would
+	 * paint one span across the circle. */
+	if (REG_VCOUNT >= (unsigned)SCREEN_HEIGHT)
 		iris_latch_frame();
 }
 
@@ -1701,11 +1746,14 @@ void ZeldaHwPresent(Ppu *ppu) {
 	 * Castle writes (CGADSUB 0x20). That must not become the rain blend.
 	 * The title picture has no ground layer, so it stays behind the sprites. */
 	int layer_math = (ppu->mathEnabled & 0x1f) != 0;
+	int lit_still = lamp_lit_room_still_up();
 	int lamp = lamp_cone(ppu);
+	int hide_early_cone = lit_still && lamp_held_in_dark();
 	/* The lamp cone is subscreen BG1 with subtract math, which is the same
 	 * test as rain. It is not rain: the hole is a window, and the graphic
 	 * must not be drawn on top of the room. */
-	int overlay = !lamp && bg1_sub && !bg1_main && (main_en & 0x02) &&
+	int overlay = !lamp && !hide_early_cone && bg1_sub && !bg1_main &&
+		(main_en & 0x02) &&
 		ppu->addSubscreen && ppu->preventMathMode != 3 &&
 		layer_math;
 	/* Rooms whose header really adds the subscreen into BG2 (Translucent,
@@ -1789,7 +1837,7 @@ void ZeldaHwPresent(Ppu *ppu) {
 		bgHide(bg_id[0]);
 	}
 
-	if (lamp) {
+	if (lamp || hide_early_cone) {
 		/* The cone lives on the subscreen layer. Door frames are BG2
 		 * priority tiles copied onto the front layer; those stay. */
 		bgHide(bg_id[2]);
