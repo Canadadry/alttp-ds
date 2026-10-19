@@ -24,6 +24,9 @@ int ZeldaMapUpdate(int *lo, int *hi);
 /* One screen row of the map: kMapW palette slots, for screen row y. */
 void ZeldaMapRow(u8 *dst, int y);
 
+/* Nonzero once after the map's colors change. */
+int ZeldaMapTakePalette(void);
+
 /* Colors of the map, by entry, and the palette slot each is shown in. */
 const u16 *ZeldaMapColors(void);
 u8 ZeldaMapSlot(int entry);

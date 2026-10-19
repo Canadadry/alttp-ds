@@ -33,6 +33,7 @@ enum {
 	kWorldTiles = 64,	/* the map is 64 x 64 tiles */
 	kLandMin = 128,		/* the land, in map pixels */
 	kLandMax = 384,
+	kLandSize = kLandMax - kLandMin,
 	kWorldColors = kMapColors - 3,
 
 	kWhite = kMapColors - 3,
@@ -84,6 +85,11 @@ static int tiles_dungeon;
 
 static u8 world_map[kWorldTiles * kWorldTiles];
 static int world_dark = -1;
+/* The land as pixels: palette slots, 256 x 256. */
+static u8 world_pic[kLandSize][kLandSize] __attribute__((aligned(4)));
+
+/* Set when the colors change; see ZeldaMapTakePalette. */
+static int pal_dirty;
 
 static u8 dung_pic[kMapH][kMapW] __attribute__((aligned(4)));
 static u16 dung_ent[kGridSize * kGridSize * 4];
@@ -103,6 +109,14 @@ static void init_slots(void)
 const u16 *ZeldaMapColors(void)
 {
 	return colors;
+}
+
+int ZeldaMapTakePalette(void)
+{
+	int d = pal_dirty;
+
+	pal_dirty = 0;
+	return d;
 }
 
 u8 ZeldaMapSlot(int entry)
@@ -147,9 +161,27 @@ static void build_world(int dark)
 					kDarkOverworldTilemap[r * 32 + c];
 	world_dark = dark;
 
+	/* The land, drawn once as pixels, a tile row at a time in two words.
+	 * Scrolling is then one copy per row. */
+	for (r = 0; r < kLandSize / 8; r++) {
+		for (c = 0; c < kLandSize / 8; c++) {
+			const u32 *src = (const u32 *)(tiles +
+				world_map[(kLandMin / 8 + r) * kWorldTiles + kLandMin / 8 + c] * kTileBytes);
+			int y;
+
+			for (y = 0; y < 8; y++) {
+				u32 *dst = (u32 *)&world_pic[r * 8 + y][c * 8];
+
+				dst[0] = src[y * 2];
+				dst[1] = src[y * 2 + 1];
+			}
+		}
+	}
+
 	for (i = 0; i < kWorldColors; i++)
 		colors[i] = pal[(dark ? 128 : 0) + i];
 	marker_colors();
+	pal_dirty = 1;
 }
 
 static int clamp(int v, int lo, int hi)
@@ -184,21 +216,7 @@ static void world_view(View *v)
 
 static void world_row(u8 *dst, int r)
 {
-	int py = shown.oy + r;
-	const u8 *map = world_map + (py >> 3) * kWorldTiles;
-	int fy = (py & 7) * 8;
-	int x = 0;
-
-	while (x < kMapW) {
-		int px = shown.ox + x;
-		int fx = px & 7;
-		int n = 8 - fx;
-
-		if (n > kMapW - x)
-			n = kMapW - x;
-		memcpy(dst + x, tiles + map[px >> 3] * kTileBytes + fy + fx, n);
-		x += n;
-	}
+	memcpy(dst, &world_pic[shown.oy + r - kLandMin][shown.ox - kLandMin], kMapW);
 }
 
 /* ---- Dungeon ---- */
@@ -264,6 +282,7 @@ static void build_dungeon_colors(void)
 		for (v = 1; v < 8; v++)
 			colors[(p - 2) * 7 + v - 1] = pal[(p - 2) * 16 + v];
 	marker_colors();
+	pal_dirty = 1;
 }
 
 /* The four tile entries of every room on a floor, as the game's map
@@ -552,6 +571,11 @@ int ZeldaMapUpdate(int *lo, int *hi)
 				full = 1;
 			}
 		}
+	} else if (player_is_indoors) {
+		/* A cave or house, which has no map. Draw nothing. */
+		if (shown.mode != kModeNone || shown.id != -1)
+			full = 1;
+		n.id = -1;
 	} else {
 		world_view(&n);
 		if (shown.mode != kModeWorld || world_dark != n.id) {

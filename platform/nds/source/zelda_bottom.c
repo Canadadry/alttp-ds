@@ -1038,6 +1038,9 @@ static u16 dim(u16 c, int level)
 {
 	int keep = kPanelBlack - level;
 
+	if (!level)
+		return c;
+
 	return RGB15(((c >> 0) & 31) * keep / kPanelBlack,
 		     ((c >> 5) & 31) * keep / kPanelBlack,
 		     ((c >> 10) & 31) * keep / kPanelBlack);
@@ -1553,7 +1556,8 @@ static void update_panel(void)
 
 		/* Link moving, the map scrolling, the marker blinking. */
 		if (ZeldaMapUpdate(&lo, &hi)) {
-			set_panel_palette();
+			if (ZeldaMapTakePalette())
+				set_panel_palette();
 			put_map_rows(lo, hi);
 		}
 	}
