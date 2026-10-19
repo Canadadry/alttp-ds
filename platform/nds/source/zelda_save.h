@@ -12,3 +12,7 @@ const char *ZeldaSaveStatus(void);
 /* 1: status bar stays on the top screen. 0: that strip is left off the top. */
 int ZeldaHudOnTop(void);
 void ZeldaHudSetOnTop(int on);
+
+/* 1: the low-health beep plays. 0: it stays quiet. */
+int ZeldaLowHpBeep(void);
+void ZeldaLowHpBeepSet(int on);

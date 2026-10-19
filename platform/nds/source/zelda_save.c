@@ -19,6 +19,7 @@
 
 #include "types.h"
 #include "zelda_rtl.h"
+#include "features.h"
 #include "select_file.h"
 #include "zelda_save.h"
 
@@ -55,32 +56,25 @@ const char *ZeldaSaveStatus(void)
 enum { kSetOff = 0x1E00, kSetVersion = 1 };
 
 static int g_hud_top = 1;
+static int g_low_hp_beep = 1;
 
 static uint8 settings_sum(const uint8 *p)
 {
 	return (uint8)(p[0] ^ p[1] ^ p[2] ^ p[3] ^ p[4] ^ p[5] ^ p[6]);
 }
 
-static void settings_load(void)
+static void apply_low_hp_beep(void)
 {
-	const uint8 *p = g_zenv.sram + kSetOff;
-
-	if (p[0] != 'L' || p[1] != 'T' || p[2] != 'D' || p[3] != 'S' ||
-	    p[4] != kSetVersion || p[5] > 1 || p[7] != settings_sum(p))
-		return;
-	g_hud_top = p[5] == 0;
+	if (g_low_hp_beep)
+		g_wanted_zelda_features &= ~kFeatures0_DisableLowHealthBeep;
+	else
+		g_wanted_zelda_features |= kFeatures0_DisableLowHealthBeep;
 }
 
-int ZeldaHudOnTop(void)
-{
-	return g_hud_top;
-}
-
-void ZeldaHudSetOnTop(int on)
+static void settings_store(void)
 {
 	uint8 *p;
 
-	g_hud_top = on != 0;
 	if (!g_zenv.sram)
 		return;
 	p = g_zenv.sram + kSetOff;
@@ -90,9 +84,47 @@ void ZeldaHudSetOnTop(int on)
 	p[3] = 'S';
 	p[4] = kSetVersion;
 	p[5] = (uint8)(g_hud_top ? 0 : 1);
-	p[6] = 0;
+	p[6] = (uint8)(g_low_hp_beep ? 0 : 1);
 	p[7] = settings_sum(p);
 	ZeldaWriteSram();
+}
+
+static void settings_load(void)
+{
+	const uint8 *p = g_zenv.sram + kSetOff;
+
+	g_hud_top = 1;
+	g_low_hp_beep = 1;
+	if (p[0] == 'L' && p[1] == 'T' && p[2] == 'D' && p[3] == 'S' &&
+	    p[4] == kSetVersion && p[5] <= 1 && p[6] <= 1 &&
+	    p[7] == settings_sum(p)) {
+		g_hud_top = p[5] == 0;
+		g_low_hp_beep = p[6] == 0;
+	}
+	apply_low_hp_beep();
+}
+
+int ZeldaHudOnTop(void)
+{
+	return g_hud_top;
+}
+
+void ZeldaHudSetOnTop(int on)
+{
+	g_hud_top = on != 0;
+	settings_store();
+}
+
+int ZeldaLowHpBeep(void)
+{
+	return g_low_hp_beep;
+}
+
+void ZeldaLowHpBeepSet(int on)
+{
+	g_low_hp_beep = on != 0;
+	apply_low_hp_beep();
+	settings_store();
 }
 
 static int read_sec(u32 lba)
