@@ -6,6 +6,8 @@
 /* SDL-style PPU present, cloned from vendor/zelda3/src/main.c. */
 void ZeldaVideoInit(void);
 void ZeldaVideoShowBottom(void);
+/* 256x256 8-bit bitmap of the bottom screen. Valid after ZeldaVideoShowBottom. */
+u16 *ZeldaVideoBottomFramebuffer(void);
 /* Lid sleep powers the LCDs off. The next present has to rebuild both screens. */
 void ZeldaVideoWake(void);
 void ZeldaVideoComposeSprites(void);

@@ -5,6 +5,7 @@
 #include "config.h"
 #include "util.h"
 #include "zelda_video.h"
+#include "zelda_bottom.h"
 #include "bottom-screen-idle.h"
 
 enum {
@@ -13,6 +14,7 @@ enum {
 
 static int bg_main;
 static int hw_bound;
+static int bg_bottom;
 static uint32 g_ppu_render_flags;
 
 void ZeldaHwInit(void);
@@ -36,13 +38,17 @@ void __wrap_ppu_runLine(Ppu *ppu, int line)
 
 void ZeldaVideoShowBottom(void)
 {
-	int bg;
-
 	videoSetModeSub(MODE_5_2D);
 	vramSetBankC(VRAM_C_SUB_BG);
-	bg = bgInitSub(3, BgType_Bmp8, BgSize_B8_256x256, 0, 0);
-	dmaCopy(bottom_screen_idleBitmap, bgGetGfxPtr(bg), bottom_screen_idleBitmapLen);
+	bg_bottom = bgInitSub(3, BgType_Bmp8, BgSize_B8_256x256, 0, 0);
+	dmaCopy(bottom_screen_idleBitmap, bgGetGfxPtr(bg_bottom), bottom_screen_idleBitmapLen);
 	dmaCopy(bottom_screen_idlePal, BG_PALETTE_SUB, bottom_screen_idlePalLen);
+	ZeldaBottomNoteIdle();
+}
+
+u16 *ZeldaVideoBottomFramebuffer(void)
+{
+	return bgGetGfxPtr(bg_bottom);
 }
 
 void ZeldaVideoWake(void)

@@ -1,0 +1,4 @@
+# 8-bit bitmap with alpha. Palette index 0 is transparent.
+-gB8
+-gb
+-gT!

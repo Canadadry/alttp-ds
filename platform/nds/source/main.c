@@ -2,6 +2,7 @@
 #include <fat.h>
 #include <filesystem.h>
 
+#include "zelda_bottom.h"
 #include "zelda_host.h"
 #include "zelda_save.h"
 #include "zelda_video.h"
@@ -44,6 +45,7 @@ int main(int argc, char **argv)
 		 * picture shows up as a full-width bar. */
 		swiWaitForVBlank();
 		ZeldaHostBlit(framebuffer);
+		ZeldaBottomUpdate();
 	}
 
 	return 0;

@@ -1,0 +1,4 @@
+# 8-bit bitmap, 48x48 tile for the HUD background. Two colors; the HUD
+# code adds black and gold at fixed palette slots.
+-gB8
+-gb
