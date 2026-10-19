@@ -1,57 +1,168 @@
 # LttP DS
 
-A Nintendo DS (Phat / Lite) port of [snesrev/zelda3](https://github.com/snesrev/zelda3), a C reimplementation of *The Legend of Zelda: A Link to the Past*.
+*The Legend of Zelda: A Link to the Past* for the Nintendo DS / DS Lite.
 
-This repo does **not** include the game ROM or `zelda3_assets.dat`. You must extract assets from a USA SNES cartridge dump you own.
+LttP DS is a homebrew port of [snesrev/zelda3](https://github.com/snesrev/zelda3), a C reimplementation of the SNES game. It is not an emulator. The game logic runs natively on the DS's ARM9. The picture is built on the DS 2D engine, and the music plays on the DS sound hardware. The bottom screen can show a touch HUD with an item panel, a gear panel, and a live world or dungeon map.
 
-## Phase 4 (current)
+> **You supply the game data.** This repo contains no Nintendo ROM and no game assets. You build `zelda3_assets.dat` from a USA *A Link to the Past* ROM that you own (see [Step 2](#2-extract-the-game-assets)). This project is not affiliated with or endorsed by Nintendo.
 
-The top screen is the game (256×224 cropped to 256×192). The bottom screen is a status HUD.
+## Features
 
-**B** sword, **A** lifts, opens chests, and dashes, **Y** uses the equipped item. **X** / **L** / **R** match the SNES X and shoulder buttons, **Start** opens the menu. Select+Start pauses. L+R+Select resets and keeps the save. L+R+Start+Select quits.
+### A native port, not an emulator
 
-SRAM is an 8 KB `lttp-ds.sav` on the SD card. In melonDS, turn on DLDI (Emu settings → DLDI), enable folder sync, and point it at a folder. The save appears there as `lttp-ds.sav`. Naming a file returns to the file screen at once; the `.sav` is written on the next frame. Assets still come from NitroFS.
+- **Full game.** The whole game from the title screen onward, running zelda3's reimplemented game logic on the DS's ARM9.
+- **DS 2D engine renderer.** SNES backgrounds, sprites, windows, mosaic, color math, and the door iris map onto DS tile layers, hardware sprites, and palettes. The world map uses a hardware affine layer, so each scanline keeps the Mode 7 perspective.
+- **Hardware-voice audio.** The game's SPC700 music and sound effects play through the DS sound channels on the ARM7 at the SNES's 32 kHz rate, with correct left/right panning.
+- **Cropped screen handled for you.** The SNES picture is 224 lines and the DS screen is 192. The overworld and dungeon cameras scroll a little past room and area edges, so Link and the action stay in view.
+- **Lid handling.** Closing the DS lid pauses the game and the music, and opening it wakes both. On a loaded game, closing the lid opens the save menu.
+- **Save files that behave.** Saves go to an 8 KB `lttp-ds.sav` on the SD card, with the three normal save slots. Damaged slots are repaired before they are written.
 
-`build.bat` copies `zelda3_assets.dat` from the project root into NitroFS when that file exists (gitignored).
+### Bottom-screen HUD and touch controls
 
-### Build
+Set **HUD** to **Bottom Screen** in Settings and the status bar moves off the top screen, so the whole top screen is the game. The bottom screen then shows:
 
-You need [devkitPro](https://devkitpro.org/) with **devkitARM** and **libnds** (this project is tested with libnds 2.0 on Windows).
+- Hearts, magic meter, rupee, bomb and arrow counters, and the equipped item.
+- A **live map**: the world map outdoors and the dungeon map inside a dungeon. It stays black in caves and houses.
+- An **Items** button, which opens and closes the game's item menu.
+- A **Gear** button, which opens a panel with your equipment, bottles, pendants, crystals, hearts, and heart pieces. The game pauses while it is open.
+- **Touch to equip.** Tap an item on the item panel to equip it, with no D-pad needed.
+
+When no game is running (title, file select, boot), the bottom screen shows a Triforce idle picture.
+
+### Quality-of-life additions
+
+- **Title skip.** Pressing a button during the intro jumps to the sword drop, after a short bit of the title theme.
+- **Fast dialogue.** Hold **A** to speed through dialogue that has no text box, such as Zelda's plea.
+- **Settings menu.** Open it from the save menu (see [Settings](#settings)).
+- **Launcher icon and title.** The ROM has its own banner icon and title in the DS launcher and in Twilight Menu++.
+
+### Settings
+
+Press **Select** in game to open the save menu. It has three rows: **Continue**, **Save and Quit**, and **Settings**. **B** also continues. Settings are saved in your `.sav` file.
+
+| Setting | Options | What it does |
+|---|---|---|
+| HUD | Top Screen / Bottom Screen | Where the status bar and touch HUD live |
+| Low HP Indicator | On / Off | The low-health beep |
+| Spawn | Normal / Dungeon | A save made inside a dungeon loads at that dungeon's entrance |
+| Bomb Capacity | 10 / 99 | Maximum bombs you can carry |
+| Arrow Capacity | 30 / 99 | Maximum arrows you can carry |
+| Run Speed | Normal / Double / Triple | How fast Link walks, dashes, and swims |
+| Dark Rooms | Normal / Bright | Bright keeps dark rooms lit, so the lantern is optional |
+| Hair Color | Pink / Blonde | Link's hair color |
+
+In the menu, **Up/Down** moves, **Left/Right** changes a value, **A** or **Start** confirms on **Save** or **Cancel**, and **B** cancels.
+
+## Controls
+
+| DS | Action |
+|---|---|
+| D-Pad | Move |
+| **B** | Sword (SNES B) |
+| **A** | Lift, open chests, talk, dash (SNES A) |
+| **Y** | Use the equipped item (SNES Y) |
+| **X**, **L**, **R** | Same as the SNES X, L, and R buttons |
+| **Start** | Item menu |
+| **Select** | Save menu (Continue / Save and Quit / Settings) |
+| **Select + Start** | Pause and unpause |
+| **L + R + Select** | Soft reset (keeps your save) |
+| **L + R + Start + Select** | Write the save and quit |
+| Touch | Items button, Gear button, tap an item to equip (bottom HUD only) |
+
+## Getting started
+
+### What you need
+
+- A **USA** *A Link to the Past* ROM that you own, named `zelda3.sfc`.
+  SHA-256: `66871d66be19ad2c34c927d6b14cd8eb6fc3181965b6e517cb361f7316009cfb`
+- [devkitPro](https://devkitpro.org/) with **devkitARM** and **libnds**. Install the `nds-dev` package group. The build is tested with libnds 2.0 on Windows and expects devkitPro at `C:\devkitPro`.
+- [Python 3](https://www.python.org/) with `Pillow` and `PyYAML` (`pip install Pillow PyYAML`).
+- Git.
+- To run it: [melonDS](https://melonds.melonemu.org/) or a DS / DS Lite with a DLDI flashcart.
+
+### 1. Clone
+
+The game logic is in the `vendor/zelda3` submodule, so clone with submodules:
+
+```sh
+git clone --recurse-submodules https://github.com/JimmyGlasscock/alttp-ds.git
+cd alttp-ds
+```
+
+If you already cloned without them: `git submodule update --init`.
+
+### 2. Extract the game assets
+
+Copy your ROM to `vendor/zelda3/zelda3.sfc`, then:
+
+```sh
+cd vendor/zelda3
+python assets/restool.py --extract-from-rom
+```
+
+This creates `zelda3_assets.dat` (about 684 KB). Copy it to the project root:
+
+```sh
+copy zelda3_assets.dat ..\..\zelda3_assets.dat
+```
+
+Neither the ROM nor `zelda3_assets.dat` is committed. Both are in `.gitignore`.
+
+### 3. Build
+
+From the project root on Windows:
 
 ```bat
 build.bat
 ```
 
-Or from an MSYS2 / Unix shell with `DEVKITARM` set:
+`build.bat` sets up the devkitPro environment, copies `zelda3_assets.dat` into the ROM's NitroFS, and runs `make`. From an MSYS2 or Unix shell with `DEVKITARM` set, run `make`. Copy `zelda3_assets.dat` into `platform/nds/nitrofiles/` yourself in that case.
 
-```sh
-make
+The build also compiles the ARM7 sound core in `platform/nds/arm7`. The output is **`lttp-ds.nds`** in the project root. `make clean` cleans both.
+
+### 4. Run
+
+**melonDS**
+
+1. Open `lttp-ds.nds`.
+2. For saves to persist, go to *Config → Emu settings → DLDI*, turn on DLDI and folder sync, and pick a folder.
+3. Your save appears there as `lttp-ds.sav`.
+
+**DS / DS Lite flashcart**
+
+1. Copy `lttp-ds.nds` to the card and launch it with your usual loader. Twilight Menu++ also works.
+2. The save is written to the root of the SD card as `lttp-ds.sav`. This needs a loader that patches in the card's DLDI driver, which most do.
+3. The game assets are inside the `.nds`, so no other files are needed.
+
+## Saves
+
+- The save is an 8 KB `lttp-ds.sav` at the root of the DLDI card. It holds the three game slots and your Settings.
+- Settings are stored in unused space past the save slots, so they travel with the file.
+- Saves from older builds in `saves/sram.dat` are still read, and are written out as `lttp-ds.sav` on the next save.
+
+## Not included
+
+These zelda3 extras are left out on purpose, because the DS cannot run them or has no use for them: shaders, widescreen, 240-line mode, hi-res Mode 7, MSU-1 / Opus audio, OpenGL, and the ROM comparison mode.
+
+## Project layout
+
+```
+alttp-ds/
+  vendor/zelda3/        game logic, PPU and audio code (git submodule)
+  platform/nds/
+    source/             ARM9: host, video, HUD, map, save, audio
+    arm7/               ARM7: sound-channel driver
+    bottom-screen/      HUD artwork (PNG + grit)
+    include/            stubs that replace SDL / Opus
+  Makefile, build.bat   build
+  PORTING.md            original porting plan and design notes
 ```
 
-That produces `lttp-ds.nds`.
+## Credits
 
-### Run
+- [snesrev/zelda3](https://github.com/snesrev/zelda3) and its contributors, for the C reimplementation, the asset tool, and the PPU and DSP code this port builds on.
+- [devkitPro](https://devkitpro.org/), libnds, and Calico, for the DS toolchain.
+- [melonDS](https://melonds.melonemu.org/), for the emulator used throughout development.
+- [Rinnegatamante/zelda3](https://github.com/Rinnegatamante/zelda3) and [ProbablyRohan/Z3R-3ds](https://github.com/ProbablyRohan/Z3R-3ds), as references for earlier zelda3 ports.
 
-- Emulator: [melonDS](https://melonds.melonemu.org/) (or DeSmuME).
-- Hardware: flashcart with DLDI. NitroFS is inside the `.nds`. FAT only works when the cart’s DLDI driver is patched in (many loaders do this).
-
-The save is `lttp-ds.sav` in the DLDI folder (or beside the ROM on a flashcart). The asset blob is inside the ROM via NitroFS.
-
-### Assets (your dump)
-
-On desktop, zelda3 already extracted:
-
-- `zelda3.sfc` — USA ROM, SHA256 `66871d66be19ad2c34c927d6b14cd8eb6fc3181965b6e517cb361f7316009cfb`
-- `python assets/restool.py --extract-from-rom` → `zelda3_assets.dat`
-
-Do not commit those files.
-
-### Submodule
-
-```sh
-git submodule update --init
-```
-
-Game logic lives in `vendor/zelda3` and is linked into the ROM.
-
-The full porting plan is in [PORTING.md](PORTING.md).
+*The Legend of Zelda* and *A Link to the Past* are trademarks of Nintendo. No Nintendo code or assets are distributed with this project.
