@@ -50,7 +50,7 @@ CFLAGS   := -g -Wall -O2 -ffunction-sections -fdata-sections\
             -Wno-deprecated-declarations\
             -include $(LTTP_ROOT)/platform/nds/include/nds_force_types.h\
             $(ARCH) $(INCLUDE) -DARM9 -DLTTP_PPU_RGB15\
-            -DOW_CAMERA_PAD_Y=16
+            -DCAMERA_PAD_Y=16
 CXXFLAGS := $(CFLAGS) -fno-rtti -fno-exceptions
 ASFLAGS  := -g $(ARCH)
 LDFLAGS   = -specs=ds_arm9.specs -g $(ARCH) -Wl,-Map,$(notdir $*.map) \
