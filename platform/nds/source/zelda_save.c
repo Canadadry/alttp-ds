@@ -19,6 +19,7 @@
 
 #include "types.h"
 #include "zelda_rtl.h"
+#include "select_file.h"
 #include "zelda_save.h"
 
 enum { kSramBytes = 8192, kSector = 512, kMelonIo = 0x4E4C454D };
@@ -572,6 +573,9 @@ void ZeldaSaveFlush(void)
 		g_status = "off";
 		return;
 	}
+	/* Heal a slot whose existence mark or checksum was clobbered in
+	 * the same frame as the save, before those bytes reach the card. */
+	Sram_RepairSlots(g_zenv.sram);
 	/* libfat's write on melonDS waits on the ARM7 driver, which never
 	 * returns. Hardware still uses it. */
 	if (!g_melon && write_stdio()) {
