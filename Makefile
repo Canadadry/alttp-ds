@@ -28,7 +28,8 @@ INCLUDES := platform/nds/include vendor/zelda3 vendor/zelda3/src vendor/zelda3/s
 DATA     :=
 GRAPHICS := platform/nds/bottom-screen/images
 AUDIO    :=
-ICON     :=
+# 32x32 PNG. The build quantizes it to the 16-color banner BMP.
+ICON     := icon.png
 NITRO    := platform/nds/nitrofiles
 ZELDA3   := vendor/zelda3
 
@@ -111,12 +112,14 @@ ifeq ($(strip $(ICON)),)
       export GAME_ICON := $(CURDIR)/icon.bmp
     endif
   endif
+else ifeq ($(suffix $(ICON)),.grf)
+  export GAME_ICON := $(CURDIR)/$(ICON)
+else ifeq ($(suffix $(ICON)),.bmp)
+  export GAME_ICON := $(CURDIR)/$(ICON)
+else ifeq ($(suffix $(ICON)),.png)
+  export GAME_ICON := $(CURDIR)/$(BUILD)/$(notdir $(basename $(ICON))).bmp
 else
-  ifeq ($(suffix $(ICON)), .grf)
-    export GAME_ICON := $(CURDIR)/$(ICON)
-  else
-    export GAME_ICON := $(CURDIR)/$(BUILD)/$(notdir $(basename $(ICON))).grf
-  endif
+  export GAME_ICON := $(CURDIR)/$(BUILD)/$(notdir $(basename $(ICON))).grf
 endif
 
 .PHONY: $(BUILD) clean
@@ -136,6 +139,12 @@ else
 
 $(OUTPUT).nds: $(OUTPUT).elf $(NITRO_FILES) $(GAME_ICON) $(ARM7_ELF)
 $(OUTPUT).elf: $(OFILES)
+
+ifeq ($(suffix $(ICON)),.png)
+$(GAME_ICON): $(LTTP_ROOT)/$(ICON)
+	$(SILENTMSG) banner $(notdir $@)
+	$(SILENTCMD)python $(LTTP_ROOT)/platform/nds/png2banner.py $< $@
+endif
 
 $(ARM7_ELF):
 	$(MAKE) -C $(LTTP_ROOT)/platform/nds/arm7
