@@ -184,3 +184,18 @@ void ZeldaAudioFrame(void)
 	SpcPlayer_Advance(p);
 	publish(p);
 }
+
+void ZeldaAudioHold(void)
+{
+	SpcPlayer *p = g_zenv.player;
+	int was;
+
+	if (!ipc || !p || !p->dsp)
+		return;
+	/* The menu frame still posts a command. Drop it so the song stays put. */
+	ZeldaPopApuState();
+	was = p->dsp->mute ? 1 : 0;
+	p->dsp->mute = 1;
+	publish(p);
+	p->dsp->mute = was;
+}

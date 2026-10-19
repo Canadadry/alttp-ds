@@ -6,6 +6,8 @@
 /* SDL-style PPU present, cloned from vendor/zelda3/src/main.c. */
 void ZeldaVideoInit(void);
 void ZeldaVideoShowBottom(void);
+/* Lid sleep powers the LCDs off. The next present has to rebuild both screens. */
+void ZeldaVideoWake(void);
 void ZeldaVideoComposeSprites(void);
 void ZeldaVideoPrepareMode7(void);
 u16 *ZeldaVideoFramebuffer(void);

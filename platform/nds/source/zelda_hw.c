@@ -2087,7 +2087,7 @@ void ZeldaHwConsoleSuspend(void)
 	ZeldaHwUseMasterBright(0);
 }
 
-void ZeldaHwInit(void) {
+static void hw_bind(int clear_gfx) {
 	m7_dma_stop();
 	m7_on = 0;
 	m7_ready = 0;
@@ -2095,6 +2095,10 @@ void ZeldaHwInit(void) {
 	m7_sig = 0;
 	m7_gfx_dirty = 0;
 	scanline_irq_sync();
+	/* Sleep clears the LCD bit. The 2D engines come back with it, but a
+	 * full graphics fill here stalls on that bus and the frame never
+	 * returns, so the song stops on a black screen. */
+	pmPowerOn(POWCNT_2D_GFX_A | POWCNT_2D_GFX_B);
 	videoSetMode(MODE_0_2D);
 	vramSetBankA(VRAM_A_MAIN_BG);
 	vramSetBankE(VRAM_E_MAIN_SPRITE);
@@ -2132,11 +2136,21 @@ void ZeldaHwInit(void) {
 	bg3_next = 1;
 	last_adr[0] = last_adr[1] = last_adr[2] = 0xffff;
 	blank_bg1 = kBlankNone;
-	dmaFillWords(0, BG_GFX, 128 * 1024);
-	dmaFillWords(0, SPRITE_GFX, 16 * 1024);
+	if (clear_gfx) {
+		dmaFillWords(0, BG_GFX, 128 * 1024);
+		dmaFillWords(0, SPRITE_GFX, 16 * 1024);
+	}
 	iris_fill_init();
 	oamClear(&oamMain, 0, 128);
 	oamUpdate(&oamMain);
+}
+
+void ZeldaHwInit(void) {
+	hw_bind(1);
+}
+
+void ZeldaHwWake(void) {
+	hw_bind(0);
 }
 
 void ZeldaHwPresent(Ppu *ppu) {

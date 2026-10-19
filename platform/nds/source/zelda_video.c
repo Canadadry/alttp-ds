@@ -16,6 +16,7 @@ static int hw_bound;
 static uint32 g_ppu_render_flags;
 
 void ZeldaHwInit(void);
+void ZeldaHwWake(void);
 void ZeldaHwConsoleSuspend(void);
 void ZeldaHwSetFade(int level);
 void ZeldaHwPresent(Ppu *ppu);
@@ -42,6 +43,17 @@ void ZeldaVideoShowBottom(void)
 	bg = bgInitSub(3, BgType_Bmp8, BgSize_B8_256x256, 0, 0);
 	dmaCopy(bottom_screen_idleBitmap, bgGetGfxPtr(bg), bottom_screen_idleBitmapLen);
 	dmaCopy(bottom_screen_idlePal, BG_PALETTE_SUB, bottom_screen_idlePalLen);
+}
+
+void ZeldaVideoWake(void)
+{
+	/* Registers and the upload cache, not a graphics wipe. oamInit cleared
+	 * the sprite copy composed while the lid was still shut. */
+	ZeldaHwWake();
+	ZeldaVideoShowBottom();
+	hw_bound = 1;
+	bg_main = 0;
+	ZeldaVideoComposeSprites();
 }
 
 void ZeldaVideoInit(void)

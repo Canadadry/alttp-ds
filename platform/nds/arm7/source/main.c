@@ -47,6 +47,8 @@ int main(void)
 	rtcInit();
 	rtcSyncTime();
 	pmInit();
+	/* Lid close must not cut the LCDs. Sleep blanks the picture and the song. */
+	pmSetSleepAllowed(false);
 	blkInit();
 
 	touchInit();

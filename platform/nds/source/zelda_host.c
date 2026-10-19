@@ -12,6 +12,7 @@
 #include "zelda_save.h"
 #include "zelda_audio.h"
 #include "messaging.h"
+#include "variables.h"
 
 const uint8 *g_asset_ptrs[kNumberOfAssets];
 uint32 g_asset_sizes[kNumberOfAssets];
@@ -126,6 +127,13 @@ MemBlk __wrap_FindIndexInMemblk(MemBlk data, size_t i)
 static int paused;
 static int settings_open;
 static int settings_menu;
+static int lid_was_down;
+static volatile int lid_closed;
+static volatile int lid_wake;
+/* Title, file select, game over, credits: hold the frame until the lid opens. */
+static int lid_hold_still;
+static int lid_frozen;
+static PmEventCookie lid_cookie;
 /* Two frames after the game is back: one samples the closing press, one eats it. */
 static int settings_eat;
 
@@ -334,6 +342,66 @@ static void settings_close(int save)
 	ui = kUiMenuOut;
 }
 
+static void settings_apply(void)
+{
+	if (!save_on_exit)
+		return;
+	ZeldaHudSetOnTop(hud_pick == 0);
+	ZeldaLowHpBeepSet(beep_on);
+	ZeldaBombCapSet(bomb_99 ? 99 : 10);
+	ZeldaArrowCapSet(arrow_99 ? 99 : 30);
+	ZeldaRunSpeedSet(run_speed + 1);
+	ZeldaDarkRoomsSet(dark_bright);
+	ZeldaHairSet(hair_blonde);
+	ZeldaSpawnSet(spawn_dungeon);
+	save_on_exit = 0;
+}
+
+/* The select menu is still the game underneath. Drop the overlay on it. */
+static void settings_dismiss(void)
+{
+	settings_apply();
+	if (settings_menu) {
+		ZeldaVideoMenuEnd();
+		settings_menu = 0;
+	}
+	ZeldaVideoSetFade(-1);
+	settings_open = 0;
+	settings_eat = 2;
+	ui = kUiOff;
+	fade = 0;
+}
+
+static void on_lid_sleep(void *user, PmEvent event)
+{
+	(void)user;
+	if (event == PmEvent_OnSleep)
+		lid_closed = 1;
+	else if (event == PmEvent_OnWakeup)
+		lid_wake = 1;
+}
+
+static void note_lid(u32 held)
+{
+	int slept = lid_closed;
+	int down = (held & KEY_LID) != 0;
+	int edge;
+
+	lid_closed = 0;
+	edge = slept || (down && !lid_was_down);
+	lid_was_down = down;
+	if (!edge)
+		return;
+	if (settings_open)
+		settings_dismiss();
+	if (SelectMenu_LidClosed()) {
+		paused = 0;
+		lid_hold_still = 0;
+	} else {
+		lid_hold_still = 1;
+	}
+}
+
 static void ZeldaSettingsEnter(void)
 {
 	settings_open = 1;
@@ -428,6 +496,11 @@ void ZeldaHostInit(void)
 	SelectMenu_OnSettings = ZeldaSettingsEnter;
 	SaveGame_NoteDungeon = note_dungeon;
 	LoadFile_DungeonEntrance = file_dungeon_entrance;
+	memset(&lid_cookie, 0, sizeof lid_cookie);
+	pmAddEventHandler(&lid_cookie, on_lid_sleep, NULL);
+	/* Calico's hinge sleep clears the LCD power bit. The 2D picture does
+	 * not come back, and the song stops with it. */
+	pmSetSleepAllowed(false);
 }
 
 void ZeldaHostSave(void)
@@ -451,7 +524,13 @@ void ZeldaHostOnKeys(u32 held, u32 down)
 		SelectMenu_LockInput = 0;
 		ZeldaHostSave();
 		ZeldaReset(true);
+		SelectMenu_ForgetGame();
 		paused = 0;
+		lid_was_down = 0;
+		lid_closed = 0;
+		lid_wake = 0;
+		lid_hold_still = 0;
+		lid_frozen = 0;
 		return;
 	}
 	if (settings_open) {
@@ -482,6 +561,18 @@ void ZeldaHostTick(u32 held)
 	int spun;
 	int catching;
 
+	/* Master Sword gleam, $012E = 0x2C. The open edge, before note_lid. */
+	if (lid_was_down && (held & KEY_LID) == 0)
+		sound_effect_1 = 0x2c;
+	note_lid(held);
+	if ((held & KEY_LID) && lid_hold_still) {
+		lid_frozen = 1;
+		return;
+	}
+	lid_hold_still = 0;
+	/* In game the picture keeps running so the select menu can open.
+	 * The song still holds, the same as the title. */
+	lid_frozen = (held & KEY_LID) != 0;
 	if (settings_open || paused)
 		return;
 	if (settings_eat) {
@@ -493,6 +584,10 @@ void ZeldaHostTick(u32 held)
 	 * plays while the old picture is still up. */
 	spun = 0;
 	catching = 0;
+	/* The sword-drop skip runs many frames before the picture updates.
+	 * A loaded game is never in that skip. */
+	if (!ZeldaIntroCatchingUp())
+		SelectMenu_LidStep();
 	for (;;) {
 		ZeldaRunFrame(map_keys(held));
 		if (!ZeldaIntroCatchingUp())
@@ -520,6 +615,7 @@ void ZeldaHostTick(u32 held)
 void ZeldaHostBlit(u16 *fb)
 {
 	(void)fb;
+	lid_wake = 0;
 	switch (ui) {
 	case kUiGameOut:
 		if (!paused)
@@ -550,16 +646,7 @@ void ZeldaHostBlit(u16 *fb)
 			ZeldaVideoSetFade(fade);
 			break;
 		}
-		if (save_on_exit) {
-			ZeldaHudSetOnTop(hud_pick == 0);
-			ZeldaLowHpBeepSet(beep_on);
-			ZeldaBombCapSet(bomb_99 ? 99 : 10);
-			ZeldaArrowCapSet(arrow_99 ? 99 : 30);
-			ZeldaRunSpeedSet(run_speed + 1);
-			ZeldaDarkRoomsSet(dark_bright);
-			ZeldaHairSet(hair_blonde);
-			ZeldaSpawnSet(spawn_dungeon);
-		}
+		settings_apply();
 		ZeldaVideoMenuEnd();
 		settings_menu = 0;
 		ui = kUiGameIn;
@@ -586,6 +673,10 @@ void ZeldaHostBlit(u16 *fb)
 
 void ZeldaHostAudio(void)
 {
-	if (!paused)
-		ZeldaAudioFrame();
+	if (paused || lid_frozen) {
+		if (lid_frozen && !lid_hold_still)
+			ZeldaAudioHold();
+		return;
+	}
+	ZeldaAudioFrame();
 }
