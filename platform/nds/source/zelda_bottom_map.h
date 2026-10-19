@@ -24,6 +24,11 @@ int ZeldaMapUpdate(int *lo, int *hi);
 /* One screen row of the map: kMapW palette slots, for screen row y. */
 void ZeldaMapRow(u8 *dst, int y);
 
+/* One screen row of the map drawn into the bottom screen's 256-wide bitmap,
+ * one palette slot per byte. The pixel on each side of the map is set to
+ * border. Outdoors this is a straight copy of the world picture. */
+void ZeldaMapPutRow(u8 *fb, int pitch, int y, u8 border);
+
 /* Nonzero once after the map's colors change. */
 int ZeldaMapTakePalette(void);
 

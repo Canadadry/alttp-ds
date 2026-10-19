@@ -116,6 +116,9 @@ static int blank_bg1 = kBlankNone;
 /* 2bpp tiles are compacted. Slot 0 is a transparent tile.
  * bg3_lo is the priority-0 map (name letters), behind the wallpaper. */
 static uint16 bg3_slot[8 * 1024];
+/* The (tile, palette) key each slot was handed out for, so the per-frame
+ * check walks the slots in use instead of all 8192 possible keys. */
+static uint16 bg3_key[1024];
 static int bg3_next;
 static u16 bg3_lo[4096] __attribute__((aligned(4)));
 static int back_mode;
@@ -124,6 +127,9 @@ static uint32 spr_hash[128];
  * VRAM while the screen is scanning tears the picture, and the hash would
  * keep that torn copy. A room of guards is enough to spill past vblank. */
 static u16 spr_gfx[128 * 64] __attribute__((aligned(4)));
+/* Slots whose tiles changed since the last copy. Only those are flushed and
+ * sent: Link and a few effects change most frames, the rest do not. */
+static uint8 spr_dirty_slot[128];
 static int spr_dirty;
 
 static u16 map_buf[4][4096] __attribute__((aligned(4)));
@@ -140,13 +146,48 @@ static int bake_valid;
  * pattern; lifting those cells paints the floor over the doorway. */
 static uint8 common_floor[1024];
 
+/* The VRAM words are summed up 32 bits at a time. A tilemap is up to 4096
+ * words and the overworld hashes two of them every frame, so a halfword
+ * loop with a mask on each load was the bulk of a still frame. The rotate
+ * keeps two flips of the same bit in different words from cancelling. */
+_Static_assert(offsetof(Ppu, vram) % 4 == 0, "VRAM must be word aligned");
+
 static uint32 hash_words(const uint16 *vram, uint16 addr, int n) {
+	const uint16 *p = vram + addr;
 	uint32 h = 2166136261u;
 	int i;
 
+	if (!(addr & 1) && !(n & 1) && (unsigned)addr + (unsigned)n <= 0x8000u &&
+	    !((uintptr_t)p & 3)) {
+		const uint32 *q = (const uint32 *)p;
+		int m = n >> 1;
+
+		for (; m >= 4; m -= 4, q += 4) {
+			h = ((h << 7 | h >> 25) ^ q[0]) * 16777619u;
+			h = ((h << 7 | h >> 25) ^ q[1]) * 16777619u;
+			h = ((h << 7 | h >> 25) ^ q[2]) * 16777619u;
+			h = ((h << 7 | h >> 25) ^ q[3]) * 16777619u;
+		}
+		for (; m > 0; m--, q++)
+			h = ((h << 7 | h >> 25) ^ *q) * 16777619u;
+		return h ? h : 1u;
+	}
 	for (i = 0; i < n; i++)
 		h = (h ^ vram[(addr + i) & 0x7fff]) * 16777619u;
 	return h ? h : 1u;
+}
+
+/* The words of a tilemap, in order. VRAM is read in place unless the map
+ * wraps past the end, which only the copy handles. */
+static const uint16 *map_src(const Ppu *ppu, uint16 adr, int words) {
+	static uint16 wrapped[4096];
+	int i;
+
+	if ((unsigned)adr + (unsigned)words <= 0x8000u)
+		return ppu->vram + adr;
+	for (i = 0; i < words; i++)
+		wrapped[i] = ppu->vram[(adr + i) & 0x7fff];
+	return wrapped;
 }
 
 static void conv4(const uint16 *src, u16 *dst, int pal_off) {
@@ -217,7 +258,7 @@ static void upload4_tile(const Ppu *ppu, int bank, u16 *gfx, uint16 tile_adr, in
 	tile_hash[bank][tile] = h;
 }
 
-static u16 swizzle4(uint16 entry) {
+static inline u16 swizzle4(uint16 entry) {
 	return (u16)((entry & 0x3ff) |
 		((entry & 0x4000) >> 4) |
 		((entry & 0x8000) >> 4) |
@@ -239,12 +280,7 @@ static BgSize map_bg_size(int wider, int higher) {
 }
 
 static uint32 sig_map(const Ppu *ppu, uint16 adr, int words) {
-	uint32 h = 2166136261u;
-	int i;
-
-	for (i = 0; i < words; i++)
-		h = (h ^ ppu->vram[(adr + i) & 0x7fff]) * 16777619u;
-	return h ? h : 1u;
+	return hash_words(ppu->vram, adr, words);
 }
 
 /* Text BG offsets take effect on the next scanline. They are committed at
@@ -301,6 +337,18 @@ static struct {
 	int on;
 } map_job[4];
 
+/* What the doorway layer's map in VRAM was last filled from. The overworld
+ * puts the same bg2_hi there every frame; copying 8KB each time it is
+ * unchanged cost a flush and a DMA that held the CPU for nothing. */
+static uint32 bg2_hi_ver;
+static struct {
+	const u16 *src;
+	uint32 ver;
+	int words;
+	int wider;
+	int higher;
+} slot1_up;
+
 static int vblank_margin(void) {
 	unsigned line = REG_VCOUNT;
 
@@ -323,6 +371,13 @@ static void flush_map_jobs(void) {
 		DC_FlushRange((void *)map_job[slot].src, (uint32)bytes);
 		dmaCopyWords(3, (void *)map_job[slot].src, bgGetMapPtr(bg_id[slot]),
 			(uint32)bytes);
+		if (slot == 1) {
+			slot1_up.src = map_job[1].src;
+			slot1_up.ver = bg2_hi_ver;
+			slot1_up.words = map_job[1].words;
+			slot1_up.wider = map_job[1].wider;
+			slot1_up.higher = map_job[1].higher;
+		}
 		map_job[slot].on = 0;
 	}
 }
@@ -362,16 +417,16 @@ static void present_bg1(Ppu *ppu, int split) {
 		map_valid[0] = 0;
 	}
 
-	memset(used_bg1, 0, sizeof used_bg1);
-	{
-		int i;
-
-		for (i = 0; i < words; i++)
-			used_bg1[ppu->vram[(layer->tilemapAdr + i) & 0x7fff] & 0x3ff] = 1;
-	}
+	/* The tiles a map uses only change when the map does, so they are
+	 * counted when it is rebuilt, not on every frame it is reused. */
 	if (!map_valid[0] || map_sig[0] != sig) {
+		const uint16 *src = map_src(ppu, layer->tilemapAdr, words);
+		u16 blank;
 		int i;
 
+		memset(used_bg1, 0, sizeof used_bg1);
+		for (i = 0; i < words; i++)
+			used_bg1[src[i] & 0x3ff] = 1;
 		bake_valid = 0;
 		blank_bg1 = kBlankNone;
 		for (i = 0; i < 1024; i++) {
@@ -382,19 +437,22 @@ static void present_bg1(Ppu *ppu, int split) {
 		}
 		if (!split)
 			blank_bg1 = kBlankNone;
-		for (i = 0; i < words; i++) {
-			uint16 entry = ppu->vram[(layer->tilemapAdr + i) & 0x7fff];
-			u16 blank = (u16)(blank_bg1 < 0 ? 0 : blank_bg1);
+		blank = (u16)(blank_bg1 < 0 ? 0 : blank_bg1);
+		if (!split) {
+			memset(map_buf[1], 0, (size_t)words * sizeof(u16));
+			for (i = 0; i < words; i++)
+				map_buf[2][i] = swizzle4(src[i]);
+		} else {
+			for (i = 0; i < words; i++) {
+				uint16 entry = src[i];
 
-			if (!split) {
-				map_buf[1][i] = 0;
-				map_buf[2][i] = swizzle4(entry);
-			} else if (entry & 0x2000) {
-				map_buf[1][i] = swizzle4(entry);
-				map_buf[2][i] = blank;
-			} else {
-				map_buf[1][i] = blank;
-				map_buf[2][i] = swizzle4(entry);
+				if (entry & 0x2000) {
+					map_buf[1][i] = swizzle4(entry);
+					map_buf[2][i] = blank;
+				} else {
+					map_buf[1][i] = blank;
+					map_buf[2][i] = swizzle4(entry);
+				}
 			}
 		}
 		queue_map(2, map_buf[2], words, layer->tilemapWider, layer->tilemapHigher, 8, 2);
@@ -445,8 +503,9 @@ static void present_bg2(Ppu *ppu, int lift, int keep_floor) {
 	BgLayer *layer = &ppu->bgLayer[1];
 	int words = map_words(layer->tilemapWider, layer->tilemapHigher);
 	uint32 sig = sig_map(ppu, layer->tilemapAdr, words);
+	/* Counted when the map is rebuilt and kept for the frames that reuse it. */
+	static uint8 used[1024];
 	u16 *gfx;
-	uint8 used[1024];
 	int tile;
 
 	gfx = BG_GFX + 4 * 8192;
@@ -461,8 +520,9 @@ static void present_bg2(Ppu *ppu, int lift, int keep_floor) {
 		map_valid[1] = 0;
 	}
 
-	memset(used, 0, sizeof used);
 	if (!map_valid[1] || map_sig[1] != sig) {
+		const uint16 *src = map_src(ppu, layer->tilemapAdr, words);
+		u16 blank;
 		int i;
 
 		/* The floor set is the tilemap with priority ignored. It does not
@@ -472,8 +532,9 @@ static void present_bg2(Ppu *ppu, int lift, int keep_floor) {
 			mark_common_floor(ppu, layer->tilemapAdr, words);
 		else
 			memset(common_floor, 0, sizeof common_floor);
+		memset(used, 0, sizeof used);
 		for (i = 0; i < words; i++)
-			used[ppu->vram[(layer->tilemapAdr + i) & 0x7fff] & 0x3ff] = 1;
+			used[src[i] & 0x3ff] = 1;
 		bg2_blank = 0;
 		for (i = 1; i < 1024; i++) {
 			if (!used[i]) {
@@ -481,23 +542,31 @@ static void present_bg2(Ppu *ppu, int lift, int keep_floor) {
 				break;
 			}
 		}
-		for (i = 0; i < words; i++) {
-			uint16 entry = ppu->vram[(layer->tilemapAdr + i) & 0x7fff];
-			int name = entry & 0x3ff;
+		blank = (u16)bg2_blank;
+		/* Same split as PpuDrawBackground: 0xb100 is in front of Link,
+		 * 0x7100 stays on the ground behind him. The lower stair also
+		 * sets that bit on the floor tiles south of Link. Those stay
+		 * on the ground; lifting them reprints the floor on the door. */
+		if (!lift) {
+			for (i = 0; i < words; i++) {
+				bg2_hi[i] = blank;
+				map_buf[3][i] = swizzle4(src[i]);
+			}
+		} else {
+			for (i = 0; i < words; i++) {
+				uint16 entry = src[i];
 
-			/* Same split as PpuDrawBackground: 0xb100 is in front of Link,
-			 * 0x7100 stays on the ground behind him. The lower stair also
-			 * sets that bit on the floor tiles south of Link. Those stay
-			 * on the ground; lifting them reprints the floor on the door. */
-			if (lift && (entry & 0x2000) &&
-			    !(keep_floor && common_floor[name])) {
-				bg2_hi[i] = swizzle4(entry);
-				map_buf[3][i] = (u16)bg2_blank;
-			} else {
-				bg2_hi[i] = (u16)bg2_blank;
-				map_buf[3][i] = swizzle4(entry);
+				if ((entry & 0x2000) &&
+				    !(keep_floor && common_floor[entry & 0x3ff])) {
+					bg2_hi[i] = swizzle4(entry);
+					map_buf[3][i] = blank;
+				} else {
+					bg2_hi[i] = blank;
+					map_buf[3][i] = swizzle4(entry);
+				}
 			}
 		}
+		bg2_hi_ver++;
 		queue_map(3, map_buf[3], words, layer->tilemapWider, layer->tilemapHigher, 12, 4);
 		map_sig[1] = sig;
 		map_valid[1] = 1;
@@ -505,11 +574,6 @@ static void present_bg2(Ppu *ppu, int lift, int keep_floor) {
 			clear_tile(gfx, bg2_blank);
 			tile_hash[1][bg2_blank] = 0;
 		}
-	} else {
-		int i;
-
-		for (i = 0; i < words; i++)
-			used[ppu->vram[(layer->tilemapAdr + i) & 0x7fff] & 0x3ff] = 1;
 	}
 
 	for (tile = 0; tile < 1024; tile++) {
@@ -527,6 +591,7 @@ static int bg3_lookup(int key) {
 		return -1;
 	slot = bg3_next++;
 	bg3_slot[key] = (uint16)(slot + 1);
+	bg3_key[slot] = (uint16)key;
 	return slot;
 }
 
@@ -629,8 +694,9 @@ static void present_bg3(Ppu *ppu, int show_low) {
 		map_valid[2] = 1;
 	}
 
-	for (i = 0; i < 8 * 1024; i++) {
-		int slot = bg3_slot[i];
+	for (i = 1; i < bg3_next; i++) {
+		int slot = i;
+		int key = bg3_key[i];
 		int tile;
 		int pal;
 		uint16 addr;
@@ -638,11 +704,8 @@ static void present_bg3(Ppu *ppu, int show_low) {
 		uint16 tmp[8];
 		int w;
 
-		if (!slot)
-			continue;
-		slot -= 1;
-		tile = i >> 3;
-		pal = i & 7;
+		tile = key >> 3;
+		pal = key & 7;
 		addr = (uint16)((layer->tileAdr + tile * 8) & 0x7fff);
 		h = hash_words(ppu->vram, addr, 8) ^ (uint32)(pal + 1);
 		if (tile_hash[2][slot] == h)
@@ -1075,6 +1138,7 @@ static void compose_sprites(Ppu *ppu, int sprites_on) {
 				}
 			}
 			spr_hash[sprite] = h;
+			spr_dirty_slot[sprite] = 1;
 			spr_dirty = 1;
 		}
 
@@ -1103,8 +1167,23 @@ void ZeldaHwCommitSprites(int sprites_on) {
 		return;
 	}
 	if (spr_dirty) {
-		DC_FlushRange(spr_gfx, sizeof spr_gfx);
-		dmaCopyWords(3, spr_gfx, SPRITE_GFX, sizeof spr_gfx);
+		int s = 0;
+
+		/* One copy per run of neighbouring slots. */
+		while (s < 128) {
+			int e;
+
+			if (!spr_dirty_slot[s]) {
+				s++;
+				continue;
+			}
+			for (e = s; e < 128 && spr_dirty_slot[e]; e++)
+				spr_dirty_slot[e] = 0;
+			DC_FlushRange(spr_gfx + s * 64, (uint32)((e - s) * 64 * sizeof(u16)));
+			dmaCopyWords(3, spr_gfx + s * 64, SPRITE_GFX + s * 64,
+				(uint32)((e - s) * 64 * sizeof(u16)));
+			s = e;
+		}
 		spr_dirty = 0;
 	}
 	oamUpdate(&oamMain);
@@ -1734,8 +1813,12 @@ static void show_bg2_front(const Ppu *ppu) {
 	const BgLayer *layer = &ppu->bgLayer[1];
 	int words = map_words(layer->tilemapWider, layer->tilemapHigher);
 
-	queue_map(1, bg2_hi, words, layer->tilemapWider, layer->tilemapHigher, 4, 4);
 	bg2_front_on_slot1 = 1;
+	if (!map_job[1].on && slot1_up.src == bg2_hi && slot1_up.ver == bg2_hi_ver &&
+	    slot1_up.words == words && slot1_up.wider == layer->tilemapWider &&
+	    slot1_up.higher == layer->tilemapHigher)
+		return;
+	queue_map(1, bg2_hi, words, layer->tilemapWider, layer->tilemapHigher, 4, 4);
 }
 
 static void upload4_reloc(const Ppu *ppu, u16 *gfx, uint16 tile_adr, int src, int dst) {
@@ -2160,6 +2243,7 @@ static void hw_bind(int clear_gfx) {
 	back_mode = -1;
 	hw_scroll_valid = 0;
 	memset(map_job, 0, sizeof map_job);
+	memset(&slot1_up, 0, sizeof slot1_up);
 	bgSetPriority(bg_id[0], 0);
 	bgSetPriority(bg_id[1], 1);
 	bgSetPriority(bg_id[2], 2);

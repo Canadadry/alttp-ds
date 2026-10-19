@@ -87,6 +87,10 @@ static u8 world_map[kWorldTiles * kWorldTiles];
 static int world_dark = -1;
 /* The land as pixels: palette slots, 256 x 256. */
 static u8 world_pic[kLandSize][kLandSize] __attribute__((aligned(4)));
+/* The same picture shifted one pixel left. The screen takes 16-bit writes
+ * and the map starts on an odd pixel, so a row can be copied whole from
+ * whichever of the two begins on an even address. */
+static u8 world_odd[kLandSize][kLandSize] __attribute__((aligned(4)));
 
 /* Set when the colors change; see ZeldaMapTakePalette. */
 static int pal_dirty;
@@ -177,6 +181,17 @@ static void build_world(int dark)
 			}
 		}
 	}
+
+	for (r = 0; r < kLandSize; r++) {
+		const u32 *s = (const u32 *)world_pic[r];
+		u32 *d = (u32 *)world_odd[r];
+
+		for (c = 0; c < kLandSize / 4; c++)
+			d[c] = (s[c] >> 8) | (c + 1 < kLandSize / 4 ? s[c + 1] << 24 : 0);
+	}
+	/* The screen is filled by DMA straight from these. */
+	DC_FlushRange(world_pic, sizeof world_pic);
+	DC_FlushRange(world_odd, sizeof world_odd);
 
 	for (i = 0; i < kWorldColors; i++)
 		colors[i] = pal[(dark ? 128 : 0) + i];
@@ -505,6 +520,44 @@ void ZeldaMapRow(u8 *dst, int y)
 		if (shown.on)
 			draw_mark(dst, r, shown.cx, shown.cy, kDungeonMark, 5);
 	}
+}
+
+/* Rows of the world picture that carry no marker are copied to the screen as
+ * they are. The map starts on an odd pixel, so the pixel before it and the
+ * first map pixel go out as one 16-bit store, the same at the far end, and
+ * the 144 between them are one DMA from a copy that starts on an even
+ * address. Redrawing the whole map was most of 3 ms, a few times a second
+ * while running, and all of it went on shifting bytes. */
+static void put_world_row(u8 *row, int r, u8 border)
+{
+	int yy = shown.oy + r - kLandMin;
+	int cx = shown.ox - kLandMin;
+	const u8 *mid = (cx & 1) ? &world_pic[yy][cx + 1] : &world_odd[yy][cx];
+	u16 *edge = (u16 *)(row + kMapX - 1);
+
+	edge[0] = (u16)(border | (world_pic[yy][cx] << 8));
+	dmaCopyHalfWords(3, mid, row + kMapX + 1, kMapW - 2);
+	edge[kMapW / 2] = (u16)(world_pic[yy][cx + kMapW - 1] | (border << 8));
+}
+
+void ZeldaMapPutRow(u8 *fb, int pitch, int y, u8 border)
+{
+	static u8 seg[kMapW + 2] __attribute__((aligned(4)));
+	int r = y - kMapY;
+	u8 *row = fb + y * pitch;
+
+	if (r < 0 || r >= kMapH)
+		return;
+	if (shown.mode == kModeWorld &&
+	    !(shown.on && r >= shown.cy - 3 && r <= shown.cy + 3)) {
+		put_world_row(row, r, border);
+		return;
+	}
+	seg[0] = border;
+	seg[kMapW + 1] = border;
+	ZeldaMapRow(seg + 1, y);
+	DC_FlushRange(seg, sizeof seg);
+	dmaCopyHalfWords(3, seg, row + kMapX - 1, kMapW + 2);
 }
 
 /* ---- Update ---- */

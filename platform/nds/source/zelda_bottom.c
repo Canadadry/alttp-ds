@@ -1318,6 +1318,8 @@ static void put_rows(int from, int to)
 
 	for (y = from; y < to; y++) {
 		compose_row(line, y);
+		/* DMA reads RAM, not the cache. */
+		DC_FlushRange(line, kWidth);
 		dmaCopy(line, dst + y * kWidth, kWidth);
 	}
 }
@@ -1327,16 +1329,11 @@ static void put_rows(int from, int to)
  * left as it is. */
 static void put_map_rows(int from, int to)
 {
-	static u8 seg[kMapW + 2] __attribute__((aligned(4)));
 	u8 *dst = (u8 *)ZeldaVideoBottomFramebuffer();
 	int y;
 
-	seg[0] = kPalGreen;
-	seg[kMapW + 1] = kPalGreen;
-	for (y = from; y < to; y++) {
-		ZeldaMapRow(seg + 1, y);
-		dmaCopy(seg, dst + y * kWidth + kMapX - 1, kMapW + 2);
-	}
+	for (y = from; y < to; y++)
+		ZeldaMapPutRow(dst, kWidth, y, kPalGreen);
 }
 
 /* Checksum of what the snapshots were last built from; see dyn_sig. */
@@ -1548,7 +1545,11 @@ static void refresh_dynamic(void)
 		last_magic_sig = msig;
 		refresh_magic();
 	}
-	switch (check_next++ & 3) {
+	/* The safety net, every other frame: rebuilding a snapshot is the most
+	 * expensive thing this screen does on a frame where nothing changed. */
+	if (++check_next & 1)
+		return;
+	switch ((check_next >> 1) & 3) {
 	case 0: refresh_counters(); break;
 	case 1: refresh_item(); break;
 	case 2: refresh_hearts(); break;
