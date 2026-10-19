@@ -66,10 +66,14 @@
  * the DS mosaic register, so
  * the pixelated fade when leaving the house is visible. The door iris is
  * the SNES window HDMA table: outside the circle the picture is black, and
- * the circle closes on Link, then opens again outside. That window is
- * latched on the last vblank line, so the first line of the frame is
- * already clipped and no scanline keeps another line's span. Mode 7 stays
- * on the scanline renderer.
+ * the circle closes on Link, then opens again outside. A shut line is not
+ * an empty X range (the DS ignores that and shows the picture). The window
+ * is latched before the room upload, including when that upload has
+ * already reached the picture, so the shut frame stays black. Tree edges
+ * are the backdrop showing through the tiles. The backdrop itself stays
+ * black so the outside of the circle is black; the real color is a sprite
+ * behind the backgrounds, inside the window only. Mode 7 stays on the
+ * scanline renderer.
  *
  * Naming a file scrolls the letter grid without moving the name. An IRQ at
  * SNES line 128 switches BG3 from the name scroll to selectfile_var8. That
@@ -1034,26 +1038,37 @@ static void iris_set_x(unsigned left, unsigned right_exclusive) {
 }
 
 /* WH0 is the left edge and WH1 the inclusive right. 0x00FF (left past
- * right) is the value zelda3 stores for a fully clipped line.
- * A span of the whole screen is X1=0,X2=0, and the DS does not show the
- * window on that line at all, so it becomes a solid bar. Show every layer
- * outside the window instead. */
+ * right) is the value zelda3 stores for a fully clipped line. X1==X2 makes
+ * the DS ignore the window on that line and show every layer, which is the
+ * frame of the room when the circle is shut. A one-pixel window with
+ * neither side enabled stays black, and its right edge clears the inside
+ * bit so the next line does not inherit the picture.
+ * A span of the whole screen is X1=0,X2=0, which the DS also ignores, so
+ * that line shows every layer outside a one-pixel window instead.
+ * An exclusive right of 256 is stored as 0 and never clears the inside
+ * bit; the last pixel stays outside so the following line starts clean. */
 static void iris_apply_span(u16 span) {
 	unsigned left = span & 0xff;
 	unsigned right = span >> 8;
+	unsigned edge;
 
 	if (left > right) {
+		WIN_IN = iris_outside;
 		WIN_OUT = iris_outside;
-		iris_set_x(255, 255);
+		iris_set_x(0, 1);
 		return;
 	}
+	WIN_IN = kWinInside;
 	if (left == 0 && right == 255) {
 		WIN_OUT = kWinInside;
 		iris_set_x(0, 1);
 		return;
 	}
+	edge = right + 1;
+	if (edge > 255)
+		edge = 255;
 	WIN_OUT = iris_outside;
-	iris_set_x(left, right + 1);
+	iris_set_x(left, edge);
 }
 
 static void iris_apply_line(unsigned ds_line) {
@@ -1480,10 +1495,8 @@ static void lamp_fill_spans(const Ppu *ppu, u16 *span) {
 }
 
 /* Copy the finished iris, or build the lamp hole, and arm the scanline
- * IRQ. The latch stays at the end of vblank: writing the window here would
- * clip whatever line the CPU happens to be on. Call this before the tile
- * upload. The upload of a freshly loaded room runs past line 0, and the
- * circle has to be waiting when that line is drawn. */
+ * IRQ. Latch immediately: the room upload runs past line 0, and the shut
+ * circle has to already be clipping when that line is drawn. */
 static void present_iris(const Ppu *ppu) {
 	int on = iris_wanted();
 	int lamp = !on && lamp_cone(ppu);
@@ -1500,13 +1513,91 @@ static void present_iris(const Ppu *ppu) {
 	}
 	iris_publish = ((uint32)idx << 8) | ((on || lamp) ? 1u : 0u) | (lamp ? 2u : 0u);
 	scanline_irq_sync();
-	/* Present runs at the start of vblank, before the room upload.
-	 * Spotlight_open leaves a closed circle. Waiting for line 261 lets
-	 * that upload draw one full frame of the room with the old window.
-	 * Mid-frame the scanline IRQ owns the window, so a latch here would
-	 * paint one span across the circle. */
-	if (REG_VCOUNT >= (unsigned)SCREEN_HEIGHT)
-		iris_latch_frame();
+	/* Spotlight_open leaves a closed circle, and the room upload can still
+	 * be going when line 0 is drawn. Latch whatever line is current. The
+	 * IRQ keeps each later line on its own span, so this does not smear
+	 * the circle into one bar. */
+	iris_latch_frame();
+}
+
+/* True when the door iris has no open pixel. That frame is black on the
+ * SNES because every layer is clipped; brightness stays up. */
+static int iris_fully_closed(void) {
+	int idx;
+	int i;
+
+	if (!(iris_publish & 1) || (iris_publish & 2))
+		return 0;
+	idx = (int)((iris_publish >> 8) & 1);
+	for (i = 0; i < SCREEN_HEIGHT; i++) {
+		u16 span = iris_span[idx][i];
+
+		if ((span & 0xff) <= (span >> 8))
+			return 0;
+	}
+	return 1;
+}
+
+/* Tile 960, 64 tiles of 4bpp. Behind the 16KB the game sprites upload.
+ * Index 960 is a multiple of the 64-tile 64x64 sprite, and 960+64-1 still
+ * fits in the 10-bit name. */
+static u16 *iris_fill_gfx(void) {
+	return SPRITE_GFX + (960 * 32) / 2;
+}
+
+static void iris_fill_init(void) {
+	dmaFillWords(0x11111111, iris_fill_gfx(), 64 * 32);
+}
+
+/* The backdrop cannot be windowed, so the iris keeps it black and the
+ * outside of the circle is black. Tree edges are transparent pixels of
+ * that backdrop (the green or brown fringe). A solid sprite of the real
+ * color sits behind the ground and only inside the window, which is where
+ * those edges look through. The ground has to be on the main screen: its
+ * priority is then 2, and this sprite is priority 3, so it stays behind
+ * the tiles. Palette 15 is past the eight SNES sprite palettes. Hidden
+ * OAM entries are reused so Link stays put. */
+static void iris_lay_backdrop(const Ppu *ppu) {
+	int back;
+	u16 color;
+	int slot;
+	int n;
+	int used[12];
+
+	if (!(iris_publish & 1) || (iris_publish & 2) || iris_fully_closed())
+		return;
+	back = math_active(ppu) && (ppu->mathEnabled & 0x20);
+	color = back ? math_color(ppu->cgram[0], ppu) : ppu->cgram[0];
+	color = (u16)(color & 0x7fff);
+	if (!color)
+		return;
+	SPRITE_PALETTE[15 * 16 + 1] = color;
+
+	n = 0;
+	for (slot = 127; slot >= 0 && n < 12; slot--) {
+		SpriteEntry *e = &oamMain.oamMemory[slot];
+
+		if (e->isRotateScale || (!e->isHidden && e->y < SCREEN_HEIGHT))
+			continue;
+		used[n++] = slot;
+	}
+	for (slot = 127; slot >= 0 && n < 12; slot--) {
+		int k;
+		int take = 1;
+
+		for (k = 0; k < n; k++) {
+			if (used[k] == slot)
+				take = 0;
+		}
+		if (take)
+			used[n++] = slot;
+	}
+	for (n = 0; n < 12; n++) {
+		oamSet(&oamMain, used[n], (n % 4) * 64, (n / 4) * 64,
+			3, 15, SpriteSize_64x64, SpriteColorFormat_16Color,
+			iris_fill_gfx(), -1, false, false, false, false, false);
+	}
+	oamUpdate(&oamMain);
 }
 
 /* Overworld: BG1 is not on the main screen, so this layer can show the
@@ -1714,6 +1805,7 @@ void ZeldaHwInit(void) {
 	blank_bg1 = kBlankNone;
 	dmaFillWords(0, BG_GFX, 128 * 1024);
 	dmaFillWords(0, SPRITE_GFX, 16 * 1024);
+	iris_fill_init();
 	oamClear(&oamMain, 0, 128);
 	oamUpdate(&oamMain);
 }
@@ -1722,6 +1814,13 @@ void ZeldaHwPresent(Ppu *ppu) {
 	int main_en;
 	int sub_en;
 	int cover;
+	int door_iris = iris_wanted();
+
+	/* The shut circle has to be clipped before the map copy. That copy
+	 * runs past line 0 on a room load, which is the frame that should be
+	 * black. The lamp hole waits until the scroll below is written. */
+	if (door_iris)
+		present_iris(ppu);
 
 	/* Last frame's maps, before this frame reuses the buffers. Still in
 	 * the blank main() just waited for, so the copy finishes before line 0. */
@@ -1805,11 +1904,14 @@ void ZeldaHwPresent(Ppu *ppu) {
 	 * upload has reached: running, and the pan into the next room. */
 	bg2_front_on_slot1 = lift_bg2 && !(bg1_main || stair_arch);
 	present_scroll(ppu, show_bg3_lo);
-	present_iris(ppu);
+	if (!door_iris)
+		present_iris(ppu);
 	latch_scroll_window();
 	/* Already built before this vblank. Copy it up before the background
 	 * upload, or a room of guards is still being written while it is drawn. */
 	ZeldaHwCommitSprites(((main_en | sub_en) & 0x10) != 0);
+	if (main_en & 0x02)
+		iris_lay_backdrop(ppu);
 	if (!lamp)
 		present_bg1(ppu, bg1_main || stair_arch);
 	if (bg2_on)
@@ -1918,7 +2020,8 @@ void ZeldaHwPresent(Ppu *ppu) {
 
 		picture_covered = cover;
 		if (use_master_bright)
-			REG_MASTER_BRIGHT = inidisp_to_bright(cover ? 0x80 : INIDISP_copy);
+			REG_MASTER_BRIGHT = inidisp_to_bright(
+				(cover || iris_fully_closed()) ? 0x80 : INIDISP_copy);
 		leaveCriticalSection(ime);
 	}
 }
