@@ -101,6 +101,16 @@ static void publish(SpcPlayer *p)
 	DC_FlushRange(&ipc->seq, sizeof ipc->seq);
 }
 
+void ZeldaAudioCatchupFrame(void)
+{
+	SpcPlayer *p = g_zenv.player;
+
+	if (!p || !p->dsp)
+		return;
+	ZeldaPopApuState();
+	SpcPlayer_Advance(p);
+}
+
 void ZeldaAudioFrame(void)
 {
 	SpcPlayer *p = g_zenv.player;
