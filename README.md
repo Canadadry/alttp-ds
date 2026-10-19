@@ -12,10 +12,8 @@ LttP DS is a homebrew port of [snesrev/zelda3](https://github.com/snesrev/zelda3
 
 - **Full game.** The whole game from the title screen onward, running zelda3's reimplemented game logic on the DS's ARM9.
 - **DS 2D engine renderer.** SNES backgrounds, sprites, windows, mosaic, color math, and the door iris map onto DS tile layers, hardware sprites, and palettes. The world map uses a hardware affine layer, so each scanline keeps the Mode 7 perspective.
-- **Hardware-voice audio.** The game's SPC700 music and sound effects play through the DS sound channels on the ARM7 at the SNES's 32 kHz rate, with correct left/right panning.
 - **Cropped screen handled for you.** The SNES picture is 224 lines and the DS screen is 192. The overworld and dungeon cameras scroll a little past room and area edges, so Link and the action stay in view.
 - **Lid handling.** Closing the DS lid pauses the game and the music, and opening it wakes both. On a loaded game, closing the lid opens the save menu.
-- **Save files that behave.** Saves go to an 8 KB `lttp-ds.sav` on the SD card, with the three normal save slots. Damaged slots are repaired before they are written.
 
 ### Bottom-screen HUD and touch controls
 
@@ -31,9 +29,9 @@ When no game is running (title, file select, boot), the bottom screen shows a Tr
 
 ### Quality-of-life additions
 
+- **Settings menu.** Open it from the save menu (see [Settings](#settings)).
 - **Title skip.** Pressing a button during the intro jumps to the sword drop, after a short bit of the title theme.
 - **Fast dialogue.** Hold **A** to speed through dialogue that has no text box, such as Zelda's plea.
-- **Settings menu.** Open it from the save menu (see [Settings](#settings)).
 - **Launcher icon and title.** The ROM has its own banner icon and title in the DS launcher and in Twilight Menu++.
 
 ### Settings
