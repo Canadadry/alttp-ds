@@ -212,6 +212,7 @@ static void build_number(HudSprite *s, const Ppu *ppu, int value, int digits,
 	s->y = y;
 	s->w = digits * kTileH;
 	s->h = kTileH;
+	memset(s->px, 0, sizeof s->px);
 	for (i = digits - 1; i >= 0; i--) {
 		u8 cell[kTileH][kTileH];
 
@@ -1395,14 +1396,49 @@ static void draw_hud(void)
 /* Counts tick up a point per frame while they fill, the player swaps items,
  * and the game can reload its tiles, so look every frame and touch the
  * screen only on a change, and only the rows that changed. */
+static void commit_counters(void)
+{
+	int lo = kDynBottom, hi = kDynTop, i;
+
+	if (!memcmp(&next, &shown, sizeof shown))
+		return;
+	/* Only the rows of what changed. */
+	if (memcmp(next.pal, shown.pal, sizeof next.pal)) {
+		lo = kDynTop;
+		hi = kDynBottom;
+	} else {
+		for (i = 0; i < kSprites; i++) {
+			if (!memcmp(&next.spr[i], &shown.spr[i], sizeof next.spr[i]))
+				continue;
+			if (next.spr[i].y < lo)
+				lo = next.spr[i].y;
+			if (next.spr[i].y + next.spr[i].h > hi)
+				hi = next.spr[i].y + next.spr[i].h;
+		}
+	}
+	memcpy(&shown, &next, sizeof shown);
+	set_counter_palette(&shown);
+	put_rows(lo, hi);
+}
+
+/* The three counts alone. While rupees pour in they change every frame, and
+ * the icons and colors do not, so only the numbers are redrawn. */
+static void refresh_counts(void)
+{
+	const Ppu *ppu = g_zenv.ppu;
+	int rupees = link_rupees_actual;
+
+	memcpy(&next, &shown, sizeof next);
+	build_number(&next.spr[kRupeeNum], ppu, rupees, rupees > 999 ? 4 : 3, kRupeeY);
+	build_number(&next.spr[kBombNum], ppu, link_item_bombs % 100, 2, kBombY);
+	build_number(&next.spr[kArrowNum], ppu, link_num_arrows % 100, 2, kArrowY);
+	commit_counters();
+}
+
 static void refresh_counters(void)
 {
 	build_counters(&next);
-	if (memcmp(&next, &shown, sizeof shown)) {
-		memcpy(&shown, &next, sizeof shown);
-		set_counter_palette(&shown);
-		put_rows(kDynTop, kDynBottom);
-	}
+	commit_counters();
 }
 
 static void refresh_item(void)
@@ -1447,32 +1483,70 @@ static u32 dyn_sig(void)
 	const Ppu *ppu = g_zenv.ppu;
 	const u16 *buf = hud_tile_indices_buffer;
 	u32 h = 2166136261u;
-	int i;
+	int i, r;
 
-	for (i = 0; i < 6 * 32; i++)
-		h = (h ^ buf[i]) * 16777619u;
+	/* The item box and the hearts. Not the meter or the counters: those
+	 * change every frame as they fill, and have their own checks. */
+	for (r = 0; r < 2; r++)
+		for (i = 0; i < 2; i++)
+			h = (h ^ buf[kItemBoxWord + r * 32 + i]) * 16777619u;
+	for (r = 0; r < kHeartRows; r++)
+		for (i = 0; i < kHeartCols; i++)
+			h = (h ^ buf[kHeartWord + r * 32 + i]) * 16777619u;
 	for (i = 0; i < 32; i++)
 		h = (h ^ ppu->cgram[i]) * 16777619u;
-	h = (h ^ (u32)link_rupees_actual) * 16777619u;
-	h = (h ^ (u32)link_item_bombs) * 16777619u;
-	h = (h ^ (u32)link_num_arrows) * 16777619u;
-	h = (h ^ (u32)link_magic_power) * 16777619u;
 	return h;
 }
 
+/* The meter's tile entries and the magic itself. */
+static u32 magic_sig(void)
+{
+	const u16 *buf = hud_tile_indices_buffer;
+	u32 h = (u32)link_magic_power + 2166136261u;
+	int r, i;
+
+	for (r = 0; r < 6; r++)
+		for (i = 0; i < 3; i++)
+			h = (h ^ buf[r * 32 + kMagicWord + i]) * 16777619u;
+	return h;
+}
+
+static u32 counts_sig(void)
+{
+	u32 h = (u32)link_rupees_actual + 2166136261u;
+
+	h = (h ^ (u32)link_item_bombs) * 16777619u;
+	return (h ^ (u32)link_num_arrows) * 16777619u;
+}
+
+static u32 last_magic_sig, last_counts_sig;
 static int check_next;
 
 static void refresh_dynamic(void)
 {
 	u32 sig = dyn_sig();
+	u32 msig = magic_sig();
+	u32 csig = counts_sig();
 
 	if (sig != last_sig) {
 		last_sig = sig;
+		last_magic_sig = msig;
+		last_counts_sig = csig;
 		refresh_counters();
 		refresh_item();
 		refresh_hearts();
 		refresh_magic();
 		return;
+	}
+	/* Rupees pouring in or the meter filling change one thing a frame, so
+	 * redraw just that. */
+	if (csig != last_counts_sig) {
+		last_counts_sig = csig;
+		refresh_counts();
+	}
+	if (msig != last_magic_sig) {
+		last_magic_sig = msig;
+		refresh_magic();
 	}
 	switch (check_next++ & 3) {
 	case 0: refresh_counters(); break;
