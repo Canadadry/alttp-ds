@@ -1,4 +1,4 @@
-# LttP DS
+# ALTTP DS
 
 *The Legend of Zelda: A Link to the Past* for the Nintendo DS / DS Lite.
 
