@@ -34,3 +34,9 @@ void ZeldaDarkRoomsSet(int bright);
 /* 1: Link's hair is blonde. 0: the original pink. */
 int ZeldaHairBlonde(void);
 void ZeldaHairSet(int blonde);
+
+/* 1: a save made in a dungeon loads at that dungeon's entrance. */
+int ZeldaSpawnDungeon(void);
+void ZeldaSpawnSet(int dungeon);
+void ZeldaSpawnRemember(int slot, int entrance);
+int ZeldaSpawnPrepare(int slot);

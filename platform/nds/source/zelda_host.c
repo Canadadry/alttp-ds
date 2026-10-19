@@ -148,12 +148,14 @@ static int arrow_99;
 static int run_speed;
 static int dark_bright;
 static int hair_blonde;
+static int spawn_dungeon;
 static int scroll_row;
 static int save_on_exit;
 
 enum {
 	kRowHud = 0,
 	kRowBeep,
+	kRowSpawn,
 	kRowBomb,
 	kRowArrow,
 	kRowSpeed,
@@ -162,7 +164,7 @@ enum {
 	kRowSave,
 	kRowCancel,
 	kSettingCount = kRowSave,
-	kVisible = 4,
+	kVisible = 5,
 	kCaretX = 16,
 	kLabelX = 36,
 	kValueX = 120,
@@ -172,7 +174,7 @@ enum {
 	kCancelY = 166
 };
 
-static const int kSlotY[kVisible] = { 46, 66, 86, 106 };
+static const int kSlotY[kVisible] = { 42, 60, 78, 96, 114 };
 static const char *const kHudChoice[] = { "Top Screen", "Bottom Screen" };
 static const char *const kOnOff[] = { "Off", "On" };
 static const char *const kRunChoice[] = { "Normal", "Double", "Triple" };
@@ -197,6 +199,8 @@ static const char *settings_label(int row)
 		return "HUD";
 	case kRowBeep:
 		return "Low HP Indicator";
+	case kRowSpawn:
+		return "Spawn";
 	case kRowBomb:
 		return "Bomb Capacity";
 	case kRowArrow:
@@ -219,6 +223,8 @@ static const char *settings_value(int row)
 		return kHudChoice[hud_pick];
 	case kRowBeep:
 		return kOnOff[beep_on];
+	case kRowSpawn:
+		return spawn_dungeon ? "Dungeon" : "Normal";
 	case kRowBomb:
 		return bomb_99 ? "99" : "10";
 	case kRowArrow:
@@ -296,6 +302,8 @@ static void settings_scroll(int dir)
 		v = &hud_pick;
 	else if (cursor == kRowBeep)
 		v = &beep_on;
+	else if (cursor == kRowSpawn)
+		v = &spawn_dungeon;
 	else if (cursor == kRowBomb)
 		v = &bomb_99;
 	else if (cursor == kRowArrow)
@@ -343,6 +351,7 @@ static void ZeldaSettingsEnter(void)
 		run_speed = 2;
 	dark_bright = ZeldaDarkRooms() ? 1 : 0;
 	hair_blonde = ZeldaHairBlonde() ? 1 : 0;
+	spawn_dungeon = ZeldaSpawnDungeon() ? 1 : 0;
 	cursor = kRowHud;
 	scroll_row = 0;
 	save_on_exit = 0;
@@ -384,6 +393,16 @@ static int map_keys(u32 held)
 	return inputs;
 }
 
+static void note_dungeon(int slot, int entrance)
+{
+	ZeldaSpawnRemember(slot, entrance);
+}
+
+static int file_dungeon_entrance(int slot)
+{
+	return ZeldaSpawnPrepare(slot);
+}
+
 void ZeldaHostInit(void)
 {
 	ParseConfigFile(NULL);
@@ -407,6 +426,8 @@ void ZeldaHostInit(void)
 	ZeldaSaveMount();
 	ZeldaAudioInit();
 	SelectMenu_OnSettings = ZeldaSettingsEnter;
+	SaveGame_NoteDungeon = note_dungeon;
+	LoadFile_DungeonEntrance = file_dungeon_entrance;
 }
 
 void ZeldaHostSave(void)
@@ -537,6 +558,7 @@ void ZeldaHostBlit(u16 *fb)
 			ZeldaRunSpeedSet(run_speed + 1);
 			ZeldaDarkRoomsSet(dark_bright);
 			ZeldaHairSet(hair_blonde);
+			ZeldaSpawnSet(spawn_dungeon);
 		}
 		ZeldaVideoMenuEnd();
 		settings_menu = 0;
