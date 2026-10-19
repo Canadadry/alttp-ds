@@ -419,10 +419,13 @@ enum {
 	kModTitle = 20,
 	kModIntro = 0,
 	kModFileSelect = 1,
+	kModNameFile = 4,
 	kModLoadFile = 5,
 	kModSpawnSelect = 27,
 	kTxOutStep = 2,
-	kTxInStep = 1
+	kTxInStep = 1,
+	/* Frames to wait for a force blank to end before giving up. */
+	kTxBlankWait = 120
 };
 
 enum {
@@ -436,11 +439,13 @@ static int tx_phase;
 static int tx_level;
 static int tx_prev = -1;
 static int tx_after;
+static int tx_wait;
 
 static void tx_reset(void)
 {
 	tx_phase = kTxNone;
 	tx_level = 0;
+	tx_wait = 0;
 	tx_prev = -1;
 	ZeldaVideoHoldBrightness(0);
 	ZeldaVideoSetTransition(0);
@@ -449,6 +454,7 @@ static void tx_reset(void)
 static void tx_finish_out(void)
 {
 	tx_level = 16;
+	tx_wait = 0;
 	ZeldaVideoSetTransition(16);
 	ZeldaVideoHoldBrightness(0);
 	tx_phase = tx_after;
@@ -467,6 +473,12 @@ static void tx_begin_out(int after)
 	ZeldaVideoHoldBrightness(1);
 }
 
+/* Modules 1..4: file select, copy file, erase file, name file. */
+static int tx_in_file_menus(int mod)
+{
+	return mod >= kModFileSelect && mod <= kModNameFile;
+}
+
 /* After each game frame, before it is presented. */
 static void tx_watch(void)
 {
@@ -478,12 +490,17 @@ static void tx_watch(void)
 		return;
 	if (mod == kModFileSelect && (prev == kModTitle || prev == kModIntro)) {
 		tx_begin_out(kTxIn);
-	} else if (mod == kModLoadFile && prev == kModFileSelect) {
+	} else if (tx_in_file_menus(mod) && tx_in_file_menus(prev)) {
+		/* File select, copy, erase, and name file: every switch between
+		 * them rebuilds the whole screen. */
+		tx_begin_out(kTxIn);
+	} else if (mod == kModLoadFile && tx_in_file_menus(prev)) {
 		tx_begin_out(kTxHold);
 	} else if (mod == kModSpawnSelect) {
 		if (tx_phase == kTxHold || tx_phase == kTxNone) {
 			tx_phase = kTxIn;
 			tx_level = 16;
+			tx_wait = 0;
 			ZeldaVideoSetTransition(16);
 		}
 	} else if (tx_phase == kTxHold) {
@@ -505,6 +522,12 @@ static void tx_step(void)
 		else
 			ZeldaVideoSetTransition(tx_level);
 	} else if (tx_phase == kTxIn) {
+		/* The new screen is still being built under a force blank.
+		 * Start the fade once it is on, or the fade runs unseen. */
+		if (tx_level == 16 && (INIDISP_copy & 0x80) && tx_wait < kTxBlankWait) {
+			tx_wait++;
+			return;
+		}
 		tx_level -= kTxInStep;
 		if (tx_level <= 0) {
 			tx_level = 0;
@@ -578,8 +601,22 @@ static void note_dungeon(int slot, int entrance)
 	ZeldaSpawnRemember(slot, entrance);
 }
 
+static void forget_slot(int slot)
+{
+	ZeldaSpawnForget(slot);
+}
+
+static void copy_slot(int from, int to)
+{
+	ZeldaSpawnCopy(from, to);
+}
+
 static int file_dungeon_entrance(int slot)
 {
+	/* A game still in bed has never been in a dungeon. A leftover entry
+	 * from a file erased by an older build must not skip the opening. */
+	if (sram_progress_indicator == 0)
+		return -1;
 	return ZeldaSpawnPrepare(slot);
 }
 
@@ -608,6 +645,8 @@ void ZeldaHostInit(void)
 	SelectMenu_OnSettings = ZeldaSettingsEnter;
 	SaveGame_NoteDungeon = note_dungeon;
 	LoadFile_DungeonEntrance = file_dungeon_entrance;
+	SaveFile_OnForget = forget_slot;
+	SaveFile_OnCopy = copy_slot;
 	memset(&lid_cookie, 0, sizeof lid_cookie);
 	pmAddEventHandler(&lid_cookie, on_lid_sleep, NULL);
 	/* Calico's hinge sleep clears the LCD power bit. The 2D picture does

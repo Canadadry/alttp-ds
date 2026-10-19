@@ -39,4 +39,8 @@ void ZeldaHairSet(int blonde);
 int ZeldaSpawnDungeon(void);
 void ZeldaSpawnSet(int dungeon);
 void ZeldaSpawnRemember(int slot, int entrance);
+/* Drop the remembered dungeon of an erased or newly named file. */
+void ZeldaSpawnForget(int slot);
+/* Give a copied file the remembered dungeon of its source. */
+void ZeldaSpawnCopy(int from, int to);
 int ZeldaSpawnPrepare(int slot);

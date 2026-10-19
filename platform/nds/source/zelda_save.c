@@ -335,6 +335,27 @@ void ZeldaSpawnRemember(int slot, int entrance)
 	settings_store();
 }
 
+/* Erasing a file, or starting a new one in its place, leaves no dungeon to
+ * spawn in. Without this the next game opens in the old file's dungeon. */
+void ZeldaSpawnForget(int slot)
+{
+	if (slot < 0 || slot > 2)
+		return;
+	g_spawn_entrance[slot] = 0xff;
+	memset(g_spawn_exit[slot], 0, kExitBytes);
+	settings_store();
+}
+
+/* A copied file loads where the original does. */
+void ZeldaSpawnCopy(int from, int to)
+{
+	if (from < 0 || from > 2 || to < 0 || to > 2 || from == to)
+		return;
+	g_spawn_entrance[to] = g_spawn_entrance[from];
+	memcpy(g_spawn_exit[to], g_spawn_exit[from], kExitBytes);
+	settings_store();
+}
+
 int ZeldaSpawnPrepare(int slot)
 {
 	int entrance;
