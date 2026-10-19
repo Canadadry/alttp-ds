@@ -1143,8 +1143,9 @@ int ZeldaBottomHoldsGame(void)
 
 static int start_will_work(void)
 {
+	/* State 4 is the plain menu and 10 the bottle list; both take Start. */
 	if (menu_open())
-		return overworld_map_state == 4;
+		return overworld_map_state == 4 || overworld_map_state == 10;
 	return (main_module_index == 7 || main_module_index == 9) &&
 		submodule_index == 0;
 }
@@ -1195,15 +1196,45 @@ static void touch_item(int x, int y)
 	sound_effect_2 = 32;
 }
 
-void ZeldaBottomInput(u32 *held, u32 down)
+/* B backs out of the gear panel or the item menu. The game has no use for B
+ * in either, and a press that closed one must not also reach the game as a
+ * sword swing once play resumes, so it is taken out of the keys, and stays
+ * out until B is let go. */
+static int b_eat;
+
+static void back_out(u32 *held, u32 *down)
+{
+	if (!(*down & KEY_B) || !hud_up || fade_phase || ZeldaHudOnTop())
+		return;
+	if (gear_on) {
+		gear_on = 0;
+	} else if (menu_open() && start_will_work()) {
+		*held |= KEY_START;
+	} else {
+		return;
+	}
+	b_eat = 1;
+}
+
+void ZeldaBottomInput(u32 *held, u32 *down)
 {
 	touchPosition t;
 
+	back_out(held, down);
+	if (b_eat) {
+		if (*held & KEY_B) {
+			*held &= ~KEY_B;
+			*down &= ~KEY_B;
+		} else {
+			b_eat = 0;
+		}
+	}
+
 	/* Start while the game is held would do nothing. Leave the gear panel,
 	 * and the game gets the press this same frame. */
-	if (gear_on && (down & KEY_START) && ZeldaBottomHoldsGame())
+	if (gear_on && (*down & KEY_START) && ZeldaBottomHoldsGame())
 		gear_on = 0;
-	if (!(down & KEY_TOUCH) || !hud_up || fade_phase)
+	if (!(*down & KEY_TOUCH) || !hud_up || fade_phase)
 		return;
 	touchRead(&t);
 	if (button_hit(&kBoxes[1], t.px, t.py)) {
@@ -1811,5 +1842,13 @@ void ZeldaBottomUpdate(void)
 		gear_on = 0;
 	if (want == hud_up)
 		return;
+	/* Loading a game: the idle picture fades out and the HUD fades in,
+	 * the same swap the maps use. Leaving the game stays a cut. */
+	if (want) {
+		fade_phase = kFadeOut;
+		fade_level = 0;
+		step_fade(want);
+		return;
+	}
 	swap_picture(want);
 }

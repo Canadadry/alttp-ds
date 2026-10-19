@@ -27,7 +27,7 @@ int main(int argc, char **argv)
 		u32 held = keysHeld();
 		u32 down = keysDown();
 
-		ZeldaBottomInput(&held, down);
+		ZeldaBottomInput(&held, &down);
 
 		if ((held & (KEY_L | KEY_R | KEY_START | KEY_SELECT)) ==
 		    (KEY_L | KEY_R | KEY_START | KEY_SELECT)) {
