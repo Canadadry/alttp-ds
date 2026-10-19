@@ -1149,6 +1149,52 @@ static int start_will_work(void)
 		submodule_index == 0;
 }
 
+/* Touching an icon on the item panel equips it, which in this game is just
+ * moving the menu's cursor there: hud_cur_item is both. The game's own menu
+ * code redraws the ring and the item box from it on the next frame, so the
+ * panel follows with no work here, and the cursor move gets the same sound
+ * and blink reset as a D-pad press.
+ *
+ * Each slot's touch area is its whole cell, icon plus half the gap on every
+ * side, so the gaps between icons do not miss. Only the plain menu takes
+ * touches (map state 4). The bottle list and the menu opening or closing do
+ * not. */
+static int item_at_touch(int x, int y)
+{
+	int col = (x - (kMenuX - kMenuGapX / 2)) / kMenuPitchX;
+	int row = (y - (kMenuY - kMenuGapY / 2)) / kMenuPitchY;
+	int slot, item;
+
+	if (x < kMenuX - kMenuGapX / 2 || y < kMenuY - kMenuGapY / 2)
+		return 0;
+	if (col >= kMenuCols || row >= kMenuRows)
+		return 0;
+	slot = row * kMenuCols + col;
+	/* The same order the game's own cursor walks: its custom order once
+	 * the player has rearranged, otherwise the slot number. */
+	item = hud_inventory_order[0] ? hud_inventory_order[slot] : slot + 1;
+	if (item < 1 || item > kMenuItems)
+		return 0;
+	/* Owned, as Hud_DoWeHaveThisItem tests it. Item 16 is the bottle slot,
+	 * whose count is the bottle index. */
+	return (&link_item_bow)[item - 1] ? item : 0;
+}
+
+static void touch_item(int x, int y)
+{
+	int item;
+
+	if (!menu_open() || overworld_map_state != 4 || panel_shown != kPanelItems ||
+	    panel_level)
+		return;
+	item = item_at_touch(x, y);
+	if (!item || item == hud_cur_item)
+		return;
+	hud_cur_item = item;
+	timer_for_flashing_circle = 16;
+	sound_effect_2 = 32;
+}
+
 void ZeldaBottomInput(u32 *held, u32 down)
 {
 	touchPosition t;
@@ -1172,6 +1218,8 @@ void ZeldaBottomInput(u32 *held, u32 down)
 		} else {
 			gear_on = !gear_on;
 		}
+	} else {
+		touch_item(t.px, t.py);
 	}
 }
 
