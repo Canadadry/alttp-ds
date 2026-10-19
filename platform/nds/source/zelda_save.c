@@ -1,13 +1,12 @@
 /*
  * Homebrew has no cartridge backup. The save is an 8 KB file named
- * lttp-ds.sav in the root of the DLDI volume (FAT16, 8.3 name LTTP-DS.SAV).
+ * lttp-ds.sav in the root of the DLDI volume (8.3 name LTTP-DS.SAV).
  *
- * The engine calls ZeldaWriteSram from inside a frame (name entry, copy,
- * erase, in-game save). On melonDS that must not call the DLDI write
- * routine: libnds runs it on the ARM7, and a sector write there never
- * clears the cart busy bit, so the frame never returns. The wrap only
- * marks the image dirty. ZeldaSaveFlush, from the main loop, writes the
- * sectors itself and gives up if the cart stays busy.
+ * ZeldaWriteSram only marks the image dirty. ZeldaSaveFlush writes it
+ * after the frame. On melonDS the libfat write never returns: the ARM7
+ * DLDI driver waits forever for the cart busy bit. The flush instead
+ * borrows the cart on the ARM9, which is the interface melonDS stores,
+ * and gives it back before the next frame.
  */
 #include <nds.h>
 #include <calico/dev/blk.h>
@@ -16,6 +15,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "types.h"
 #include "zelda_rtl.h"
@@ -33,6 +33,8 @@ static int g_dirty;
 static int g_tries;
 static int g_have_dir;
 static u32 g_spc;
+static u32 g_spf;
+static u32 g_nfats;
 static u32 g_fat_lba;
 static u32 g_root_lba;
 static u32 g_root_secs;
@@ -52,6 +54,9 @@ static int read_sec(u32 lba)
 	return blkDevReadSectors(BlkDevice_Dldi, g_sec, lba, 1);
 }
 
+/* melonDS only commits a cart transfer from the CPU that owns the slot.
+ * DLDI leaves that as the ARM7, and its write routine never sees busy
+ * clear. Hand the slot to the ARM9 for one sector, then hand it back. */
 static int melon_write_sector(u32 lba, const u8 *data)
 {
 	vu8 *cmd = (vu8 *)0x040001A8;
@@ -64,11 +69,13 @@ static int melon_write_sector(u32 lba, const u8 *data)
 	int ok = 0;
 	int i, spins;
 
-	REG_EXMEMCNT = saved & ~(1u << 11);
+	REG_EXMEMCNT = saved & ~EXMEMCNT_NDS_SLOT_ARM7;
+	if (REG_EXMEMCNT & EXMEMCNT_NDS_SLOT_ARM7)
+		goto out;
 
 	spins = 0;
 	while (*romctrl & (1u << 31)) {
-		if (++spins > 100000)
+		if (++spins > 200000)
 			goto out;
 	}
 
@@ -81,8 +88,9 @@ static int melon_write_sector(u32 lba, const u8 *data)
 	cmd[5] = 0;
 	cmd[6] = 0;
 	cmd[7] = 0;
-	/* Start, write, 512-byte block, KEY2. Same shape as melonDLDI. */
 	*romctrl = 0xE1400000u;
+	if ((*romctrl & (1u << 31)) == 0)
+		goto out;
 
 	for (i = 0; i < 128; i++) {
 		spins = 0;
@@ -91,7 +99,7 @@ static int melon_write_sector(u32 lba, const u8 *data)
 
 			if (ctrl & (1u << 23))
 				break;
-			if ((ctrl & (1u << 31)) == 0 || ++spins > 100000)
+			if ((ctrl & (1u << 31)) == 0 || ++spins > 200000)
 				goto out;
 		}
 		*romdata = word[i];
@@ -99,13 +107,11 @@ static int melon_write_sector(u32 lba, const u8 *data)
 
 	spins = 0;
 	while (*romctrl & (1u << 31)) {
-		if (++spins > 100000)
+		if (++spins > 200000)
 			goto out;
 	}
 	ok = 1;
 out:
-	if (!ok)
-		*romctrl = 0;
 	REG_EXMEMCNT = saved;
 	leaveCriticalSection(ime);
 	return ok;
@@ -113,11 +119,28 @@ out:
 
 static int write_sec(u32 lba, const void *data)
 {
+	static u8 check[kSector] __attribute__((aligned(32)));
+
 	if (data != g_sec)
 		memcpy(g_sec, data, kSector);
-	if (g_melon)
-		return melon_write_sector(lba, g_sec);
-	return blkDevWriteSectors(BlkDevice_Dldi, g_sec, lba, 1);
+	if (!g_melon)
+		return blkDevWriteSectors(BlkDevice_Dldi, g_sec, lba, 1);
+	if (!melon_write_sector(lba, g_sec))
+		return 0;
+	/* The protocol can finish on the ARM9 interface without the
+	 * emulator storing the sector. A DLDI read is the real image. */
+	if (!blkDevReadSectors(BlkDevice_Dldi, check, lba, 1))
+		return 0;
+	return memcmp(check, g_sec, kSector) == 0;
+}
+
+/* File bytes live past the root directory. A data write into the FAT or
+ * the directory is what made folder sync drop lttp-ds.sav. */
+static int write_data_sec(u32 lba)
+{
+	if (!g_data_lba || lba < g_data_lba)
+		return 0;
+	return write_sec(lba, g_sec);
 }
 
 static u16 rd16(const u8 *p)
@@ -148,6 +171,7 @@ static int load_geometry(void)
 	g_spc = g_sec[13];
 	reserved = rd16(g_sec + 14);
 	fats = g_sec[16];
+	g_nfats = fats;
 	root_ents = rd16(g_sec + 17);
 	tot = rd16(g_sec + 19);
 	spf = rd16(g_sec + 22);
@@ -157,6 +181,7 @@ static int load_geometry(void)
 	if (!spf || !fats || !root_ents || !tot)
 		return 0;
 
+	g_spf = spf;
 	g_fat_lba = part + reserved;
 	g_root_lba = g_fat_lba + fats * spf;
 	g_root_secs = (root_ents * 32u + 511u) >> 9;
@@ -168,25 +193,42 @@ static int load_geometry(void)
 	return 1;
 }
 
-static u16 fat_get(u32 cluster)
+static int fat_read(u32 cluster, u16 *out)
 {
+	u32 sector = (cluster * 2u) >> 9;
 	u32 off = (cluster * 2u) & 511u;
+	u32 fat;
 
-	if (!read_sec(g_fat_lba + ((cluster * 2u) >> 9)))
-		return 0xFFFF;
-	return rd16(g_sec + off);
+	if (cluster < 2)
+		return 0;
+	for (fat = 0; fat < g_nfats; fat++) {
+		if (!read_sec(g_fat_lba + fat * g_spf + sector))
+			continue;
+		*out = rd16(g_sec + off);
+		return 1;
+	}
+	return 0;
 }
 
 static int fat_put(u32 cluster, u16 value)
 {
-	u32 lba = g_fat_lba + ((cluster * 2u) >> 9);
+	u32 sector = (cluster * 2u) >> 9;
 	u32 off = (cluster * 2u) & 511u;
+	u32 fat;
 
-	if (!read_sec(lba))
+	if (cluster < 2)
 		return 0;
-	g_sec[off] = (u8)value;
-	g_sec[off + 1] = (u8)(value >> 8);
-	return write_sec(lba, g_sec);
+	for (fat = 0; fat < g_nfats; fat++) {
+		u32 lba = g_fat_lba + fat * g_spf + sector;
+
+		if (!read_sec(lba))
+			return 0;
+		g_sec[off] = (u8)value;
+		g_sec[off + 1] = (u8)(value >> 8);
+		if (!write_sec(lba, g_sec))
+			return 0;
+	}
+	return 1;
 }
 
 static int name_is_save(const u8 *ent)
@@ -255,9 +297,7 @@ static u32 alloc_cluster(void)
 
 			if (cluster < 2 || cluster >= max || link != 0)
 				continue;
-			g_sec[i] = 0xFF;
-			g_sec[i + 1] = 0xFF;
-			if (!write_sec(g_fat_lba + sector, g_sec))
+			if (!fat_put(cluster, 0xFFFF))
 				return 0;
 			return cluster;
 		}
@@ -277,6 +317,10 @@ static int write_dir_entry(u32 cluster)
 	memset(ent, 0, 32);
 	memcpy(ent, kSaveName, 11);
 	ent[11] = 0x20;
+	/* 1980-01-01 00:00:02. A zero timestamp is ignored by folder sync,
+	 * so a rewrite never replaces the copy on the host. */
+	ent[22] = 1;
+	ent[24] = 0x21;
 	ent[26] = (u8)cluster;
 	ent[27] = (u8)(cluster >> 8);
 	ent[28] = (u8)(kSramBytes & 0xFF);
@@ -328,7 +372,7 @@ static int write_sram_chain(u32 cluster)
 	u32 off = 0;
 
 	while (left) {
-		u32 base, s, next, n;
+		u32 base, s, n;
 
 		if (cluster < 2 || cluster >= 0xFFF8)
 			return 0;
@@ -337,20 +381,27 @@ static int write_sram_chain(u32 cluster)
 			n = left > kSector ? kSector : left;
 			memset(g_sec, 0, kSector);
 			memcpy(g_sec, g_zenv.sram + off, n);
-			if (!write_sec(base + s, g_sec))
+			if (!write_data_sec(base + s))
 				return 0;
 			off += n;
 			left -= n;
 		}
 		if (!left)
 			return 1;
-		next = fat_get(cluster);
-		if (next < 2 || next >= 0xFFF8) {
-			next = alloc_cluster();
-			if (!next || !fat_put(cluster, (u16)next))
+		{
+			u16 link;
+
+			if (!fat_read(cluster, &link))
 				return 0;
+			if (link < 2 || link >= 0xFFF8) {
+				u32 grown = alloc_cluster();
+
+				if (!grown || !fat_put(cluster, (u16)grown))
+					return 0;
+				link = (u16)grown;
+			}
+			cluster = link;
 		}
-		cluster = next;
 	}
 	return 1;
 }
@@ -381,7 +432,13 @@ static int read_sram_chain(u32 cluster)
 		}
 		if (!left)
 			break;
-		cluster = fat_get(cluster);
+		{
+			u16 link;
+
+			if (!fat_read(cluster, &link))
+				return 0;
+			cluster = link;
+		}
 	}
 	if (left)
 		memset(g_zenv.sram + off, 0, left);
@@ -415,16 +472,120 @@ static int read_legacy(void)
 	return 0;
 }
 
+/* Bump the directory time without rewriting the name. melonDS folder
+ * sync only copies a file when that time changes, and it deletes the
+ * host file when the directory entry disappears. */
+static int touch_dir(void)
+{
+	u8 *ent;
+	u16 t;
+
+	if (!g_have_dir || !read_sec(g_dir_lba))
+		return 0;
+	ent = g_sec + g_dir_index * 32;
+	if (ent[0] == 0 || ent[0] == 0xE5)
+		return 0;
+	t = (u16)(rd16(ent + 22) + 1);
+	if (t == 0)
+		t = 1;
+	ent[22] = (u8)t;
+	ent[23] = (u8)(t >> 8);
+	if (rd16(ent + 24) == 0) {
+		ent[24] = 0x21;
+		ent[25] = 0;
+	}
+	return write_sec(g_dir_lba, g_sec);
+}
+
+static const char *const kSavePaths[] = {
+	"fat:/lttp-ds.sav",
+	"sd:/lttp-ds.sav",
+	"lttp-ds.sav",
+	NULL
+};
+
+static int read_stdio(void)
+{
+	int i;
+
+	for (i = 0; kSavePaths[i]; i++) {
+		FILE *f = fopen(kSavePaths[i], "rb");
+		size_t n;
+
+		if (!f)
+			continue;
+		n = fread(g_zenv.sram, 1, kSramBytes, f);
+		fclose(f);
+		if (n == kSramBytes) {
+			g_status = "loaded";
+			return 1;
+		}
+	}
+	return 0;
+}
+
+/* In-place update. "wb" is only used when the file is not there yet;
+ * opening an existing file with "wb" truncates it before the bytes land.
+ * The length flips between 8192 and 8193 so melonDS folder sync copies
+ * the file even when the FAT clock is still in the same 2-second slot. */
+static int write_stdio(void)
+{
+	int i;
+
+	for (i = 0; kSavePaths[i]; i++) {
+		FILE *f = fopen(kSavePaths[i], "r+b");
+		long sz;
+		int wrote;
+
+		if (!f) {
+			FILE *probe = fopen(kSavePaths[i], "rb");
+
+			if (probe) {
+				fclose(probe);
+				continue;
+			}
+			f = fopen(kSavePaths[i], "wb");
+		}
+		if (!f)
+			continue;
+		wrote = fwrite(g_zenv.sram, 1, kSramBytes, f) == kSramBytes;
+		if (wrote && fflush(f) == 0 && fseek(f, 0, SEEK_END) == 0) {
+			sz = ftell(f);
+			if (sz >= 0 && sz <= (long)kSramBytes)
+				ftruncate(fileno(f), (off_t)kSramBytes + 1);
+			else if (sz > (long)kSramBytes)
+				ftruncate(fileno(f), (off_t)kSramBytes);
+		}
+		fsync(fileno(f));
+		if (fclose(f) == 0 && wrote)
+			return 1;
+	}
+	return 0;
+}
+
 void ZeldaSaveFlush(void)
 {
 	if (!g_dirty)
 		return;
-	if (!g_has_fat || !g_zenv.sram) {
+	if (!g_zenv.sram) {
 		g_dirty = 0;
 		g_status = "off";
 		return;
 	}
-	if (!ensure_cluster() || !write_sram_chain(g_cluster)) {
+	/* libfat's write on melonDS waits on the ARM7 driver, which never
+	 * returns. Hardware still uses it. */
+	if (!g_melon && write_stdio()) {
+		g_tries = 0;
+		g_dirty = 0;
+		g_status = "saved";
+		return;
+	}
+	if (!g_has_fat) {
+		g_dirty = 0;
+		g_status = "off";
+		return;
+	}
+	if (!ensure_cluster() || !write_sram_chain(g_cluster) || !touch_dir()) {
 		if (++g_tries >= 2) {
 			g_dirty = 0;
 			g_status = "fail";
@@ -444,13 +605,16 @@ void __wrap_ZeldaWriteSram(void)
 
 void ZeldaSaveMount(void)
 {
-	g_melon = g_envExtraInfo->dldi_io_type == kMelonIo;
-	if (!g_zenv.sram || !load_geometry() || !find_dir()) {
+	if (!g_zenv.sram) {
 		g_status = "off";
 		return;
 	}
-
-	if (g_have_dir && g_cluster >= 2 && read_sram_chain(g_cluster))
+	g_melon = g_envExtraInfo->dldi_io_type == kMelonIo;
+	load_geometry();
+	find_dir();
+	if (read_stdio())
+		return;
+	if (g_has_fat && g_have_dir && g_cluster >= 2 && read_sram_chain(g_cluster))
 		return;
 	if (read_legacy())
 		return;
