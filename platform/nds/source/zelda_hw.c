@@ -693,16 +693,31 @@ static int iris_wanted(void);
 /* Lamp cone: BG1 is on the subscreen and color math subtracts it. A
  * transparent pixel uses the fixed color, 31 with no torches, so that
  * part of the room goes black. The cone's opaque pixels are the hole.
- * Baking the fixed color into the palettes blacks out the whole picture.
- * The inventory is BG3, which is not a math target. Dropping the cone
- * while it is open would paint that black into the menu too. */
+ * Baking the fixed color into the palettes blacks out the whole picture,
+ * including the status bar. A dark-to-dark door clears the subscreen bit
+ * for the pan and only puts it back at the end. The cone scroll still
+ * follows Link, so keep cutting the hole or that pan is a black frame. */
+static int lamp_held_in_dark(void) {
+	return dung_want_lights_out && link_item_torch && !dung_num_lit_torches &&
+		dung_hdr_bg2_properties != 2;
+}
+
 static int lamp_cone(const Ppu *ppu) {
 	int playing = main_module_index == 7 && submodule_index != 20;
 	int inventory = main_module_index == 14 && submodule_index == 1;
+	/* A message switches to module 14. Dropping the window there draws the
+	 * cone graphic in front of the room, and that graphic is the grey shape. */
+	int text = main_module_index == 14 && submodule_index == 2 &&
+		saved_module_for_menu == 7;
+	int cone = hdr_dungeon_dark_with_lantern ||
+		((playing || text) && lamp_held_in_dark());
 
-	if ((!playing && !inventory) || ppu->forcedBlank)
+	if ((!playing && !inventory && !text) || ppu->forcedBlank)
 		return 0;
-	if (!hdr_dungeon_dark_with_lantern || (TS_copy & 0x01) == 0)
+	if (!cone)
+		return 0;
+	/* Lit torches replace the cone with a global brightness. */
+	if (dung_num_lit_torches && (TS_copy & 0x01) == 0)
 		return 0;
 	if (!ppu->addSubscreen || !ppu->subtractColor || ppu->preventMathMode == 3)
 		return 0;
@@ -732,8 +747,14 @@ static void present_palettes(const Ppu *ppu) {
 	 * up, or the SNES picture is forced blank, it has to stay black. */
 	BG_PALETTE[0] = (iris_wanted() || lamp_cone(ppu) || ppu->forcedBlank) ? 0 :
 		(u16)(color & 0x7fff);
+	/* BG3 is 2bpp and lives in colors 0-31. Dark rooms subtract from BG1,
+	 * BG2, and sprites (CGADSUB 0xB3), not from the status bar. Those
+	 * colors are shared, so leave the bar alone while the room goes dark. */
 	for (i = 1; i < 128; i++) {
-		color = bg ? math_color(ppu->cgram[i], ppu) : ppu->cgram[i];
+		int bake = bg && !(player_is_indoors && dung_want_lights_out &&
+			(ppu->mathEnabled & 0x04) == 0 && i < 32);
+
+		color = bake ? math_color(ppu->cgram[i], ppu) : ppu->cgram[i];
 		BG_PALETTE[i] = (u16)(color & 0x7fff);
 	}
 	for (i = 0; i < 128; i++) {
@@ -1069,6 +1090,7 @@ static u16 lamp_span_l[kLampSpans][512];
 static u16 lamp_span_r[kLampSpans][512];
 static uint8 lamp_span_n[512];
 static uint16 lamp_mask[8];
+static uint16 lamp_pal_used;
 static uint32 lamp_map_sig;
 static uint16 lamp_sig_map_adr;
 static uint16 lamp_sig_tile_adr;
@@ -1076,6 +1098,13 @@ static uint8 lamp_sig_geom;
 static int lamp_rows;
 static int lamp_cols;
 static int lamp_cache_ok;
+/* One decode per tile index. A dark room repeats the empty floor across
+ * the whole 64x64 map; decoding it on every cell is the door stall. */
+static uint32 lamp_pix_epoch;
+static uint32 lamp_pix_gen[1024];
+static uint16 lamp_pix_attr[1024];
+static uint16 lamp_pix_bits[1024];
+static uint8 lamp_pix_rows[1024][8];
 
 /* Bit i of palette p is a cone pixel dark enough to leave the room. */
 static void lamp_open_mask(const Ppu *ppu, uint16 mask[8]) {
@@ -1098,15 +1127,6 @@ static void lamp_open_mask(const Ppu *ppu, uint16 mask[8]) {
 	}
 }
 
-static int lamp_mask_same(const uint16 *a, const uint16 *b) {
-	int i;
-
-	for (i = 0; i < 8; i++)
-		if (a[i] != b[i])
-			return 0;
-	return 1;
-}
-
 static int lamp_tile_blank(const Ppu *ppu, int tile_adr) {
 	int i;
 
@@ -1126,54 +1146,94 @@ static uint16 lamp_map_word(const BgLayer *layer, int tx, int ty) {
 	return adr;
 }
 
-/* Tiles are visited left to right. A pixel continues the open run, or
+/* Tiles are visited left to right. A run continues the open span, or
  * starts another when a gap separates this cone from the next one. */
-static void lamp_mark(int y, int x) {
+static void lamp_mark_run(int y, int x0, int x1) {
 	int n = lamp_span_n[y];
 
-	if (n > 0 && x <= (int)lamp_span_r[n - 1][y] + 1) {
-		if (x > (int)lamp_span_r[n - 1][y])
-			lamp_span_r[n - 1][y] = (u16)x;
+	if (n > 0 && x0 <= (int)lamp_span_r[n - 1][y] + 1) {
+		if (x1 > (int)lamp_span_r[n - 1][y])
+			lamp_span_r[n - 1][y] = (u16)x1;
 		return;
 	}
 	if (n >= kLampSpans) {
-		lamp_span_r[kLampSpans - 1][y] = (u16)x;
+		lamp_span_r[kLampSpans - 1][y] = (u16)x1;
 		return;
 	}
-	lamp_span_l[n][y] = (u16)x;
-	lamp_span_r[n][y] = (u16)x;
+	lamp_span_l[n][y] = (u16)x0;
+	lamp_span_r[n][y] = (u16)x1;
 	lamp_span_n[y] = (uint8)(n + 1);
 }
 
-static void lamp_paint_tile(const Ppu *ppu, int tx, int ty, uint16 tile, uint16 bits) {
+static void lamp_decode_rows(const Ppu *ppu, uint16 tile, uint16 bits, uint8 rows[8]) {
 	const BgLayer *layer = &ppu->bgLayer[0];
-	int base = (layer->tileAdr + (tile & 0x3ff) * 16) & 0x7fff;
+	int name = tile & 0x3ff;
+	int base = (layer->tileAdr + name * 16) & 0x7fff;
 	int vflip = (tile & 0x8000) != 0;
 	int hflip = (tile & 0x4000) != 0;
 	int row;
 
+	if (lamp_pix_gen[name] == lamp_pix_epoch &&
+	    lamp_pix_attr[name] == (uint16)(tile & 0xfc00) &&
+	    lamp_pix_bits[name] == bits) {
+		memcpy(rows, lamp_pix_rows[name], 8);
+		return;
+	}
 	for (row = 0; row < 8; row++) {
 		int src = vflip ? 7 - row : row;
 		uint16 plane0 = ppu->vram[(base + src) & 0x7fff];
 		uint16 plane1 = ppu->vram[(base + 8 + src) & 0x7fff];
-		int my = (ty << 3) + row;
+		uint8 out = 0;
 		int col;
 
-		if (plane0 == 0 && plane1 == 0)
-			continue;
-		for (col = 0; col < 8; col++) {
-			int bit = hflip ? col : 7 - col;
-			int pixel = ((plane0 >> bit) & 1) |
-				(((plane0 >> (8 + bit)) & 1) << 1) |
-				(((plane1 >> bit) & 1) << 2) |
-				(((plane1 >> (8 + bit)) & 1) << 3);
-			int x;
+		if (plane0 | plane1) {
+			for (col = 0; col < 8; col++) {
+				int bit = hflip ? col : 7 - col;
+				int pixel = ((plane0 >> bit) & 1) |
+					(((plane0 >> (8 + bit)) & 1) << 1) |
+					(((plane1 >> bit) & 1) << 2) |
+					(((plane1 >> (8 + bit)) & 1) << 3);
 
-			if (pixel == 0 || (bits & (1u << pixel)) == 0)
-				continue;
-			x = (tx << 3) + col;
-			lamp_mark(my, x);
+				if (pixel && (bits & (1u << pixel)))
+					out = (uint8)(out | (1u << col));
+			}
 		}
+		rows[row] = out;
+	}
+	lamp_pix_gen[name] = lamp_pix_epoch;
+	lamp_pix_attr[name] = (uint16)(tile & 0xfc00);
+	lamp_pix_bits[name] = bits;
+	memcpy(lamp_pix_rows[name], rows, 8);
+}
+
+static void lamp_stamp_rows(int tx, int ty, const uint8 rows[8]) {
+	int x0 = tx << 3;
+	int y0 = ty << 3;
+	int row;
+
+	for (row = 0; row < 8; row++) {
+		uint8 bits = rows[row];
+		int x;
+		int run;
+
+		if (bits == 0)
+			continue;
+		if (bits == 0xff) {
+			lamp_mark_run(y0 + row, x0, x0 + 7);
+			continue;
+		}
+		run = -1;
+		for (x = 0; x < 8; x++) {
+			if (bits & (1u << x)) {
+				if (run < 0)
+					run = x;
+			} else if (run >= 0) {
+				lamp_mark_run(y0 + row, x0 + run, x0 + x - 1);
+				run = -1;
+			}
+		}
+		if (run >= 0)
+			lamp_mark_run(y0 + row, x0 + run, x0 + 7);
 	}
 }
 
@@ -1191,18 +1251,27 @@ static int lamp_build(const Ppu *ppu, const uint16 mask[8]) {
 
 	lamp_rows = height;
 	lamp_cols = tw << 3;
+	lamp_pal_used = 0;
+	if (++lamp_pix_epoch == 0) {
+		memset(lamp_pix_gen, 0, sizeof lamp_pix_gen);
+		lamp_pix_epoch = 1;
+	}
 	for (ty = 0; ty < height; ty++)
 		lamp_span_n[ty] = 0;
 	for (ty = 0; ty < th; ty++) {
 		for (tx = 0; tx < tw; tx++) {
 			uint16 tile = ppu->vram[lamp_map_word(layer, tx, ty) & 0x7fff];
-			uint16 bits = mask[(tile >> 10) & 7];
+			int pal = (tile >> 10) & 7;
+			uint16 bits = mask[pal];
+			uint8 rows[8];
 
+			lamp_pal_used = (uint16)(lamp_pal_used | (1u << pal));
 			if (bits == 0)
 				continue;
 			if (tile0_blank && (tile & 0x3ff) == 0)
 				continue;
-			lamp_paint_tile(ppu, tx, ty, tile, bits);
+			lamp_decode_rows(ppu, tile, bits, rows);
+			lamp_stamp_rows(tx, ty, rows);
 			saw = 1;
 		}
 	}
@@ -1286,23 +1355,47 @@ static void lamp_project(const BgLayer *layer, u16 *span) {
 	}
 }
 
+static int lamp_mask_relevant_same(const uint16 *mask) {
+	int pal;
+
+	for (pal = 0; pal < 8; pal++) {
+		if ((lamp_pal_used & (1u << pal)) == 0)
+			continue;
+		if (mask[pal] != lamp_mask[pal])
+			return 0;
+	}
+	return 1;
+}
+
 /* The hole is the dark part of the cone. If the cone has no dark pixel,
- * the opaque graphic itself is the hole. Either way the shape stays cached
- * until the tilemap or those colors change. */
+ * the opaque graphic itself is the hole. A door fade rewrites the other
+ * palettes on every step, and each quadrant of the new room lands in its
+ * own frame. Rebuilding the 64x64 hole for either of those is the stall,
+ * and a room whose floor graphic is not empty (the water rooms) makes
+ * every one of those rebuilds walk the whole map. Hold the hole already
+ * on screen until the pan is over, then build once. */
 static void lamp_fill_spans(const Ppu *ppu, u16 *span) {
 	const BgLayer *layer = &ppu->bgLayer[0];
+	int transitioning = main_module_index == 7 && submodule_index != 0;
 	uint16 mask[8];
-	int words = map_words(layer->tilemapWider, layer->tilemapHigher);
-	uint32 sig = hash_words(ppu->vram, layer->tilemapAdr, words);
-	uint8 geom = (uint8)((layer->tilemapWider ? 1 : 0) |
-		(layer->tilemapHigher ? 2 : 0));
+	int words;
+	uint32 sig;
+	uint8 geom;
 	int i;
 
+	if (transitioning && lamp_cache_ok) {
+		lamp_project(layer, span);
+		return;
+	}
+	words = map_words(layer->tilemapWider, layer->tilemapHigher);
+	sig = hash_words(ppu->vram, layer->tilemapAdr, words);
+	geom = (uint8)((layer->tilemapWider ? 1 : 0) |
+		(layer->tilemapHigher ? 2 : 0));
 	lamp_open_mask(ppu, mask);
 	if (!lamp_cache_ok || sig != lamp_map_sig || geom != lamp_sig_geom ||
 	    layer->tilemapAdr != lamp_sig_map_adr ||
 	    layer->tileAdr != lamp_sig_tile_adr ||
-	    !lamp_mask_same(mask, lamp_mask)) {
+	    !lamp_mask_relevant_same(mask)) {
 		if (!lamp_build(ppu, mask)) {
 			uint16 any[8];
 
