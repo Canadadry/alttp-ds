@@ -12,6 +12,7 @@
 #include "gear-text.h"
 #include "items-text.h"
 #include "selected-item-border.h"
+#include "life-text.h"
 
 enum {
 	kWidth = 256,
@@ -24,6 +25,12 @@ enum {
 	kPalHud = 224,
 	/* Thirty-two slots for the equipped item: eight BG3 palettes, four each. */
 	kPalItem = 192,
+	/* Same again for the hearts. */
+	kPalHeart = 128,
+	/* The LIFE text's own colors; index 0 is clear. */
+	kPalLife = 120,
+	/* The hearts' shadow over each of the two background colors. */
+	kPalShadow = 126,
 	/* The selected-item border's own colors; index 0 is clear. */
 	kPalBorder = 188,
 	kPalGreen = 252,
@@ -67,7 +74,8 @@ typedef struct {
 static const HudImage kImages[] = {
 	{ (const u8 *)gear_textBitmap, 26, 7, 0, 0, 0, kPalText, 0 },
 	{ (const u8 *)items_textBitmap, 34, 7, 1, 0, 0, kPalText, 0 },
-	{ (const u8 *)selected_item_borderBitmap, 50, 50, -1, 183, 52, 0, kPalBorder }
+	{ (const u8 *)selected_item_borderBitmap, 50, 50, -1, 183, 52, 0, kPalBorder },
+	{ (const u8 *)life_textBitmap, 44, 8, -1, 186, 108, 0, kPalLife }
 };
 
 /* The rupee, bomb and arrow counters. The icons and digits are the game's
@@ -232,7 +240,7 @@ static void set_counter_palette(const HudCounters *d)
  * flute included, is already there. Each pixel is drawn twice across and
  * twice down, with nothing smoothed. */
 enum {
-	kItemX = 193,
+	kItemX = 192,
 	kItemY = 62,
 	kItemSize = 32,
 	/* HUDXY(5, 1) in the 32-word-wide HUD buffer. */
@@ -289,6 +297,85 @@ static void set_item_palette(const HudItem *it)
 	for (i = 0; i < 32; i++)
 		if (i & 3)
 			BG_PALETTE_SUB[kPalItem + i] = it->pal[i];
+}
+
+/* The hearts. The game lays them out as tile entries in its HUD buffer,
+ * ten to a row and two rows at most, empty, half and full alike, so the
+ * capacity and the current health are already in there. Each heart is a
+ * 7x7 shape inside its 8x8 tile, and (kHeartX, kHeartY) is where the first
+ * heart's top-left drawn pixel lands.
+ *
+ * The drop shadow is part of the sprite. Every drawn heart pixel marks the
+ * pixel one down and one right as kShadowMark, if nothing is there. That is
+ * worked out when the hearts change, and drawing it costs the same as
+ * drawing any other pixel. compose_row turns the mark into the background
+ * darkened. */
+enum {
+	kHeartX = 169,
+	kHeartY = 119,
+	kHeartCols = 10,
+	kHeartRows = 2,
+	kHeartW = kHeartCols * kTileH,
+	kHeartH = kHeartRows * kTileH,
+	/* HUDXY(20, 1) in the 32-word-wide HUD buffer. */
+	kHeartWord = 1 * 32 + 20,
+	/* Slot 1 is never a heart color, so it can stand for shadow. */
+	kShadowMark = 1
+};
+
+typedef struct {
+	u8 px[kHeartH][kHeartW];	/* palette slot, 0 clear, kShadowMark shadow */
+	u16 pal[32];
+} HudHearts;
+
+static HudHearts shown_hearts;
+static HudHearts next_hearts;
+
+static void build_hearts(HudHearts *h)
+{
+	const Ppu *ppu = g_zenv.ppu;
+	const u16 *src = &hud_tile_indices_buffer[kHeartWord];
+	int i, r, c, p, x, y;
+
+	memset(h, 0, sizeof *h);
+	for (i = 0; i < kHeartCols * kHeartRows; i++) {
+		u16 entry = src[(i / kHeartCols) * 32 + i % kHeartCols];
+		int pal = (entry >> 10) & 7;
+		u8 tile[kTileH][kTileH];
+
+		read_tile(ppu, entry & 0x3ff, tile);
+		for (p = 1; p < 4; p++)
+			h->pal[pal * 4 + p] = ppu->cgram[pal * 4 + p] & 0x7fff;
+		for (r = 0; r < kTileH; r++) {
+			for (c = 0; c < kTileH; c++) {
+				int sr = (entry & 0x8000) ? kTileH - 1 - r : r;
+				int sc = (entry & 0x4000) ? kTileH - 1 - c : c;
+				u8 v = tile[sr][sc];
+
+				/* The shape starts one pixel into its tile. */
+				x = (i % kHeartCols) * kTileH + c - 1;
+				y = (i / kHeartCols) * kTileH + r - 1;
+				if (!v || x < 0 || y < 0)
+					continue;
+				h->px[y][x] = kPalHeart + pal * 4 + v;
+			}
+		}
+	}
+	for (y = 0; y < kHeartH - 1; y++) {
+		for (x = 0; x < kHeartW - 1; x++) {
+			if (h->px[y][x] > kShadowMark && !h->px[y + 1][x + 1])
+				h->px[y + 1][x + 1] = kShadowMark;
+		}
+	}
+}
+
+static void set_heart_palette(const HudHearts *h)
+{
+	int i;
+
+	for (i = 0; i < 32; i++)
+		if (i & 3)
+			BG_PALETTE_SUB[kPalHeart + i] = h->pal[i];
 }
 
 static int hud_up;
@@ -358,6 +445,23 @@ static void compose_row(u8 *line, int y)
 		}
 	}
 
+	if (y >= kHeartY && y < kHeartY + kHeartH) {
+		const u8 *row = shown_hearts.px[y - kHeartY];
+
+		for (x = 0; x < kHeartW; x++) {
+			u8 p = row[x];
+			u8 *dst = &line[kHeartX + x];
+
+			if (p == kShadowMark) {
+				/* The hearts sit on the two-color background. */
+				if (*dst < 2)
+					*dst += kPalShadow;
+			} else if (p) {
+				*dst = p;
+			}
+		}
+	}
+
 	if (y >= kItemY && y < kItemY + kItemSize) {
 		const u8 *row = shown_item.px[y - kItemY];
 
@@ -400,9 +504,21 @@ static void draw_hud(void)
 
 	build_counters(&shown);
 	build_item(&shown_item);
+	build_hearts(&shown_hearts);
 	dmaCopy(tex_menuPal, BG_PALETTE_SUB, tex_menuPalLen);
-	for (i = 1; i < 4; i++)
+	for (i = 1; i < 4; i++) {
 		BG_PALETTE_SUB[kPalBorder + i] = selected_item_borderPal[i];
+		BG_PALETTE_SUB[kPalLife + i] = life_textPal[i];
+	}
+	/* The hearts' shadow is black at 80% opacity, so 20% of the
+	 * background color is left. */
+	for (i = 0; i < 2; i++) {
+		u16 c = tex_menuPal[i];
+
+		BG_PALETTE_SUB[kPalShadow + i] = RGB15(((c >> 0) & 31) * 2 / 10,
+						       ((c >> 5) & 31) * 2 / 10,
+						       ((c >> 10) & 31) * 2 / 10);
+	}
 	/* #50a865 at 5 bits per channel. */
 	BG_PALETTE_SUB[kPalGreen] = RGB15(0x50 >> 3, 0xa8 >> 3, 0x65 >> 3);
 	BG_PALETTE_SUB[kPalText] = RGB15(31, 31, 31);
@@ -411,6 +527,7 @@ static void draw_hud(void)
 	BG_PALETTE_SUB[kPalGold] = RGB15(0xe3 >> 3, 0xb2 >> 3, 0x3d >> 3);
 	set_counter_palette(&shown);
 	set_item_palette(&shown_item);
+	set_heart_palette(&shown_hearts);
 	put_rows(0, kHeight);
 }
 
@@ -430,6 +547,12 @@ static void refresh_dynamic(void)
 		memcpy(&shown_item, &next_item, sizeof shown_item);
 		set_item_palette(&shown_item);
 		put_rows(kItemY, kItemY + kItemSize);
+	}
+	build_hearts(&next_hearts);
+	if (memcmp(&next_hearts, &shown_hearts, sizeof shown_hearts)) {
+		memcpy(&shown_hearts, &next_hearts, sizeof shown_hearts);
+		set_heart_palette(&shown_hearts);
+		put_rows(kHeartY, kHeartY + kHeartH);
 	}
 }
 
