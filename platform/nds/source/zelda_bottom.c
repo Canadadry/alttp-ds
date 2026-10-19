@@ -39,6 +39,8 @@ enum {
 	 * panel's title text. Both fade on their own. */
 	kPalMenu = 32,
 	kPalPanelText = 30,
+	/* The LIFE title on the gear panel, four slots, index 0 clear. */
+	kPalPanelLife = 26,
 	kPalGreen = 252,
 	kPalText = 253,
 	kPalBlack = 254,
@@ -92,6 +94,7 @@ static const HudImage kImages[] = {
 	{ (const u8 *)selected_item_borderBitmap, 50, 50, -1, 183, 52, 0, kPalBorder, kPanelAlways },
 	{ (const u8 *)life_textBitmap, 44, 8, -1, 186, 108, 0, kPalLife, kPanelAlways },
 	{ (const u8 *)gear_textBitmap, 26, 7, -1, 66, 11, kPalPanelText, 0, kPanelGear },
+	{ (const u8 *)life_textBitmap, 44, 8, -1, 12, 78, 0, kPalPanelLife, kPanelGear },
 	{ (const u8 *)items_textBitmap, 34, 7, -1, 63, 11, kPalPanelText, 0, kPanelItems }
 };
 
@@ -744,6 +747,292 @@ static void menu_changed_rows(const HudMenu *a, const HudMenu *b, int *lo, int *
 	}
 }
 
+/* The gear panel: what Link has, read from the same variables and tile
+ * entries the game's own equipment and progress boxes use, so each icon is
+ * the game's art. Anything not owned is simply not drawn.
+ *
+ *   row 1  sword, shield, tunic, mitt, boots, flippers, moon pearl
+ *   row 2  BOTTLES: four bottles          PENDANTS: three
+ *   row 3  LIFE: current hearts           CRYSTALS: seven
+ *   row 4  HEART PIECES: the four-part heart
+ *
+ * Every picture is a list of 8x8 tile cells (x, y, tile entry). The cells
+ * are always added in the same order, empty ones with entry 0, so two
+ * snapshots line up cell for cell and a change redraws only its own rows.
+ * The labels are a small built-in font, drawn straight into the row. */
+enum {
+	kGearLeft = 12,
+	kGearRight = 96,
+	kGearIconY = 24,
+	kGearIconPitch = 20,
+	kGearBottleLabelY = 46,
+	kGearBottleY = 56,
+	kGearPendantPitch = 18,
+	kGearLifeY = 78,
+	/* The heart shape starts one pixel into its tile. */
+	kGearHeartY = 88 - 1,
+	kGearHeartX = kGearLeft - 1,
+	kGearCrystalY = 88,
+	kGearCrystalRowStep = 10,
+	kGearPiecesLabelY = 122,
+	kGearPiecesY = 132,
+	kGearTop = 24,
+	kGearBottom = 150,
+	kGearMaxCells = 128
+};
+
+typedef struct {
+	s16 x, y;
+	u16 e;
+} GearCell;
+
+typedef struct {
+	int n;
+	GearCell c[kGearMaxCells];
+	u16 pal[32];
+} HudGear;
+
+static HudGear shown_gear;
+static HudGear next_gear;
+
+/* The game's 2x2 icons, copied from its item tables (hud.c). */
+static const u16 kGSword[5][4] = {
+	{ 0, 0, 0, 0 },
+	{ 0x2c64, 0x2cce, 0x2c75, 0x3d25 },
+	{ 0x2c8a, 0x2c65, 0x2474, 0x3d26 },
+	{ 0x248a, 0x2465, 0x3c74, 0x2d48 },
+	{ 0x288a, 0x2865, 0x2c74, 0x2d39 }
+};
+static const u16 kGShield[4][4] = {
+	{ 0, 0, 0, 0 },
+	{ 0x2cfd, 0x6cfd, 0x2cfe, 0x6cfe },
+	{ 0x34ff, 0x74ff, 0x349f, 0x749f },
+	{ 0x2880, 0x2881, 0x288d, 0x288e }
+};
+static const u16 kGArmor[3][4] = {
+	{ 0x3c68, 0x7c68, 0x3c78, 0x7c78 },
+	{ 0x2c68, 0x6c68, 0x2c78, 0x6c78 },
+	{ 0x2468, 0x6468, 0x2478, 0x6478 }
+};
+static const u16 kGGloves[3][4] = {
+	{ 0, 0, 0, 0 },
+	{ 0x2130, 0x2131, 0x2140, 0x2141 },
+	{ 0x28da, 0x28db, 0x28ea, 0x28eb }
+};
+static const u16 kGBoots[4] = { 0x3429, 0x342a, 0x342b, 0x342c };
+static const u16 kGFlippers[4] = { 0x2c9a, 0x2c9b, 0x2c9d, 0x2c9e };
+static const u16 kGPearl[4] = { 0x2433, 0x2434, 0x2435, 0x2436 };
+static const u16 kGBottles[9][4] = {
+	{ 0, 0, 0, 0 },
+	{ 0x2044, 0x2045, 0x2046, 0x2047 },
+	{ 0x2837, 0x2838, 0x2cc3, 0x2cd3 },
+	{ 0x24d2, 0x64d2, 0x24e2, 0x24e3 },
+	{ 0x3cd2, 0x7cd2, 0x3ce2, 0x3ce3 },
+	{ 0x2cd2, 0x6cd2, 0x2ce2, 0x2ce3 },
+	{ 0x2855, 0x6855, 0x2c57, 0x2c5a },
+	{ 0x2837, 0x2838, 0x2839, 0x283a },
+	{ 0x2837, 0x2838, 0x2839, 0x283a }
+};
+static const u16 kGPendant[3][4] = {
+	{ 0x252b, 0x252c, 0x252d, 0x252e },
+	{ 0x2d2b, 0x2d2c, 0x2d2d, 0x2d2e },
+	{ 0x3d2b, 0x3d2c, 0x3d2d, 0x3d2e }
+};
+static const u16 kGHeartPieces[4][4] = {
+	{ 0x2484, 0x6484, 0x2485, 0x6485 },
+	{ 0x24ad, 0x6484, 0x2485, 0x6485 },
+	{ 0x24ad, 0x6484, 0x24ae, 0x6485 },
+	{ 0x24ad, 0x64ad, 0x24ae, 0x6485 }
+};
+
+static void gear_cell(HudGear *g, int x, int y, u16 e)
+{
+	if (g->n >= kGearMaxCells)
+		return;
+	g->c[g->n].x = (s16)x;
+	g->c[g->n].y = (s16)y;
+	g->c[g->n].e = e;
+	g->n++;
+}
+
+/* A 16x16 icon, or empty (v == NULL) so the cell count never changes. */
+static void gear_icon(HudGear *g, int x, int y, const u16 *v)
+{
+	int i;
+
+	for (i = 0; i < 4; i++)
+		gear_cell(g, x + (i & 1) * kTileH, y + (i >> 1) * kTileH, v ? v[i] : 0);
+}
+
+static int clamp_to(int v, int max)
+{
+	return v < 0 ? 0 : v > max ? max : v;
+}
+
+static void build_gear(HudGear *g)
+{
+	const Ppu *ppu = g_zenv.ppu;
+	const u16 *hearts = &hud_tile_indices_buffer[kHeartWord];
+	static const u8 kCrystalRowStart[7] = { 0, 0, 0, 1, 1, 2, 2 };
+	static const u8 kCrystalColumn[7] = { 0, 1, 2, 0, 1, 0, 1 };
+	int sword = link_sword_type == 0xff ? 0 : clamp_to(link_sword_type, 4);
+	int x, i, r, c;
+
+	memset(g, 0, sizeof *g);
+	for (i = 0; i < 32; i++)
+		if (i & 3)
+			g->pal[i] = ppu->cgram[i] & 0x7fff;
+
+	/* Row 1: sword, shield, tunic, mitt, boots, flippers, moon pearl. */
+	x = kGearLeft;
+	gear_icon(g, x, kGearIconY, kGSword[sword]);
+	x += kGearIconPitch;
+	gear_icon(g, x, kGearIconY, kGShield[clamp_to(link_shield_type, 3)]);
+	x += kGearIconPitch;
+	gear_icon(g, x, kGearIconY, kGArmor[clamp_to(link_armor, 2)]);
+	x += kGearIconPitch;
+	gear_icon(g, x, kGearIconY, kGGloves[clamp_to(link_item_gloves, 2)]);
+	x += kGearIconPitch;
+	gear_icon(g, x, kGearIconY, link_item_boots ? kGBoots : NULL);
+	x += kGearIconPitch;
+	gear_icon(g, x, kGearIconY, link_item_flippers ? kGFlippers : NULL);
+	x += kGearIconPitch;
+	gear_icon(g, x, kGearIconY, link_item_moon_pearl ? kGPearl : NULL);
+
+	/* Row 2: four bottles, three pendants. */
+	for (i = 0; i < 4; i++)
+		gear_icon(g, kGearLeft + i * kGearIconPitch, kGearBottleY,
+			  kGBottles[clamp_to(link_bottle_info[i], 8)]);
+	for (i = 0; i < 3; i++)
+		gear_icon(g, kGearRight + i * kGearPendantPitch, kGearBottleY,
+			  ((link_which_pendants >> i) & 1) ? kGPendant[i] : NULL);
+
+	/* Row 3: the hearts as the status bar has them, ten to a row. */
+	for (r = 0; r < kHeartRows; r++)
+		for (c = 0; c < kHeartCols; c++)
+			gear_cell(g, kGearHeartX + c * kTileH, kGearHeartY + r * kTileH,
+				  hearts[r * 32 + c]);
+	/* Seven crystals, 16 wide and 8 tall: three, two, two. */
+	for (i = 0; i < 7; i++) {
+		int cx, cy;
+		int got = (link_has_crystals >> i) & 1;
+
+		cy = kGearCrystalY + kCrystalRowStart[i] * kGearCrystalRowStep;
+		/* Rows of two sit centered under the row of three. */
+		cx = kGearRight + kCrystalColumn[i] * kGearPendantPitch +
+			(kCrystalRowStart[i] ? kGearPendantPitch / 2 : 0);
+		gear_cell(g, cx, cy, got ? 0x2d44 : 0);
+		gear_cell(g, cx + kTileH, cy, got ? 0x2d45 : 0);
+	}
+
+	/* Row 4: pieces of heart. */
+	gear_icon(g, kGearLeft, kGearPiecesY, kGHeartPieces[clamp_to(link_heart_pieces, 3)]);
+}
+
+/* Capital letters 5 pixels wide and 7 tall, like the panel titles; I is 3
+ * wide. One byte a row, the left pixel in the top bit of the width. */
+typedef struct {
+	char ch;
+	u8 w;
+	u8 row[7];
+} Glyph;
+
+static const Glyph kGlyphs[] = {
+	{ 'A', 5, { 0x0e, 0x11, 0x11, 0x1f, 0x11, 0x11, 0x11 } },
+	{ 'B', 5, { 0x1e, 0x11, 0x11, 0x1e, 0x11, 0x11, 0x1e } },
+	{ 'C', 5, { 0x0e, 0x11, 0x10, 0x10, 0x10, 0x11, 0x0e } },
+	{ 'D', 5, { 0x1e, 0x11, 0x11, 0x11, 0x11, 0x11, 0x1e } },
+	{ 'E', 5, { 0x1f, 0x10, 0x10, 0x1e, 0x10, 0x10, 0x1f } },
+	{ 'H', 5, { 0x11, 0x11, 0x11, 0x1f, 0x11, 0x11, 0x11 } },
+	{ 'I', 3, { 0x07, 0x02, 0x02, 0x02, 0x02, 0x02, 0x07 } },
+	{ 'L', 5, { 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x1f } },
+	{ 'N', 5, { 0x11, 0x19, 0x15, 0x13, 0x11, 0x11, 0x11 } },
+	{ 'O', 5, { 0x0e, 0x11, 0x11, 0x11, 0x11, 0x11, 0x0e } },
+	{ 'P', 5, { 0x1e, 0x11, 0x11, 0x1e, 0x10, 0x10, 0x10 } },
+	{ 'R', 5, { 0x1e, 0x11, 0x11, 0x1e, 0x14, 0x12, 0x11 } },
+	{ 'S', 5, { 0x0f, 0x10, 0x10, 0x0e, 0x01, 0x01, 0x1e } },
+	{ 'T', 5, { 0x1f, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04 } },
+	{ 'Y', 5, { 0x11, 0x11, 0x0a, 0x04, 0x04, 0x04, 0x04 } }
+};
+
+enum { kGlyphH = 7, kSpaceW = 3 };
+
+typedef struct {
+	int x, y;
+	const char *text;
+} GearLabel;
+
+static const GearLabel kGearLabels[] = {
+	{ kGearLeft, kGearBottleLabelY, "BOTTLES" },
+	{ kGearRight, kGearBottleLabelY, "PENDANTS" },
+	{ kGearRight, kGearLifeY, "CRYSTALS" },
+	{ kGearLeft, kGearPiecesLabelY, "HEART PIECES" }
+};
+
+static void draw_label_row(u8 *line, int y, const GearLabel *l)
+{
+	const char *s;
+	int x = l->x;
+	int r = y - l->y;
+
+	if (r < 0 || r >= kGlyphH)
+		return;
+	for (s = l->text; *s; s++) {
+		unsigned i;
+
+		if (*s == ' ') {
+			x += kSpaceW;
+			continue;
+		}
+		for (i = 0; i < sizeof kGlyphs / sizeof kGlyphs[0]; i++) {
+			const Glyph *g = &kGlyphs[i];
+			int col;
+
+			if (g->ch != *s)
+				continue;
+			for (col = 0; col < g->w; col++)
+				if ((g->row[r] >> (g->w - 1 - col)) & 1)
+					line[x + col] = kPalPanelText;
+			x += g->w + 1;
+			break;
+		}
+	}
+}
+
+static void compose_gear(u8 *line, int y)
+{
+	const Ppu *ppu = g_zenv.ppu;
+	const HudGear *g = &shown_gear;
+	unsigned i;
+	int k;
+
+	for (i = 0; i < sizeof kGearLabels / sizeof kGearLabels[0]; i++)
+		draw_label_row(line, y, &kGearLabels[i]);
+	if (y < kGearTop || y >= kGearBottom)
+		return;
+	for (k = 0; k < g->n; k++) {
+		const GearCell *c = &g->c[k];
+
+		if (c->e && y >= c->y && y < c->y + kTileH)
+			draw_entry_row(line + c->x, ppu, c->e, y - c->y);
+	}
+}
+
+static void gear_changed_rows(const HudGear *a, const HudGear *b, int *lo, int *hi)
+{
+	int i;
+
+	*lo = 9999;
+	*hi = -1;
+	if (a->n != b->n || memcmp(a->pal, b->pal, sizeof a->pal)) {
+		note_rows(lo, hi, kGearTop, kGearBottom);
+		return;
+	}
+	for (i = 0; i < a->n; i++)
+		if (a->c[i].e != b->c[i].e)
+			note_rows(lo, hi, a->c[i].y, a->c[i].y + kTileH);
+}
+
 static u16 dim(u16 c, int level)
 {
 	int keep = kPanelBlack - level;
@@ -757,11 +1046,14 @@ static u16 dim(u16 c, int level)
  * dimming each color toward black is the same as fading the panel. */
 static void set_panel_palette(void)
 {
+	const u16 *pal = panel_shown == kPanelGear ? shown_gear.pal : shown_menu.pal;
 	int i;
 
 	for (i = 0; i < 32; i++)
 		if (i & 3)
-			BG_PALETTE_SUB[kPalMenu + i] = dim(shown_menu.pal[i], panel_level);
+			BG_PALETTE_SUB[kPalMenu + i] = dim(pal[i], panel_level);
+	for (i = 1; i < 4; i++)
+		BG_PALETTE_SUB[kPalPanelLife + i] = dim(life_textPal[i], panel_level);
 	BG_PALETTE_SUB[kPalPanelText] = dim(RGB15(31, 31, 31), panel_level);
 }
 
@@ -950,6 +1242,8 @@ static void compose_row(u8 *line, int y)
 			draw_image_row(line, y, &kImages[i]);
 	if (panel_shown == kPanelItems)
 		compose_menu(line, y);
+	else if (panel_shown == kPanelGear)
+		compose_gear(line, y);
 
 	if (y >= kMeterY && y < kMeterY + kMeterThick) {
 		const u8 *row = shown_magic.px[y - kMeterY];
@@ -1054,6 +1348,7 @@ static void draw_hud(void)
 	panel_redraw = -1;
 	menu_was_open = menu_open();
 	build_menu(&shown_menu);
+	build_gear(&shown_gear);
 	set_panel_palette();
 	build_base();
 	last_sig = 0;
@@ -1180,6 +1475,7 @@ static void update_panel(void)
 			panel_level = kPanelBlack;
 			panel_shown = target;
 			build_menu(&shown_menu);
+			build_gear(&shown_gear);
 			panel_redraw = kPanelTop;
 		}
 		set_panel_palette();
@@ -1199,6 +1495,16 @@ static void update_panel(void)
 		menu_changed_rows(&shown_menu, &next_menu, &lo, &hi);
 		if (hi > lo) {
 			memcpy(&shown_menu, &next_menu, sizeof shown_menu);
+			set_panel_palette();
+			put_rows(lo, hi);
+		}
+	} else if (panel_shown == kPanelGear) {
+		int lo, hi;
+
+		build_gear(&next_gear);
+		gear_changed_rows(&shown_gear, &next_gear, &lo, &hi);
+		if (hi > lo) {
+			memcpy(&shown_gear, &next_gear, sizeof shown_gear);
 			set_panel_palette();
 			put_rows(lo, hi);
 		}
