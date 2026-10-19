@@ -99,6 +99,10 @@ enum {
 	kHudDrop = 3
 };
 
+/* The overworld camera (vendor overworld.c) may travel this many rows past the
+ * top and bottom of an area so the cropped rows are never where Link walks. */
+typedef char OwCameraPadMatchesCrop[(OW_CAMERA_PAD_Y == kCropY) ? 1 : -1];
+
 static int bg_id[4];
 static uint8 bg_size[4];
 static uint8 bg_tilebase[4];
