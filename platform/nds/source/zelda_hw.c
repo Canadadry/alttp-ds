@@ -72,8 +72,11 @@
  * already reached the picture, so the shut frame stays black. Tree edges
  * are the backdrop showing through the tiles. The backdrop itself stays
  * black so the outside of the circle is black; the real color is a sprite
- * behind the backgrounds, inside the window only. Mode 7 stays on the
- * scanline renderer.
+ * behind the backgrounds, inside the window only. The world map is mode 7.
+ * That is one 1024x1024 affine background: the same 8-bit tilemap and 8bpp
+ * tiles the SNES stores. M7A and M7D are stored from an HBlank interrupt
+ * before each scanline. Pixels past the 1024x1024 field are transparent,
+ * so the map edge does not need a window.
  *
  * Naming a file scrolls the letter grid without moving the name. An IRQ at
  * SNES line 128 switches BG3 from the name scroll to selectfile_var8. That
@@ -1016,7 +1019,25 @@ enum { kBg3SplitLine = 128 - 1 - kCropY };
 enum { kWinInside = 0x3f, kWinHud = 0x01 };
 
 static int bg3_split_on;
-static int scanline_irq_on;
+static int scanline_handler;
+static void m7_hblank(void);
+
+/* Hardware register block at 0x04000020. The HBlank interrupt stores one
+ * before the next row. HBlank DMA cannot do this here: it also runs during
+ * vblank, walks off this table, and the picture shakes. */
+typedef struct M7Regs {
+	s16 pa, pb, pc, pd;
+	s32 x, y;
+} M7Regs;
+
+static M7Regs m7_regs[2][SCREEN_HEIGHT + 1];
+static volatile int m7_pub;
+static volatile int m7_on;
+static int m7_ready;
+static int m7_bg;
+static uint32 m7_sig;
+static u8 *m7_map_ptr;
+static u8 *m7_gfx_ptr;
 static u16 bg3_top_x, bg3_top_y, bg3_bot_x, bg3_bot_y;
 
 /* Two copies so the game can rebuild the table while a frame is still
@@ -1130,19 +1151,22 @@ static void scanline_hblank(void) {
 }
 
 static void scanline_irq_sync(void) {
-	int on = bg3_split_on || iris_on || (iris_publish & 1);
+	/* 2: mode 7 owns the interrupt. The iris window must not come back on
+	 * over the map. 1: letter grid or door iris. */
+	int want = m7_on ? 2 :
+		(bg3_split_on || iris_on || (iris_publish & 1)) ? 1 : 0;
 
-	if (scanline_irq_on == on)
+	if (scanline_handler == want)
 		return;
-	scanline_irq_on = on;
-	if (on) {
-		irqSet(IRQ_HBLANK, scanline_hblank);
-		irqEnable(IRQ_HBLANK);
-		REG_DISPSTAT |= DISP_HBLANK_IRQ;
-	} else {
+	scanline_handler = want;
+	if (!want) {
 		irqDisable(IRQ_HBLANK);
 		REG_DISPSTAT &= ~DISP_HBLANK_IRQ;
+		return;
 	}
+	irqSet(IRQ_HBLANK, want == 2 ? m7_hblank : scanline_hblank);
+	irqEnable(IRQ_HBLANK);
+	REG_DISPSTAT |= DISP_HBLANK_IRQ;
 }
 
 static void bg3_split_set(int on) {
@@ -1767,7 +1791,208 @@ static void latch_scroll_window(void) {
 	leaveCriticalSection(ime);
 }
 
+/* (A * v) with the SNES mode 7 multiply: the low 6 bits of the 8.8
+ * product are dropped. */
+static int32 m7_mul(int m, int v) {
+	return ((int32)m * (int32)v) & ~(int32)63;
+}
+
+static void m7_hw_init(void) {
+	/* DS mode 2 is the one where BG2 is affine. Mode 1 keeps BG2 as a
+	 * text layer and puts the affine background on BG3. */
+	videoSetMode(MODE_2_2D);
+	vramSetBankA(VRAM_A_MAIN_BG);
+	/* 128x128 bytes of map, then 256 tiles of 8bpp. Same layout the SNES
+	 * keeps in the low and high bytes of mode 7 VRAM. */
+	m7_bg = bgInit(2, BgType_Rotation, BgSize_R_1024x1024, 0, 1);
+	bgSetPriority(m7_bg, 1);
+	bgMosaicDisable(m7_bg);
+	/* Overflow is transparent. A window that tried to clip the same edge
+	 * dropped a scanline whenever that edge moved. */
+	BGCTRL[m7_bg] &= ~BG_WRAP_ON;
+	m7_map_ptr = (u8 *)bgGetMapPtr(m7_bg);
+	m7_gfx_ptr = (u8 *)bgGetGfxPtr(m7_bg);
+	m7_ready = 1;
+	m7_sig = 0;
+}
+
+static void m7_upload(const Ppu *ppu) {
+	static u8 map_tmp[0x4000] __attribute__((aligned(4)));
+	static u8 gfx_tmp[0x4000] __attribute__((aligned(4)));
+	const uint16 *src = ppu->vram;
+	uint32 h = 2166136261u;
+	int i;
+
+	for (i = 0; i < 0x4000; i++)
+		h = (h ^ src[i]) * 16777619u;
+	if (h == 0)
+		h = 1;
+	if (h == m7_sig)
+		return;
+	m7_sig = h;
+	for (i = 0; i < 0x4000; i++) {
+		map_tmp[i] = (u8)src[i];
+		gfx_tmp[i] = (u8)(src[i] >> 8);
+	}
+	DC_FlushRange(map_tmp, sizeof map_tmp);
+	DC_FlushRange(gfx_tmp, sizeof gfx_tmp);
+	dmaCopyWords(3, map_tmp, m7_map_ptr, sizeof map_tmp);
+	dmaCopyWords(3, gfx_tmp, m7_gfx_ptr, sizeof gfx_tmp);
+}
+
+static void m7_palettes(const Ppu *ppu, int cover) {
+	int on = math_active(ppu);
+	int bg = on && (ppu->mathEnabled & 0x01);
+	int back = on && (ppu->mathEnabled & 0x20);
+	int obj = on && (ppu->mathEnabled & 0x10);
+	int i;
+	u16 color;
+
+	color = back ? math_color(ppu->cgram[0], ppu) : ppu->cgram[0];
+	BG_PALETTE[0] = cover ? 0 : (u16)(color & 0x7fff);
+	for (i = 1; i < 256; i++) {
+		color = bg ? math_color(ppu->cgram[i], ppu) : ppu->cgram[i];
+		BG_PALETTE[i] = (u16)(color & 0x7fff);
+	}
+	for (i = 0; i < 128; i++) {
+		color = obj ? math_color(ppu->cgram[128 + i], ppu) : ppu->cgram[128 + i];
+		SPRITE_PALETTE[i] = (u16)(color & 0x7fff);
+	}
+}
+
+static void m7_build(const Ppu *ppu, int buf) {
+	static ZeldaM7Line cap[224];
+	int x_center = ((int16)(ppu->m7matrix[4] << 3)) >> 3;
+	int y_center = ((int16)(ppu->m7matrix[5] << 3)) >> 3;
+	int h_scroll = ((int16)(ppu->m7matrix[6] << 3)) >> 3;
+	int v_scroll = ((int16)(ppu->m7matrix[7] << 3)) >> 3;
+	int clipped_h = h_scroll - x_center;
+	int clipped_v = v_scroll - y_center;
+	int ds;
+
+	ZeldaCaptureMode7(cap, 224);
+	clipped_h = (clipped_h & 0x2000) ? (clipped_h | ~1023) : (clipped_h & 1023);
+	clipped_v = (clipped_v & 0x2000) ? (clipped_v | ~1023) : (clipped_v & 1023);
+
+	for (ds = 0; ds < SCREEN_HEIGHT; ds++) {
+		int row = ds + kCropY;
+		int y = row + 1;
+		int a = cap[row].a;
+		int b = cap[row].b;
+		int c = cap[row].c;
+		int d = cap[row].d;
+		int ry;
+		int32 start_x, start_y, ox, oy;
+		s16 step_x, step_y;
+		M7Regs *s = &m7_regs[buf][ds];
+
+		if ((ppu->mosaicEnabled & 1) && ppu->mosaicSize > 1)
+			y -= (y - 1) % ppu->mosaicSize;
+		ry = ppu->m7yFlip ? 255 - y : y;
+		start_x = m7_mul(a, clipped_h) + m7_mul(b, ry) +
+			m7_mul(b, clipped_v) + ((int32)x_center << 8);
+		start_y = m7_mul(c, clipped_h) + m7_mul(d, ry) +
+			m7_mul(d, clipped_v) + ((int32)y_center << 8);
+		step_x = (s16)(ppu->m7xFlip ? -a : a);
+		step_y = (s16)(ppu->m7xFlip ? -c : c);
+		ox = start_x;
+		oy = start_y;
+		if (ppu->m7xFlip) {
+			ox += (int32)a * 255;
+			oy += (int32)c * 255;
+		}
+		s->pa = step_x;
+		s->pb = 0;
+		s->pc = step_y;
+		s->pd = 0;
+		s->x = ox;
+		s->y = oy;
+	}
+	m7_regs[buf][SCREEN_HEIGHT] = m7_regs[buf][SCREEN_HEIGHT - 1];
+}
+
+/* Four stores, in ITCM, so this finishes inside HBlank. A late store
+ * resets the texture X mid-row, which is the torn horizontal line. */
+static ITCM_CODE void m7_hblank(void) {
+	unsigned line = REG_VCOUNT;
+	const M7Regs *s;
+	vu32 *dst;
+	const u32 *src;
+
+	if (line >= 261)
+		s = &m7_regs[m7_pub][0];
+	else if (line < SCREEN_HEIGHT - 1)
+		s = &m7_regs[m7_pub][line + 1];
+	else
+		return;
+	dst = (vu32 *)0x04000020;
+	src = (const u32 *)s;
+	dst[0] = src[0];
+	dst[1] = src[1];
+	dst[2] = src[2];
+	dst[3] = src[3];
+}
+
+static void m7_regs_write(const M7Regs *s) {
+	vu32 *dst = (vu32 *)0x04000020;
+	const u32 *src = (const u32 *)s;
+
+	dst[0] = src[0];
+	dst[1] = src[1];
+	dst[2] = src[2];
+	dst[3] = src[3];
+}
+
+static void m7_dma_stop(void) {
+	DMA0_CR = 0;
+}
+
+void ZeldaHwPresentMode7(Ppu *ppu) {
+	int buf = m7_pub ^ 1;
+	int cover = ppu->forcedBlank;
+	int sprites = !cover &&
+		((ppu->screenEnabled[0] | ppu->screenEnabled[1]) & 0x10) != 0;
+
+	/* Channel 0 was the HBlank DMA. It has to be off before line 0. */
+	m7_dma_stop();
+	if (!m7_ready)
+		m7_hw_init();
+
+	m7_upload(ppu);
+	m7_build(ppu, buf);
+	m7_pub = buf;
+	m7_palettes(ppu, cover);
+	ZeldaHwCommitSprites(sprites);
+
+	REG_DISPCNT = MODE_2_2D | DISPLAY_BG2_ACTIVE | DISPLAY_SPR_ACTIVE |
+		DISPLAY_SPR_1D | DISPLAY_SPR_1D_SIZE_32;
+	REG_BLDCNT = 0;
+	bgSetPriority(m7_bg, 1);
+	BGCTRL[m7_bg] &= ~BG_WRAP_ON;
+	if (cover)
+		bgHide(m7_bg);
+	else
+		bgShow(m7_bg);
+
+	m7_on = cover ? 0 : 1;
+	scanline_irq_sync();
+	/* Still in vblank: line 0's matrix has to be in the registers before
+	 * the picture starts. Writing them once the row has started tears it. */
+	if (!cover && REG_VCOUNT >= (unsigned)SCREEN_HEIGHT)
+		m7_regs_write(&m7_regs[buf][0]);
+
+	picture_covered = cover;
+	ZeldaHwUseMasterBright(1);
+	if (cover)
+		REG_MASTER_BRIGHT = inidisp_to_bright(0x80);
+}
+
 void ZeldaHwInit(void) {
+	m7_dma_stop();
+	m7_on = 0;
+	m7_ready = 0;
+	m7_sig = 0;
+	scanline_irq_sync();
 	videoSetMode(MODE_0_2D);
 	vramSetBankA(VRAM_A_MAIN_BG);
 	vramSetBankE(VRAM_E_MAIN_SPRITE);
