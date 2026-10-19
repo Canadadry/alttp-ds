@@ -4,6 +4,7 @@
 #include "zelda_rtl.h"
 #include "variables.h"
 #include "snes/ppu.h"
+#include "zelda_save.h"
 
 /*
  * Mode 1 picture on the DS 2D engine.
@@ -525,14 +526,38 @@ static int bg3_lookup(int key) {
 	return slot;
 }
 
+/* Hearts, magic, and the item box. Text boxes and the inventory grid
+ * are other BG3 tiles, so this strip is the status bar alone. */
+static int hud_strip_hidden(void)
+{
+	int mod;
+
+	if (ZeldaHudOnTop())
+		return 0;
+	mod = main_module_index;
+	if (mod == 14)
+		mod = saved_module_for_menu;
+	/* 7 indoors, 9 outdoors. 15 and 16 are the door iris. That circle
+	 * leaves those modes while it is still open across the status bar. */
+	return mod == 7 || mod == 9 || mod == 15 || mod == 16;
+}
+
 static void present_bg3(Ppu *ppu, int show_low) {
 	BgLayer *layer = &ppu->bgLayer[2];
 	int words = map_words(layer->tilemapWider, layer->tilemapHigher);
 	uint32 sig = sig_map(ppu, layer->tilemapAdr, words);
 	u16 *gfx;
 	int i;
+	int hide;
+	unsigned hud_at;
+	static int hud_hide_applied = -1;
 
 	gfx = BG_GFX + 6 * 8192;
+	hide = hud_strip_hidden();
+	if (hide != hud_hide_applied) {
+		hud_hide_applied = hide;
+		map_valid[2] = 0;
+	}
 
 	if (last_adr[2] != layer->tileAdr) {
 		memset(tile_hash[2], 0, sizeof tile_hash[2]);
@@ -543,13 +568,23 @@ static void present_bg3(Ppu *ppu, int show_low) {
 	}
 
 	if (!map_valid[2] || map_sig[2] != sig) {
+		hud_at = word_7E0219 ? word_7E0219 : 0x6040;
 		for (i = 0; i < words; i++) {
-			uint16 entry = ppu->vram[(layer->tilemapAdr + i) & 0x7fff];
-			int tile = entry & 0x3ff;
-			int pal = (entry >> 10) & 7;
+			unsigned at = (layer->tilemapAdr + i) & 0x7fff;
+			uint16 entry;
+			int tile;
+			int pal;
 			int slot;
 			u16 out;
 
+			if (hide && at >= hud_at && at < hud_at + 165) {
+				map_buf[0][i] = 0;
+				bg3_lo[i] = 0;
+				continue;
+			}
+			entry = ppu->vram[at];
+			tile = entry & 0x3ff;
+			pal = (entry >> 10) & 7;
 			slot = bg3_lookup((tile << 3) | pal);
 			if (slot < 0) {
 				map_buf[0][i] = 0;
@@ -628,6 +663,26 @@ static u16 inidisp_to_bright(unsigned inidisp) {
  * present that leaves that blank has finished copying tiles. */
 static volatile int use_master_bright = 1;
 static volatile int picture_covered = 1;
+/* 0 visible .. 16 black. Negative leaves brightness to the game. */
+static volatile int fade_level = -1;
+
+static void apply_forced_fade(void)
+{
+	int level = fade_level;
+
+	if (level < 0)
+		return;
+	if (level > 16)
+		level = 16;
+	REG_MASTER_BRIGHT = level == 0 ? 0 : (u16)((1u << 15) | level);
+}
+
+void ZeldaHwSetFade(int level)
+{
+	fade_level = level;
+	if (level >= 0)
+		apply_forced_fade();
+}
 
 static unsigned shown_inidisp(unsigned inidisp) {
 	if (picture_covered && !(inidisp & 0x80))
@@ -636,12 +691,20 @@ static unsigned shown_inidisp(unsigned inidisp) {
 }
 
 static void vblank_bright(void) {
+	if (fade_level >= 0) {
+		apply_forced_fade();
+		return;
+	}
 	if (use_master_bright)
 		REG_MASTER_BRIGHT = inidisp_to_bright(shown_inidisp(INIDISP_copy));
 }
 
 void ZeldaHwUseMasterBright(int on) {
 	use_master_bright = on;
+	if (fade_level >= 0) {
+		apply_forced_fade();
+		return;
+	}
 	if (on)
 		REG_MASTER_BRIGHT = inidisp_to_bright(shown_inidisp(INIDISP_copy));
 	else
@@ -2007,8 +2070,21 @@ void ZeldaHwPresentMode7(Ppu *ppu) {
 
 	picture_covered = cover;
 	ZeldaHwUseMasterBright(1);
-	if (cover)
+	if (cover && fade_level < 0)
 		REG_MASTER_BRIGHT = inidisp_to_bright(0x80);
+}
+
+void ZeldaHwConsoleSuspend(void)
+{
+	/* scanline_handler stays set while the irq is forced off, so the next
+	 * sync has to run again or the letter grid never gets its split back. */
+	scanline_handler = -1;
+	irqDisable(IRQ_HBLANK);
+	REG_DISPSTAT &= ~DISP_HBLANK_IRQ;
+	REG_BLDCNT = 0;
+	REG_MOSAIC = 0;
+	REG_DISPCNT &= ~(DISPLAY_WIN0_ON | DISPLAY_WIN1_ON | DISPLAY_SPR_WIN_ON);
+	ZeldaHwUseMasterBright(0);
 }
 
 void ZeldaHwInit(void) {
@@ -2086,7 +2162,7 @@ void ZeldaHwPresent(Ppu *ppu) {
 	 * upload so that circle is already latched when line 0 is drawn. */
 	cover = ppu->forcedBlank || file_select_not_ready(ppu);
 	ZeldaHwUseMasterBright(1);
-	if (cover)
+	if (cover && fade_level < 0)
 		REG_MASTER_BRIGHT = inidisp_to_bright(0x80);
 	main_en = cover ? 0 : ppu->screenEnabled[0];
 	sub_en = cover ? 0 : ppu->screenEnabled[1];
@@ -2272,7 +2348,9 @@ void ZeldaHwPresent(Ppu *ppu) {
 		int ime = enterCriticalSection();
 
 		picture_covered = cover;
-		if (use_master_bright)
+		if (fade_level >= 0)
+			apply_forced_fade();
+		else if (use_master_bright)
 			REG_MASTER_BRIGHT = inidisp_to_bright(
 				(cover || iris_fully_closed()) ? 0x80 : INIDISP_copy);
 		leaveCriticalSection(ime);

@@ -11,6 +11,7 @@
 #include "zelda_video.h"
 #include "zelda_save.h"
 #include "zelda_audio.h"
+#include "messaging.h"
 
 const uint8 *g_asset_ptrs[kNumberOfAssets];
 uint32 g_asset_sizes[kNumberOfAssets];
@@ -123,6 +124,100 @@ MemBlk __wrap_FindIndexInMemblk(MemBlk data, size_t i)
  * DS B is the sword, DS A lifts, DS Y uses the equipped item.
  */
 static int paused;
+static int settings_open;
+static int settings_menu;
+/* Two frames after the game is back: one samples the closing press, one eats it. */
+static int settings_eat;
+
+enum {
+	kUiOff = 0,
+	kUiGameOut,
+	kUiMenuIn,
+	kUiMenu,
+	kUiMenuOut,
+	kUiGameIn
+};
+
+static int ui;
+static int fade;
+static int cursor;
+static int hud_pick;
+static int save_on_exit;
+
+enum {
+	kRowHud = 0,
+	kRowSave = 1,
+	kRowCancel = 2,
+	kCaretX = 16,
+	kLabelX = 36,
+	kValueX = 120,
+	kTextX = 36,
+	kTitleY = 22,
+	kHudY = 72,
+	kSaveY = 150,
+	kCancelY = 170
+};
+
+static const char *const kHudChoice[] = { "Top Screen", "Bottom Screen" };
+
+static void settings_draw(void)
+{
+	const char *title = "Settings";
+
+	ZeldaVideoMenuClear();
+	ZeldaVideoMenuText((256 - ZeldaVideoMenuWidth(title)) / 2, kTitleY, title);
+	ZeldaVideoMenuText(kLabelX, kHudY, "HUD");
+	ZeldaVideoMenuText(kValueX, kHudY, kHudChoice[hud_pick]);
+	ZeldaVideoMenuText(kTextX, kSaveY, "Save");
+	ZeldaVideoMenuText(kTextX, kCancelY, "Cancel");
+	if (cursor == kRowHud)
+		ZeldaVideoMenuText(kCaretX, kHudY, ">");
+	else if (cursor == kRowSave)
+		ZeldaVideoMenuText(kCaretX, kSaveY, ">");
+	else
+		ZeldaVideoMenuText(kCaretX, kCancelY, ">");
+}
+
+static void settings_move(int dir)
+{
+	if (dir < 0) {
+		if (cursor > kRowHud)
+			cursor--;
+	} else if (cursor < kRowCancel) {
+		cursor++;
+	}
+	if (settings_menu)
+		settings_draw();
+}
+
+static void settings_scroll(int dir)
+{
+	if (cursor != kRowHud)
+		return;
+	(void)dir;
+	hud_pick ^= 1;
+	if (settings_menu)
+		settings_draw();
+}
+
+static void settings_close(int save)
+{
+	if (ui != kUiMenu)
+		return;
+	save_on_exit = save;
+	ui = kUiMenuOut;
+}
+
+static void ZeldaSettingsEnter(void)
+{
+	settings_open = 1;
+	settings_menu = 0;
+	ui = kUiGameOut;
+	fade = 0;
+	hud_pick = ZeldaHudOnTop() ? 0 : 1;
+	cursor = kRowHud;
+	save_on_exit = 0;
+}
 
 static int map_keys(u32 held)
 {
@@ -182,6 +277,7 @@ void ZeldaHostInit(void)
 	ZeldaVideoInit();
 	ZeldaSaveMount();
 	ZeldaAudioInit();
+	SelectMenu_OnSettings = ZeldaSettingsEnter;
 }
 
 void ZeldaHostSave(void)
@@ -192,16 +288,42 @@ void ZeldaHostSave(void)
 
 void ZeldaHostOnKeys(u32 held, u32 down)
 {
-	if ((down & (KEY_START | KEY_SELECT)) &&
-	    (held & (KEY_START | KEY_SELECT)) == (KEY_START | KEY_SELECT)) {
-		paused ^= 1;
-	}
 	if (!(held & KEY_START) &&
 	    (down & (KEY_L | KEY_R | KEY_SELECT)) &&
 	    (held & (KEY_L | KEY_R | KEY_SELECT)) == (KEY_L | KEY_R | KEY_SELECT)) {
+		if (settings_menu)
+			ZeldaVideoMenuEnd();
+		ZeldaVideoSetFade(-1);
+		settings_open = 0;
+		settings_menu = 0;
+		settings_eat = 0;
+		ui = kUiOff;
+		SelectMenu_LockInput = 0;
 		ZeldaHostSave();
 		ZeldaReset(true);
 		paused = 0;
+		return;
+	}
+	if (settings_open) {
+		if (ui != kUiMenu)
+			return;
+		if (down & KEY_UP)
+			settings_move(-1);
+		else if (down & KEY_DOWN)
+			settings_move(1);
+		else if (down & KEY_LEFT)
+			settings_scroll(-1);
+		else if (down & KEY_RIGHT)
+			settings_scroll(1);
+		else if (down & KEY_B)
+			settings_close(0);
+		else if ((down & (KEY_A | KEY_START)) && cursor != kRowHud)
+			settings_close(cursor == kRowSave);
+		return;
+	}
+	if ((down & (KEY_START | KEY_SELECT)) &&
+	    (held & (KEY_START | KEY_SELECT)) == (KEY_START | KEY_SELECT)) {
+		paused ^= 1;
 	}
 }
 
@@ -210,8 +332,12 @@ void ZeldaHostTick(u32 held)
 	int spun;
 	int catching;
 
-	if (paused)
+	if (settings_open || paused)
 		return;
+	if (settings_eat) {
+		SelectMenu_LockInput = 1;
+		settings_eat--;
+	}
 	/* A press before the sword drop runs the rest of the intro here.
 	 * The sword stays on its cue. The half-second of music before that cue
 	 * plays while the old picture is still up. */
@@ -235,6 +361,7 @@ void ZeldaHostTick(u32 held)
 		ZeldaAudioPlayLeadIn();
 	else if (catching)
 		ZeldaAudioDropLeadIn();
+	SelectMenu_LockInput = 0;
 	/* Sprite tiles are built here, while the previous picture is still
 	 * up. The vblank blit only has to DMA them. */
 	ZeldaVideoComposeSprites();
@@ -243,8 +370,60 @@ void ZeldaHostTick(u32 held)
 void ZeldaHostBlit(u16 *fb)
 {
 	(void)fb;
-	if (!paused)
-		ZeldaVideoDrawPpuFrame();
+	switch (ui) {
+	case kUiGameOut:
+		if (!paused)
+			ZeldaVideoDrawPpuFrame();
+		ZeldaVideoSetFade(fade);
+		if (fade < 16) {
+			fade += 2;
+			break;
+		}
+		ZeldaVideoMenuBegin();
+		settings_menu = 1;
+		settings_draw();
+		ui = kUiMenuIn;
+		break;
+	case kUiMenuIn:
+		ZeldaVideoSetFade(fade);
+		if (fade > 0)
+			fade -= 2;
+		else
+			ui = kUiMenu;
+		break;
+	case kUiMenu:
+		ZeldaVideoSetFade(0);
+		break;
+	case kUiMenuOut:
+		if (fade < 16) {
+			fade += 2;
+			ZeldaVideoSetFade(fade);
+			break;
+		}
+		if (save_on_exit)
+			ZeldaHudSetOnTop(hud_pick == 0);
+		ZeldaVideoMenuEnd();
+		settings_menu = 0;
+		ui = kUiGameIn;
+		__attribute__((fallthrough));
+	case kUiGameIn:
+		if (!paused)
+			ZeldaVideoDrawPpuFrame();
+		ZeldaVideoSetFade(fade);
+		if (fade > 0) {
+			fade -= 2;
+			break;
+		}
+		ZeldaVideoSetFade(-1);
+		settings_open = 0;
+		settings_eat = 2;
+		ui = kUiOff;
+		break;
+	default:
+		if (!paused)
+			ZeldaVideoDrawPpuFrame();
+		break;
+	}
 }
 
 void ZeldaHostAudio(void)

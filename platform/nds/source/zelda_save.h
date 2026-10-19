@@ -8,3 +8,7 @@ void ZeldaSaveFlush(void);
 
 /* Short HUD word: off, new, loaded, saved, fail. */
 const char *ZeldaSaveStatus(void);
+
+/* 1: status bar stays on the top screen. 0: that strip is left off the top. */
+int ZeldaHudOnTop(void);
+void ZeldaHudSetOnTop(int on);

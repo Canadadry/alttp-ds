@@ -50,6 +50,51 @@ const char *ZeldaSaveStatus(void)
 	return g_status;
 }
 
+/* Past the three slots and their mirrors (last byte 0x1DFF). A display
+ * choice, not part of a slot checksum. */
+enum { kSetOff = 0x1E00, kSetVersion = 1 };
+
+static int g_hud_top = 1;
+
+static uint8 settings_sum(const uint8 *p)
+{
+	return (uint8)(p[0] ^ p[1] ^ p[2] ^ p[3] ^ p[4] ^ p[5] ^ p[6]);
+}
+
+static void settings_load(void)
+{
+	const uint8 *p = g_zenv.sram + kSetOff;
+
+	if (p[0] != 'L' || p[1] != 'T' || p[2] != 'D' || p[3] != 'S' ||
+	    p[4] != kSetVersion || p[5] > 1 || p[7] != settings_sum(p))
+		return;
+	g_hud_top = p[5] == 0;
+}
+
+int ZeldaHudOnTop(void)
+{
+	return g_hud_top;
+}
+
+void ZeldaHudSetOnTop(int on)
+{
+	uint8 *p;
+
+	g_hud_top = on != 0;
+	if (!g_zenv.sram)
+		return;
+	p = g_zenv.sram + kSetOff;
+	p[0] = 'L';
+	p[1] = 'T';
+	p[2] = 'D';
+	p[3] = 'S';
+	p[4] = kSetVersion;
+	p[5] = (uint8)(g_hud_top ? 0 : 1);
+	p[6] = 0;
+	p[7] = settings_sum(p);
+	ZeldaWriteSram();
+}
+
 static int read_sec(u32 lba)
 {
 	return blkDevReadSectors(BlkDevice_Dldi, g_sec, lba, 1);
@@ -617,10 +662,12 @@ void ZeldaSaveMount(void)
 	load_geometry();
 	find_dir();
 	if (read_stdio())
-		return;
-	if (g_has_fat && g_have_dir && g_cluster >= 2 && read_sram_chain(g_cluster))
-		return;
-	if (read_legacy())
-		return;
-	g_status = "new";
+		;
+	else if (g_has_fat && g_have_dir && g_cluster >= 2 && read_sram_chain(g_cluster))
+		;
+	else if (read_legacy())
+		;
+	else
+		g_status = "new";
+	settings_load();
 }
