@@ -554,9 +554,19 @@ static int in_game(void)
 	return main_module_index >= 6 && main_module_index <= 19;
 }
 
+/* X opens the dungeon map (submodule 3 of the menu module) or the overworld
+ * map (submodule 7). Start's item menu is submodule 1 and is not this. */
+static int map_open(void)
+{
+	return main_module_index == 14 &&
+		(submodule_index == 3 || submodule_index == 7);
+}
+
+/* The HUD shows during play, except while a map is up. Then the bottom
+ * screen goes back to the idle picture. */
 static int hud_wanted(void)
 {
-	return !ZeldaHudOnTop() && in_game();
+	return !ZeldaHudOnTop() && in_game() && !map_open();
 }
 
 /* One screen row: the tiled background, then whatever sits on that row. */
@@ -734,20 +744,94 @@ static void refresh_dynamic(void)
 	}
 }
 
+/* Opening or closing a map swaps the bottom screen between the HUD and the
+ * idle picture through black: fade out what is up, swap, fade the other in.
+ * It runs on the sub engine's master brightness, 0 clear to 16 black, two
+ * steps a frame like the top screen's fades. */
+enum {
+	kFadeNone,
+	kFadeOut,
+	kFadeIn,
+	kFadeStep = 2,
+	kFadeBlack = 16
+};
+
+static int fade_phase;
+static int fade_level;
+static int map_was_open;
+
+static void set_bottom_fade(int level)
+{
+	REG_MASTER_BRIGHT_SUB = level ? (u16)((1u << 15) | level) : 0;
+}
+
+/* Put up whichever picture the game wants now. */
+static void swap_picture(int want)
+{
+	if (want) {
+		draw_hud();
+		hud_up = 1;
+	} else {
+		ZeldaVideoShowBottom();
+	}
+}
+
+static void step_fade(int want)
+{
+	if (fade_phase == kFadeOut) {
+		fade_level += kFadeStep;
+		if (fade_level < kFadeBlack) {
+			set_bottom_fade(fade_level);
+			return;
+		}
+		fade_level = kFadeBlack;
+		set_bottom_fade(fade_level);
+		/* Black. Nothing shows the swap. */
+		swap_picture(want);
+		fade_phase = kFadeIn;
+		return;
+	}
+	/* The map was opened or closed again partway in. Go back down. */
+	if (want != hud_up) {
+		fade_phase = kFadeOut;
+		return;
+	}
+	if (hud_up)
+		refresh_dynamic();
+	fade_level -= kFadeStep;
+	if (fade_level <= 0) {
+		fade_level = 0;
+		fade_phase = kFadeNone;
+	}
+	set_bottom_fade(fade_level);
+}
+
 void ZeldaBottomUpdate(void)
 {
 	int want = hud_wanted();
+	int map = map_open();
 
+	if (fade_phase) {
+		map_was_open = map;
+		step_fade(want);
+		return;
+	}
+	/* The map, with the HUD on the bottom setting: fade rather than cut.
+	 * The first frame of a fade is the first step of fading out. */
+	if (map != map_was_open) {
+		map_was_open = map;
+		if (!ZeldaHudOnTop() && in_game() && want != hud_up) {
+			fade_phase = kFadeOut;
+			fade_level = 0;
+			step_fade(want);
+			return;
+		}
+	}
 	if (want && hud_up) {
 		refresh_dynamic();
 		return;
 	}
 	if (want == hud_up)
 		return;
-	if (!want) {
-		ZeldaVideoShowBottom();
-		return;
-	}
-	draw_hud();
-	hud_up = 1;
+	swap_picture(want);
 }
