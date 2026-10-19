@@ -26,3 +26,7 @@ void ZeldaArrowCapSet(int cap);
 /* 1, 2, or 3. How far Link moves each step. */
 int ZeldaRunSpeed(void);
 void ZeldaRunSpeedSet(int mul);
+
+/* 1: indoor rooms stay lit, so the lantern is not required. */
+int ZeldaDarkRooms(void);
+void ZeldaDarkRoomsSet(int bright);

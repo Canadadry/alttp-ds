@@ -146,6 +146,8 @@ static int beep_on;
 static int bomb_99;
 static int arrow_99;
 static int run_speed;
+static int dark_bright;
+static int scroll_row;
 static int save_on_exit;
 
 enum {
@@ -154,16 +156,21 @@ enum {
 	kRowBomb,
 	kRowArrow,
 	kRowSpeed,
+	kRowDark,
 	kRowSave,
 	kRowCancel,
+	kSettingCount = kRowSave,
+	kVisible = 4,
 	kCaretX = 16,
 	kLabelX = 36,
 	kValueX = 120,
 	kTextX = 36,
-	kTitleY = 22
+	kTitleY = 22,
+	kSaveY = 146,
+	kCancelY = 166
 };
 
-static const int kRowY[] = { 40, 58, 76, 94, 112, 146, 166 };
+static const int kSlotY[kVisible] = { 46, 66, 86, 106 };
 static const char *const kHudChoice[] = { "Top Screen", "Bottom Screen" };
 static const char *const kOnOff[] = { "Off", "On" };
 static const char *const kRunChoice[] = { "Normal", "Double", "Triple" };
@@ -181,26 +188,84 @@ static int settings_value_x(void)
 	return x;
 }
 
+static const char *settings_label(int row)
+{
+	switch (row) {
+	case kRowHud:
+		return "HUD";
+	case kRowBeep:
+		return "Low HP Indicator";
+	case kRowBomb:
+		return "Bomb Capacity";
+	case kRowArrow:
+		return "Arrow Capacity";
+	case kRowSpeed:
+		return "Run Speed";
+	case kRowDark:
+		return "Dark Rooms";
+	default:
+		return "";
+	}
+}
+
+static const char *settings_value(int row)
+{
+	switch (row) {
+	case kRowHud:
+		return kHudChoice[hud_pick];
+	case kRowBeep:
+		return kOnOff[beep_on];
+	case kRowBomb:
+		return bomb_99 ? "99" : "10";
+	case kRowArrow:
+		return arrow_99 ? "99" : "30";
+	case kRowSpeed:
+		return kRunChoice[run_speed];
+	case kRowDark:
+		return dark_bright ? "Bright" : "Normal";
+	default:
+		return "";
+	}
+}
+
+static void settings_follow(void)
+{
+	if (cursor >= kSettingCount)
+		return;
+	if (cursor < scroll_row)
+		scroll_row = cursor;
+	if (cursor >= scroll_row + kVisible)
+		scroll_row = cursor - kVisible + 1;
+}
+
+static int settings_caret_y(void)
+{
+	if (cursor == kRowSave)
+		return kSaveY;
+	if (cursor == kRowCancel)
+		return kCancelY;
+	return kSlotY[cursor - scroll_row];
+}
+
 static void settings_draw(void)
 {
 	const char *title = "Settings";
 	int value_x = settings_value_x();
+	int i;
 
 	ZeldaVideoMenuClear();
 	ZeldaVideoMenuText((256 - ZeldaVideoMenuWidth(title)) / 2, kTitleY, title);
-	ZeldaVideoMenuText(kLabelX, kRowY[kRowHud], "HUD");
-	ZeldaVideoMenuText(value_x, kRowY[kRowHud], kHudChoice[hud_pick]);
-	ZeldaVideoMenuText(kLabelX, kRowY[kRowBeep], "Low HP Indicator");
-	ZeldaVideoMenuText(value_x, kRowY[kRowBeep], kOnOff[beep_on]);
-	ZeldaVideoMenuText(kLabelX, kRowY[kRowBomb], "Bomb Capacity");
-	ZeldaVideoMenuText(value_x, kRowY[kRowBomb], bomb_99 ? "99" : "10");
-	ZeldaVideoMenuText(kLabelX, kRowY[kRowArrow], "Arrow Capacity");
-	ZeldaVideoMenuText(value_x, kRowY[kRowArrow], arrow_99 ? "99" : "30");
-	ZeldaVideoMenuText(kLabelX, kRowY[kRowSpeed], "Run Speed");
-	ZeldaVideoMenuText(value_x, kRowY[kRowSpeed], kRunChoice[run_speed]);
-	ZeldaVideoMenuText(kTextX, kRowY[kRowSave], "Save");
-	ZeldaVideoMenuText(kTextX, kRowY[kRowCancel], "Cancel");
-	ZeldaVideoMenuText(kCaretX, kRowY[cursor], ">");
+	for (i = 0; i < kVisible; i++) {
+		int row = scroll_row + i;
+
+		if (row >= kSettingCount)
+			break;
+		ZeldaVideoMenuText(kLabelX, kSlotY[i], settings_label(row));
+		ZeldaVideoMenuText(value_x, kSlotY[i], settings_value(row));
+	}
+	ZeldaVideoMenuText(kTextX, kSaveY, "Save");
+	ZeldaVideoMenuText(kTextX, kCancelY, "Cancel");
+	ZeldaVideoMenuText(kCaretX, settings_caret_y(), ">");
 }
 
 static void settings_move(int dir)
@@ -211,6 +276,7 @@ static void settings_move(int dir)
 	} else if (cursor < kRowCancel) {
 		cursor++;
 	}
+	settings_follow();
 	if (settings_menu)
 		settings_draw();
 }
@@ -231,6 +297,8 @@ static void settings_scroll(int dir)
 	else if (cursor == kRowSpeed) {
 		v = &run_speed;
 		n = 3;
+	} else if (cursor == kRowDark) {
+		v = &dark_bright;
 	} else {
 		return;
 	}
@@ -265,7 +333,9 @@ static void ZeldaSettingsEnter(void)
 		run_speed = 0;
 	if (run_speed > 2)
 		run_speed = 2;
+	dark_bright = ZeldaDarkRooms() ? 1 : 0;
 	cursor = kRowHud;
+	scroll_row = 0;
 	save_on_exit = 0;
 }
 
@@ -456,6 +526,7 @@ void ZeldaHostBlit(u16 *fb)
 			ZeldaBombCapSet(bomb_99 ? 99 : 10);
 			ZeldaArrowCapSet(arrow_99 ? 99 : 30);
 			ZeldaRunSpeedSet(run_speed + 1);
+			ZeldaDarkRoomsSet(dark_bright);
 		}
 		ZeldaVideoMenuEnd();
 		settings_menu = 0;
