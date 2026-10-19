@@ -827,6 +827,15 @@ static int button_hit(const HudBox *b, int x, int y)
 	return x >= b->x && x < b->x + b->w && y >= b->y && y < b->y + b->h;
 }
 
+/* The gear panel stops the game, the way the item menu does. The menu closing
+ * is the one exception: it takes game frames to finish, and the gear panel
+ * can already be waiting for it. */
+int ZeldaBottomHoldsGame(void)
+{
+	return gear_on && hud_up && !ZeldaHudOnTop() &&
+		!(main_module_index == 14 && submodule_index == 1);
+}
+
 static int start_will_work(void)
 {
 	if (menu_open())
@@ -839,6 +848,10 @@ void ZeldaBottomInput(u32 *held, u32 down)
 {
 	touchPosition t;
 
+	/* Start while the game is held would do nothing. Leave the gear panel,
+	 * and the game gets the press this same frame. */
+	if (gear_on && (down & KEY_START) && ZeldaBottomHoldsGame())
+		gear_on = 0;
 	if (!(down & KEY_TOUCH) || !hud_up || fade_phase)
 		return;
 	touchRead(&t);
@@ -1266,7 +1279,10 @@ static int top_dim;
 
 static void update_top_dim(void)
 {
-	int target = (hud_up && !ZeldaHudOnTop() && menu_open()) ? kTopDimMax : 0;
+	/* gear_on carries the dim through the item menu closing into the gear
+	 * panel, so it does not flicker between the two. */
+	int target = (hud_up && !ZeldaHudOnTop() && (menu_open() || gear_on)) ?
+		kTopDimMax : 0;
 
 	if (top_dim == target)
 		return;

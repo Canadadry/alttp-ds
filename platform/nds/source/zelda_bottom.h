@@ -11,3 +11,7 @@ void ZeldaBottomNoteIdle(void);
 
 /* Touches on the bottom screen's buttons. May add KEY_START to held. */
 void ZeldaBottomInput(u32 *held, u32 down);
+
+/* Nonzero while the gear panel is up: the game stands still, the music
+ * does not. */
+int ZeldaBottomHoldsGame(void);

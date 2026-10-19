@@ -9,6 +9,7 @@
 #include "zelda_rtl.h"
 #include "snes/ppu.h"
 #include "zelda_video.h"
+#include "zelda_bottom.h"
 #include "zelda_save.h"
 #include "zelda_audio.h"
 #include "messaging.h"
@@ -573,7 +574,7 @@ void ZeldaHostTick(u32 held)
 	/* In game the picture keeps running so the select menu can open.
 	 * The song still holds, the same as the title. */
 	lid_frozen = (held & KEY_LID) != 0;
-	if (settings_open || paused)
+	if (settings_open || paused || ZeldaBottomHoldsGame())
 		return;
 	if (settings_eat) {
 		SelectMenu_LockInput = 1;
@@ -665,7 +666,7 @@ void ZeldaHostBlit(u16 *fb)
 		ui = kUiOff;
 		break;
 	default:
-		if (!paused)
+		if (!paused && !ZeldaBottomHoldsGame())
 			ZeldaVideoDrawPpuFrame();
 		break;
 	}
