@@ -30,3 +30,7 @@ void ZeldaRunSpeedSet(int mul);
 /* 1: indoor rooms stay lit, so the lantern is not required. */
 int ZeldaDarkRooms(void);
 void ZeldaDarkRoomsSet(int bright);
+
+/* 1: Link's hair is blonde. 0: the original pink. */
+int ZeldaHairBlonde(void);
+void ZeldaHairSet(int blonde);

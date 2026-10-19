@@ -147,6 +147,7 @@ static int bomb_99;
 static int arrow_99;
 static int run_speed;
 static int dark_bright;
+static int hair_blonde;
 static int scroll_row;
 static int save_on_exit;
 
@@ -157,6 +158,7 @@ enum {
 	kRowArrow,
 	kRowSpeed,
 	kRowDark,
+	kRowHair,
 	kRowSave,
 	kRowCancel,
 	kSettingCount = kRowSave,
@@ -203,6 +205,8 @@ static const char *settings_label(int row)
 		return "Run Speed";
 	case kRowDark:
 		return "Dark Rooms";
+	case kRowHair:
+		return "Hair Color";
 	default:
 		return "";
 	}
@@ -223,6 +227,8 @@ static const char *settings_value(int row)
 		return kRunChoice[run_speed];
 	case kRowDark:
 		return dark_bright ? "Bright" : "Normal";
+	case kRowHair:
+		return hair_blonde ? "Blonde" : "Pink";
 	default:
 		return "";
 	}
@@ -299,6 +305,8 @@ static void settings_scroll(int dir)
 		n = 3;
 	} else if (cursor == kRowDark) {
 		v = &dark_bright;
+	} else if (cursor == kRowHair) {
+		v = &hair_blonde;
 	} else {
 		return;
 	}
@@ -334,6 +342,7 @@ static void ZeldaSettingsEnter(void)
 	if (run_speed > 2)
 		run_speed = 2;
 	dark_bright = ZeldaDarkRooms() ? 1 : 0;
+	hair_blonde = ZeldaHairBlonde() ? 1 : 0;
 	cursor = kRowHud;
 	scroll_row = 0;
 	save_on_exit = 0;
@@ -527,6 +536,7 @@ void ZeldaHostBlit(u16 *fb)
 			ZeldaArrowCapSet(arrow_99 ? 99 : 30);
 			ZeldaRunSpeedSet(run_speed + 1);
 			ZeldaDarkRoomsSet(dark_bright);
+			ZeldaHairSet(hair_blonde);
 		}
 		ZeldaVideoMenuEnd();
 		settings_menu = 0;
