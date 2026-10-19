@@ -11,6 +11,7 @@
 #include "tex_menu.h"
 #include "gear-text.h"
 #include "items-text.h"
+#include "selected-item-border.h"
 
 enum {
 	kWidth = 256,
@@ -21,6 +22,10 @@ enum {
 	/* Sixteen slots for the game's own HUD colors: rupee, bomb, arrow,
 	 * digits, four apiece. Slot 0 of each group is never drawn. */
 	kPalHud = 224,
+	/* Thirty-two slots for the equipped item: eight BG3 palettes, four each. */
+	kPalItem = 192,
+	/* The selected-item border's own colors; index 0 is clear. */
+	kPalBorder = 188,
 	kPalGreen = 252,
 	kPalText = 253,
 	kPalBlack = 254,
@@ -44,20 +49,25 @@ static const HudBox kBoxes[] = {
 	{ 167, 4, 78, 41, 2, kPalGreen, kPalBlack }
 };
 
-/* A graphic centered in one of the boxes. Palette index 0 is transparent;
- * every other pixel is drawn in color. Rows are padded to 4 bytes. */
+/* A graphic, centered in one of the boxes, or at (x, y) when box is -1.
+ * Palette index 0 is transparent. Every other pixel is drawn in color, or
+ * when color is 0, in the slot pal_base plus its own index. Rows are padded
+ * to 4 bytes. */
 typedef struct {
 	const u8 *pix;
 	int w, h;
 	int box;
+	int x, y;
 	u8 color;
+	u8 pal_base;
 } HudImage;
 
 #define STRIDE(w) (((w) + 3) & ~3)
 
 static const HudImage kImages[] = {
-	{ (const u8 *)gear_textBitmap, 26, 7, 0, kPalText },
-	{ (const u8 *)items_textBitmap, 34, 7, 1, kPalText }
+	{ (const u8 *)gear_textBitmap, 26, 7, 0, 0, 0, kPalText, 0 },
+	{ (const u8 *)items_textBitmap, 34, 7, 1, 0, 0, kPalText, 0 },
+	{ (const u8 *)selected_item_borderBitmap, 50, 50, -1, 183, 52, 0, kPalBorder }
 };
 
 /* The rupee, bomb and arrow counters. The icons and digits are the game's
@@ -217,6 +227,70 @@ static void set_counter_palette(const HudCounters *d)
 		BG_PALETTE_SUB[kPalHud + i] = d->pal[i];
 }
 
+/* The equipped item. The game keeps the item box as a 2x2 block of BG3 tile
+ * entries in its HUD buffer, so whatever it has equipped, bottles and the
+ * flute included, is already there. Each pixel is drawn twice across and
+ * twice down, with nothing smoothed. */
+enum {
+	kItemX = 193,
+	kItemY = 62,
+	kItemSize = 32,
+	/* HUDXY(5, 1) in the 32-word-wide HUD buffer. */
+	kItemBoxWord = 1 * 32 + 5
+};
+
+typedef struct {
+	u8 px[kItemSize][kItemSize];	/* palette slot, 0 is clear */
+	u16 pal[32];
+} HudItem;
+
+static HudItem shown_item;
+static HudItem next_item;
+
+static void build_item(HudItem *it)
+{
+	const Ppu *ppu = g_zenv.ppu;
+	const u16 *box = &hud_tile_indices_buffer[kItemBoxWord];
+	int t, r, c, p;
+
+	memset(it, 0, sizeof *it);
+	for (t = 0; t < 4; t++) {
+		u16 entry = box[(t >> 1) * 32 + (t & 1)];
+		int pal = (entry >> 10) & 7;
+		u8 tile[kTileH][kTileH];
+
+		read_tile(ppu, entry & 0x3ff, tile);
+		for (p = 1; p < 4; p++)
+			it->pal[pal * 4 + p] = ppu->cgram[pal * 4 + p] & 0x7fff;
+		for (r = 0; r < kTileH; r++) {
+			for (c = 0; c < kTileH; c++) {
+				int sr = (entry & 0x8000) ? kTileH - 1 - r : r;
+				int sc = (entry & 0x4000) ? kTileH - 1 - c : c;
+				u8 v = tile[sr][sc];
+				int x = ((t & 1) * kTileH + c) * 2;
+				int y = ((t >> 1) * kTileH + r) * 2;
+
+				if (!v)
+					continue;
+				v += kPalItem + pal * 4;
+				it->px[y][x] = v;
+				it->px[y][x + 1] = v;
+				it->px[y + 1][x] = v;
+				it->px[y + 1][x + 1] = v;
+			}
+		}
+	}
+}
+
+static void set_item_palette(const HudItem *it)
+{
+	int i;
+
+	for (i = 0; i < 32; i++)
+		if (i & 3)
+			BG_PALETTE_SUB[kPalItem + i] = it->pal[i];
+}
+
 static int hud_up;
 
 void ZeldaBottomNoteIdle(void)
@@ -265,17 +339,31 @@ static void compose_row(u8 *line, int y)
 
 	for (i = 0; i < sizeof kImages / sizeof kImages[0]; i++) {
 		const HudImage *im = &kImages[i];
-		const HudBox *b = &kBoxes[im->box];
-		int top = b->y + (b->h - im->h) / 2;
-		int left = b->x + (b->w - im->w) / 2;
+		int top = im->y;
+		int left = im->x;
 		const u8 *src;
 
+		if (im->box >= 0) {
+			const HudBox *b = &kBoxes[im->box];
+
+			top = b->y + (b->h - im->h) / 2;
+			left = b->x + (b->w - im->w) / 2;
+		}
 		if (y < top || y >= top + im->h)
 			continue;
 		src = im->pix + (y - top) * STRIDE(im->w);
 		for (x = 0; x < im->w; x++) {
 			if (src[x])
-				line[left + x] = im->color;
+				line[left + x] = im->color ? im->color : im->pal_base + src[x];
+		}
+	}
+
+	if (y >= kItemY && y < kItemY + kItemSize) {
+		const u8 *row = shown_item.px[y - kItemY];
+
+		for (x = 0; x < kItemSize; x++) {
+			if (row[x])
+				line[kItemX + x] = row[x];
 		}
 	}
 
@@ -308,8 +396,13 @@ static void put_rows(int from, int to)
 
 static void draw_hud(void)
 {
+	int i;
+
 	build_counters(&shown);
+	build_item(&shown_item);
 	dmaCopy(tex_menuPal, BG_PALETTE_SUB, tex_menuPalLen);
+	for (i = 1; i < 4; i++)
+		BG_PALETTE_SUB[kPalBorder + i] = selected_item_borderPal[i];
 	/* #50a865 at 5 bits per channel. */
 	BG_PALETTE_SUB[kPalGreen] = RGB15(0x50 >> 3, 0xa8 >> 3, 0x65 >> 3);
 	BG_PALETTE_SUB[kPalText] = RGB15(31, 31, 31);
@@ -317,19 +410,27 @@ static void draw_hud(void)
 	/* #e3b23d at 5 bits per channel. */
 	BG_PALETTE_SUB[kPalGold] = RGB15(0xe3 >> 3, 0xb2 >> 3, 0x3d >> 3);
 	set_counter_palette(&shown);
+	set_item_palette(&shown_item);
 	put_rows(0, kHeight);
 }
 
-/* Counts tick up a point per frame while they fill, and the game can reload
- * its tiles, so look every frame and touch the screen only on a change. */
-static void refresh_counters(void)
+/* Counts tick up a point per frame while they fill, the player swaps items,
+ * and the game can reload its tiles, so look every frame and touch the
+ * screen only on a change, and only the rows that changed. */
+static void refresh_dynamic(void)
 {
 	build_counters(&next);
-	if (!memcmp(&next, &shown, sizeof shown))
-		return;
-	memcpy(&shown, &next, sizeof shown);
-	set_counter_palette(&shown);
-	put_rows(kDynTop, kDynBottom);
+	if (memcmp(&next, &shown, sizeof shown)) {
+		memcpy(&shown, &next, sizeof shown);
+		set_counter_palette(&shown);
+		put_rows(kDynTop, kDynBottom);
+	}
+	build_item(&next_item);
+	if (memcmp(&next_item, &shown_item, sizeof shown_item)) {
+		memcpy(&shown_item, &next_item, sizeof shown_item);
+		set_item_palette(&shown_item);
+		put_rows(kItemY, kItemY + kItemSize);
+	}
 }
 
 void ZeldaBottomUpdate(void)
@@ -337,7 +438,7 @@ void ZeldaBottomUpdate(void)
 	int want = hud_wanted();
 
 	if (want && hud_up) {
-		refresh_counters();
+		refresh_dynamic();
 		return;
 	}
 	if (want == hud_up)
