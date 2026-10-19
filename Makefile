@@ -6,9 +6,9 @@ ifeq ($(strip $(DEVKITARM)),)
 $(error "Please set DEVKITARM in your environment. export DEVKITARM=<path to>devkitARM")
 endif
 
-GAME_TITLE     := LttP DS
+GAME_TITLE     := Legend of Zelda
 GAME_SUBTITLE1 := A Link to the Past
-GAME_SUBTITLE2 := DS Phat / Lite
+GAME_SUBTITLE2 := Nintendo
 
 ifeq ($(origin LTTP_ROOT),undefined)
   LTTP_ROOT := $(CURDIR)
