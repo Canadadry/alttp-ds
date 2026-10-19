@@ -145,6 +145,7 @@ static int hud_pick;
 static int beep_on;
 static int bomb_99;
 static int arrow_99;
+static int run_speed;
 static int save_on_exit;
 
 enum {
@@ -152,6 +153,7 @@ enum {
 	kRowBeep,
 	kRowBomb,
 	kRowArrow,
+	kRowSpeed,
 	kRowSave,
 	kRowCancel,
 	kCaretX = 16,
@@ -161,9 +163,10 @@ enum {
 	kTitleY = 22
 };
 
-static const int kRowY[] = { 48, 68, 88, 108, 150, 170 };
+static const int kRowY[] = { 40, 58, 76, 94, 112, 146, 166 };
 static const char *const kHudChoice[] = { "Top Screen", "Bottom Screen" };
 static const char *const kOnOff[] = { "Off", "On" };
+static const char *const kRunChoice[] = { "Normal", "Double", "Triple" };
 
 static int settings_value_x(void)
 {
@@ -193,6 +196,8 @@ static void settings_draw(void)
 	ZeldaVideoMenuText(value_x, kRowY[kRowBomb], bomb_99 ? "99" : "10");
 	ZeldaVideoMenuText(kLabelX, kRowY[kRowArrow], "Arrow Capacity");
 	ZeldaVideoMenuText(value_x, kRowY[kRowArrow], arrow_99 ? "99" : "30");
+	ZeldaVideoMenuText(kLabelX, kRowY[kRowSpeed], "Run Speed");
+	ZeldaVideoMenuText(value_x, kRowY[kRowSpeed], kRunChoice[run_speed]);
 	ZeldaVideoMenuText(kTextX, kRowY[kRowSave], "Save");
 	ZeldaVideoMenuText(kTextX, kRowY[kRowCancel], "Cancel");
 	ZeldaVideoMenuText(kCaretX, kRowY[cursor], ">");
@@ -212,17 +217,27 @@ static void settings_move(int dir)
 
 static void settings_scroll(int dir)
 {
-	(void)dir;
+	int n = 2;
+	int *v = NULL;
+
 	if (cursor == kRowHud)
-		hud_pick ^= 1;
+		v = &hud_pick;
 	else if (cursor == kRowBeep)
-		beep_on ^= 1;
+		v = &beep_on;
 	else if (cursor == kRowBomb)
-		bomb_99 ^= 1;
+		v = &bomb_99;
 	else if (cursor == kRowArrow)
-		arrow_99 ^= 1;
-	else
+		v = &arrow_99;
+	else if (cursor == kRowSpeed) {
+		v = &run_speed;
+		n = 3;
+	} else {
 		return;
+	}
+	if (dir < 0)
+		*v = (*v + n - 1) % n;
+	else
+		*v = (*v + 1) % n;
 	if (settings_menu)
 		settings_draw();
 }
@@ -245,6 +260,11 @@ static void ZeldaSettingsEnter(void)
 	beep_on = ZeldaLowHpBeep() ? 1 : 0;
 	bomb_99 = ZeldaBombCap() == 99;
 	arrow_99 = ZeldaArrowCap() == 99;
+	run_speed = ZeldaRunSpeed() - 1;
+	if (run_speed < 0)
+		run_speed = 0;
+	if (run_speed > 2)
+		run_speed = 2;
 	cursor = kRowHud;
 	save_on_exit = 0;
 }
@@ -435,6 +455,7 @@ void ZeldaHostBlit(u16 *fb)
 			ZeldaLowHpBeepSet(beep_on);
 			ZeldaBombCapSet(bomb_99 ? 99 : 10);
 			ZeldaArrowCapSet(arrow_99 ? 99 : 30);
+			ZeldaRunSpeedSet(run_speed + 1);
 		}
 		ZeldaVideoMenuEnd();
 		settings_menu = 0;

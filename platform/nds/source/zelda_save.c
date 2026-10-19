@@ -21,6 +21,7 @@
 #include "zelda_rtl.h"
 #include "features.h"
 #include "hud.h"
+#include "player.h"
 #include "select_file.h"
 #include "zelda_save.h"
 
@@ -55,13 +56,15 @@ const char *ZeldaSaveStatus(void)
 /* Past the three slots and their mirrors (last byte 0x1DFF). A display
  * choice, not part of a slot checksum.
  * Version 1: hud, beep, checksum at byte 7.
- * Version 2 adds bomb and arrow caps and stores the checksum at byte 9. */
-enum { kSetOff = 0x1E00, kSetVersion = 2 };
+ * Version 2 adds bomb and arrow caps and stores the checksum at byte 9.
+ * Version 3 adds run speed and stores the checksum at byte 11. */
+enum { kSetOff = 0x1E00, kSetVersion = 3 };
 
 static int g_hud_top = 1;
 static int g_low_hp_beep = 1;
 static int g_bomb_cap = 10;
 static int g_arrow_cap = 30;
+static int g_run_mul = 1;
 
 static uint8 settings_sum(const uint8 *p, int n)
 {
@@ -86,6 +89,11 @@ static void apply_carry_caps(void)
 	Hud_SetCarryCaps((uint8)g_bomb_cap, (uint8)g_arrow_cap);
 }
 
+static void apply_run_speed(void)
+{
+	Player_SetRunSpeed((uint8)g_run_mul);
+}
+
 static void settings_store(void)
 {
 	uint8 *p;
@@ -102,7 +110,9 @@ static void settings_store(void)
 	p[6] = (uint8)(g_low_hp_beep ? 0 : 1);
 	p[7] = (uint8)(g_bomb_cap == 99);
 	p[8] = (uint8)(g_arrow_cap == 99);
-	p[9] = settings_sum(p, 9);
+	p[9] = 0;
+	p[10] = (uint8)(g_run_mul - 1);
+	p[11] = settings_sum(p, 11);
 	ZeldaWriteSram();
 }
 
@@ -114,21 +124,30 @@ static void settings_load(void)
 	g_low_hp_beep = 1;
 	g_bomb_cap = 10;
 	g_arrow_cap = 30;
+	g_run_mul = 1;
 	if (p[0] == 'L' && p[1] == 'T' && p[2] == 'D' && p[3] == 'S' &&
 	    p[5] <= 1 && p[6] <= 1) {
 		if (p[4] == 1 && p[7] == settings_sum(p, 7)) {
 			g_hud_top = p[5] == 0;
 			g_low_hp_beep = p[6] == 0;
-		} else if (p[4] == kSetVersion && p[7] <= 1 && p[8] <= 1 &&
+		} else if (p[4] == 2 && p[7] <= 1 && p[8] <= 1 &&
 			   p[9] == settings_sum(p, 9)) {
 			g_hud_top = p[5] == 0;
 			g_low_hp_beep = p[6] == 0;
 			g_bomb_cap = p[7] ? 99 : 10;
 			g_arrow_cap = p[8] ? 99 : 30;
+		} else if (p[4] == kSetVersion && p[7] <= 1 && p[8] <= 1 &&
+			   p[10] <= 2 && p[11] == settings_sum(p, 11)) {
+			g_hud_top = p[5] == 0;
+			g_low_hp_beep = p[6] == 0;
+			g_bomb_cap = p[7] ? 99 : 10;
+			g_arrow_cap = p[8] ? 99 : 30;
+			g_run_mul = p[10] + 1;
 		}
 	}
 	apply_low_hp_beep();
 	apply_carry_caps();
+	apply_run_speed();
 }
 
 int ZeldaHudOnTop(void)
@@ -175,6 +194,22 @@ void ZeldaArrowCapSet(int cap)
 {
 	g_arrow_cap = cap == 99 ? 99 : 30;
 	apply_carry_caps();
+	settings_store();
+}
+
+int ZeldaRunSpeed(void)
+{
+	return g_run_mul;
+}
+
+void ZeldaRunSpeedSet(int mul)
+{
+	if (mul < 1)
+		mul = 1;
+	if (mul > 3)
+		mul = 3;
+	g_run_mul = mul;
+	apply_run_speed();
 	settings_store();
 }
 
