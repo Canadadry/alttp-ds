@@ -11,13 +11,11 @@ int main(int argc, char **argv)
 {
 	u16 *framebuffer;
 
-	(void)argc;
-	(void)argv;
-
 	lcdMainOnTop();
 	ZeldaVideoShowBottom();
 	nitroFSInit(NULL);
 	fatInitDefault();
+	ZeldaSavePrepare(argc, argv);
 
 	ZeldaHostInit();
 	framebuffer = ZeldaVideoFramebuffer();

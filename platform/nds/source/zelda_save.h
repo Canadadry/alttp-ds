@@ -1,5 +1,9 @@
 #pragma once
 
+/* Choose the .sav path from argv and TWiLight Menu++ settings.
+ * Call after fatInitDefault and before ZeldaSaveMount. */
+void ZeldaSavePrepare(int argc, char **argv);
+
 /* Resolve the save and load it into g_zenv.sram. Call after ZeldaInitialize. */
 void ZeldaSaveMount(void);
 

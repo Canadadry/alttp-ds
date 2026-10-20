@@ -118,14 +118,14 @@ The build also compiles the ARM7 sound core in `platform/nds/arm7`. The output i
 **DS / DS Lite flashcart**
 
 1. Copy `lttp-ds.nds` to the card and launch it with your usual loader. Twilight Menu++ also works.
-2. The save is written to the root of the SD card as `lttp-ds.sav`. This needs a loader that patches in the card's DLDI driver, which most do.
+2. The save follows TWiLight Menu++ Save Location. The default is a `saves` folder next to the ROM (`lttp-ds.sav`, or the ROM's own name if you renamed it). The other settings put that file beside the ROM, or in `_nds/TWiLightMenu/saves`. A `lttp-ds.sav` left at the card root by an older build is loaded and moved on the next save. This needs a loader that patches in the card's DLDI driver, which most do.
 3. The game assets are inside the `.nds`, so no other files are needed.
 
 ## Saves
 
-- The save is an 8 KB `lttp-ds.sav` at the root of the DLDI card. It holds the three game slots and your Settings.
+- On a flashcart the save is an 8 KB `.sav` in TWiLight Menu++'s save location, named after the ROM. It holds the three game slots and your Settings. melonDS folder sync still writes `lttp-ds.sav` in the synced folder.
 - Settings are stored in unused space past the save slots, so they travel with the file.
-- Saves from older builds in `saves/sram.dat` are still read, and are written out as `lttp-ds.sav` on the next save.
+- A save from an older build at the card root, or in `saves/sram.dat`, is still read and written to that location on the next save.
 
 ## Not included
 

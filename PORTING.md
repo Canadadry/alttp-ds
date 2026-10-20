@@ -110,7 +110,7 @@ The Nintendo logo is four 16×16 white sprites, not a background. `zelda3_assets
 
 Boots into the game loop. **B** is the sword (SNES B), **A** lifts, opens chests, and dashes (SNES A), **Y** uses the equipped item (SNES Y). **X** / **L** / **R** are the SNES X and shoulders, **Start** opens the game menu. Select+Start pauses the host. L+R+Select soft-resets and keeps SRAM. L+R+Start+Select quits and writes SRAM.
 
-SRAM is an 8 KB `lttp-ds.sav` in the root of the DLDI card. Naming a file only marks that image dirty; the bytes are written after the frame, because a melonDS DLDI write from inside the frame never returns. NitroFS still supplies `zelda3_assets.dat`. An old `saves/sram.dat` is loaded into RAM and written to `lttp-ds.sav` on the next save.
+SRAM is an 8 KB `.sav` named after the ROM. TWiLight Menu++'s Save Location decides the folder: a `saves` directory next to the ROM by default, the ROM's own folder, or `_nds/TWiLightMenu/saves`. Naming a file only marks that image dirty; the bytes are written after the frame, because a melonDS DLDI write from inside the frame never returns. NitroFS still supplies `zelda3_assets.dat`. melonDS folder sync has no ROM path, so it still uses `lttp-ds.sav` in the synced folder. An old root `lttp-ds.sav` or `saves/sram.dat` is loaded into RAM and written to the menu location on the next save.
 
 Bottom screen is a RAM HUD: hearts, rupees, bombs, arrows, magic, keys, Y-item, sword. Audio is 11025 Hz mono, one game frame at a time, so it stutters until Phase 5.
 

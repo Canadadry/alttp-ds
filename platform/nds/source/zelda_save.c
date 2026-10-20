@@ -1,12 +1,20 @@
 /*
- * Homebrew has no cartridge backup. The save is an 8 KB file named
- * lttp-ds.sav in the root of the DLDI volume (8.3 name LTTP-DS.SAV).
+ * Homebrew has no cartridge backup. The save is an 8 KB file.
+ *
+ * TWiLight Menu++ passes the .nds path in argv and records Save Location
+ * in sd:/_nds/TWiLightMenu/settings.ini (0, the default, is a saves folder
+ * next to the ROM; 1 is the ROM's own folder; 2 is _nds/TWiLightMenu/saves).
+ * The file is named after the ROM, with a .sav extension.
+ *
+ * An older build wrote lttp-ds.sav at the card root. That file is still
+ * loaded, then removed once the bytes are in the menu's folder.
  *
  * ZeldaWriteSram only marks the image dirty. ZeldaSaveFlush writes it
  * after the frame. On melonDS the libfat write never returns: the ARM7
  * DLDI driver waits forever for the cart busy bit. The flush instead
  * borrows the cart on the ARM9, which is the interface melonDS stores,
- * and gives it back before the next frame.
+ * and gives it back before the next frame. melonDS folder sync has no
+ * argv, so that save stays lttp-ds.sav in the synced folder.
  */
 #include <nds.h>
 #include <calico/dev/blk.h>
@@ -15,6 +23,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #include "types.h"
@@ -38,6 +47,10 @@ static int g_melon;
 static int g_has_fat;
 static int g_dirty;
 static int g_tries;
+/* Where this boot loaded a root save from. Stable for the whole run. */
+static const char *g_loaded_from;
+static char g_save_path[512];
+static const char *g_write_path;
 static int g_have_dir;
 static u32 g_spc;
 static u32 g_spf;
@@ -937,67 +950,482 @@ static int touch_dir(void)
 	return write_sec(g_dir_lba, g_sec);
 }
 
-static const char *const kSavePaths[] = {
+/* Older builds. Still read, and removed after a copy lands elsewhere. */
+static const char *const kRootSaves[] = {
 	"fat:/lttp-ds.sav",
 	"sd:/lttp-ds.sav",
 	"lttp-ds.sav",
 	NULL
 };
 
+static const char *const kMenuIni[] = {
+	"sd:/_nds/TWiLightMenu/settings.ini",
+	"fat:/_nds/TWiLightMenu/settings.ini",
+	NULL
+};
+
+static const char *const kBootIni[] = {
+	"sd:/_nds/nds-bootstrap.ini",
+	"fat:/_nds/nds-bootstrap.ini",
+	NULL
+};
+
+static int starts(const char *s, const char *pre)
+{
+	while (*pre) {
+		if (*s++ != *pre++)
+			return 0;
+	}
+	return 1;
+}
+
+static int key_is(const char *line, const char *key)
+{
+	while (*key) {
+		if (*line++ != *key++)
+			return 0;
+	}
+	while (*line == ' ' || *line == '\t')
+		line++;
+	return *line == '=';
+}
+
+static int parse_int(const char *s, int *ok)
+{
+	int n = 0;
+	int any = 0;
+
+	while (*s == ' ' || *s == '\t')
+		s++;
+	while (*s >= '0' && *s <= '9') {
+		any = 1;
+		n = n * 10 + (*s - '0');
+		if (n > 1000)
+			break;
+		s++;
+	}
+	if (ok)
+		*ok = any;
+	return any ? n : 0;
+}
+
+static int ini_int(const char *path, const char *section, const char *key, int fallback, int *found)
+{
+	FILE *f;
+	char line[160];
+	int in = 0;
+
+	if (found)
+		*found = 0;
+	f = fopen(path, "rb");
+	if (!f)
+		return fallback;
+	while (fgets(line, sizeof line, f)) {
+		char *p = line;
+		int ok;
+		int v;
+
+		while (*p == ' ' || *p == '\t')
+			p++;
+		if (*p == '[') {
+			in = starts(p, section);
+			continue;
+		}
+		if (!in || *p == ';' || *p == '#' || *p == '\r' || *p == '\n' || !*p)
+			continue;
+		if (!key_is(p, key))
+			continue;
+		p = strchr(p, '=');
+		if (!p)
+			continue;
+		v = parse_int(p + 1, &ok);
+		fclose(f);
+		if (!ok)
+			return fallback;
+		if (found)
+			*found = 1;
+		return v;
+	}
+	fclose(f);
+	return fallback;
+}
+
+static int path_copy(char *dst, int n, const char *src)
+{
+	int i = 0;
+
+	if (!dst || n <= 0)
+		return 0;
+	if (!src) {
+		dst[0] = 0;
+		return 0;
+	}
+	while (src[i] && i < n - 1) {
+		dst[i] = src[i];
+		i++;
+	}
+	dst[i] = 0;
+	return src[i] == 0 && i > 0;
+}
+
+static int ini_string(const char *path, const char *section, const char *key, char *dst, int n)
+{
+	FILE *f;
+	char line[300];
+	int in = 0;
+
+	f = fopen(path, "rb");
+	if (!f)
+		return 0;
+	while (fgets(line, sizeof line, f)) {
+		char *p = line;
+		char *eq;
+		char *end;
+
+		while (*p == ' ' || *p == '\t')
+			p++;
+		if (*p == '[') {
+			in = starts(p, section);
+			continue;
+		}
+		if (!in || *p == ';' || *p == '#' || !key_is(p, key))
+			continue;
+		eq = strchr(p, '=');
+		if (!eq)
+			continue;
+		eq++;
+		while (*eq == ' ' || *eq == '\t')
+			eq++;
+		end = eq;
+		while (*end && *end != '\r' && *end != '\n')
+			end++;
+		while (end > eq && (end[-1] == ' ' || end[-1] == '\t'))
+			end--;
+		*end = 0;
+		fclose(f);
+		return path_copy(dst, n, eq);
+	}
+	fclose(f);
+	return 0;
+}
+
+static const char *base_name(const char *path)
+{
+	const char *s;
+	const char *b;
+
+	if (!path)
+		return "";
+	b = path;
+	for (s = path; *s; s++) {
+		if (*s == '/' || *s == '\\')
+			b = s + 1;
+	}
+	return b;
+}
+
+static int dir_name(char *dst, int n, const char *path)
+{
+	const char *base;
+	int len;
+
+	if (!path || n <= 0)
+		return 0;
+	base = base_name(path);
+	len = (int)(base - path);
+	if (len > 0 && (path[len - 1] == '/' || path[len - 1] == '\\'))
+		len--;
+	if (len <= 0 || len >= n)
+		return 0;
+	memcpy(dst, path, (size_t)len);
+	dst[len] = 0;
+	return 1;
+}
+
+static int card_root(const char *p)
+{
+	return !p || !p[0]
+	    || strcmp(p, "/") == 0
+	    || strcmp(p, "fat:") == 0 || strcmp(p, "fat:/") == 0
+	    || strcmp(p, "sd:") == 0 || strcmp(p, "sd:/") == 0;
+}
+
+static int usable_rom(const char *path)
+{
+	const char *base;
+
+	if (!path || !strchr(path, '/'))
+		return 0;
+	base = base_name(path);
+	if (!base[0] || strstr(base, "nds-bootstrap"))
+		return 0;
+	return 1;
+}
+
+static int sav_name(char *dst, int n, const char *rom)
+{
+	const char *base = base_name(rom);
+	const char *dot;
+	int len;
+
+	if (!base[0] || n < 6)
+		return 0;
+	dot = strrchr(base, '.');
+	if (!dot || dot == base)
+		dot = base + strlen(base);
+	len = (int)(dot - base);
+	if (len <= 0 || len >= n - 4)
+		return 0;
+	memcpy(dst, base, (size_t)len);
+	memcpy(dst + len, ".sav", 5);
+	return 1;
+}
+
+/* settings.ini SAVE_LOCATION. Missing file means the default folder. */
+static int save_location(void)
+{
+	int i;
+
+	for (i = 0; kMenuIni[i]; i++) {
+		int found = 0;
+		int v = ini_int(kMenuIni[i], "[SRLOADER]", "SAVE_LOCATION", 0, &found);
+
+		if (!found)
+			continue;
+		if (v < 0 || v > 2)
+			return 0;
+		return v;
+	}
+	return 0;
+}
+
+static const char *twlm_folder(const char *rom)
+{
+	if (starts(rom, "fat:"))
+		return "fat:/_nds/TWiLightMenu/saves";
+	return "sd:/_nds/TWiLightMenu/saves";
+}
+
+static int set_write_path(const char *rom)
+{
+	char dir[512];
+	char name[256];
+	int loc;
+	int n;
+
+	if (!sav_name(name, (int)sizeof name, rom))
+		return 0;
+	loc = save_location();
+	if (loc == 1) {
+		if (!dir_name(dir, (int)sizeof dir, rom))
+			return 0;
+		n = snprintf(g_save_path, sizeof g_save_path, "%s/%s", dir, name);
+	} else if (loc == 2) {
+		n = snprintf(g_save_path, sizeof g_save_path, "%s/%s", twlm_folder(rom), name);
+	} else {
+		if (!dir_name(dir, (int)sizeof dir, rom))
+			return 0;
+		n = snprintf(g_save_path, sizeof g_save_path, "%s/saves/%s", dir, name);
+	}
+	if (n <= 0 || n >= (int)sizeof g_save_path)
+		return 0;
+	g_write_path = g_save_path;
+	return 1;
+}
+
+static int argv_has_bootstrap(int argc, char **argv)
+{
+	int i;
+
+	if (!argv)
+		return 0;
+	for (i = 0; i < argc; i++) {
+		if (argv[i] && strstr(argv[i], "nds-bootstrap"))
+			return 1;
+	}
+	return 0;
+}
+
+/* 1: TWiLight already chose the .sav path. 2: only the ROM path is known. */
+static int bootstrap_path(char *dst, int n)
+{
+	int i;
+
+	for (i = 0; kBootIni[i]; i++) {
+		if (ini_string(kBootIni[i], "[NDS-BOOTSTRAP]", "SAV_PATH", dst, n) && dst[0])
+			return 1;
+	}
+	for (i = 0; kBootIni[i]; i++) {
+		if (ini_string(kBootIni[i], "[NDS-BOOTSTRAP]", "NDS_PATH", dst, n) && usable_rom(dst))
+			return 2;
+	}
+	return 0;
+}
+
+static int rom_from_args(char *dst, int n, int argc, char **argv)
+{
+	char cwd[512];
+	char joined[512];
+	int i;
+	int len;
+
+	if (argv) {
+		for (i = 0; i < argc; i++) {
+			if (usable_rom(argv[i]) && path_copy(dst, n, argv[i]))
+				return 1;
+		}
+	}
+	if (!argv || argc < 1 || !argv[0] || !argv[0][0])
+		return 0;
+	if (strchr(argv[0], '/') || strchr(argv[0], '\\'))
+		return 0;
+	if (!getcwd(cwd, sizeof cwd))
+		return 0;
+	if (card_root(cwd)) {
+		const char *prefix = starts(cwd, "sd") ? "sd:/" : "fat:/";
+
+		len = snprintf(joined, sizeof joined, "%s%s", prefix, argv[0]);
+	} else {
+		len = snprintf(joined, sizeof joined, "%s/%s", cwd, argv[0]);
+	}
+	if (len <= 0 || len >= (int)sizeof joined || !usable_rom(joined))
+		return 0;
+	return path_copy(dst, n, joined);
+}
+
+void ZeldaSavePrepare(int argc, char **argv)
+{
+	char rom[512];
+	int boot;
+
+	g_write_path = NULL;
+	g_save_path[0] = 0;
+	if (rom_from_args(rom, (int)sizeof rom, argc, argv)) {
+		set_write_path(rom);
+		return;
+	}
+	if (!argv_has_bootstrap(argc, argv))
+		return;
+	boot = bootstrap_path(rom, (int)sizeof rom);
+	if (boot == 1) {
+		if (path_copy(g_save_path, (int)sizeof g_save_path, rom))
+			g_write_path = g_save_path;
+		return;
+	}
+	if (boot == 2)
+		set_write_path(rom);
+}
+
+static void ensure_parent(const char *file)
+{
+	char dir[512];
+
+	if (!dir_name(dir, (int)sizeof dir, file) || card_root(dir))
+		return;
+	mkdir(dir, 0777);
+}
+
+static int read_one(const char *path, int remember)
+{
+	FILE *f;
+	size_t n;
+
+	if (!path)
+		return 0;
+	f = fopen(path, "rb");
+	if (!f)
+		return 0;
+	n = fread(g_zenv.sram, 1, kSramBytes, f);
+	fclose(f);
+	if (n != kSramBytes)
+		return 0;
+	g_status = "loaded";
+	if (remember)
+		g_loaded_from = path;
+	return 1;
+}
+
 static int read_stdio(void)
 {
 	int i;
 
-	for (i = 0; kSavePaths[i]; i++) {
-		FILE *f = fopen(kSavePaths[i], "rb");
-		size_t n;
-
-		if (!f)
+	if (g_write_path && read_one(g_write_path, 0))
+		return 1;
+	for (i = 0; kRootSaves[i]; i++) {
+		if (g_write_path && strcmp(g_write_path, kRootSaves[i]) == 0)
 			continue;
-		n = fread(g_zenv.sram, 1, kSramBytes, f);
-		fclose(f);
-		if (n == kSramBytes) {
-			g_status = "loaded";
+		if (read_one(kRootSaves[i], 1))
 			return 1;
-		}
 	}
 	return 0;
+}
+
+static void drop_loaded_root(void)
+{
+	int i;
+
+	if (!g_loaded_from || !g_write_path)
+		return;
+	if (strcmp(g_loaded_from, g_write_path) == 0)
+		return;
+	for (i = 0; kRootSaves[i]; i++) {
+		if (strcmp(g_loaded_from, kRootSaves[i]) == 0) {
+			remove(g_loaded_from);
+			g_loaded_from = NULL;
+			return;
+		}
+	}
 }
 
 /* In-place update. "wb" is only used when the file is not there yet;
  * opening an existing file with "wb" truncates it before the bytes land.
  * The length flips between 8192 and 8193 so melonDS folder sync copies
  * the file even when the FAT clock is still in the same 2-second slot. */
+static int write_one(const char *path)
+{
+	FILE *f;
+	long sz;
+	int wrote;
+
+	if (!path)
+		return 0;
+	f = fopen(path, "r+b");
+	if (!f) {
+		FILE *probe = fopen(path, "rb");
+
+		if (probe) {
+			fclose(probe);
+			return 0;
+		}
+		f = fopen(path, "wb");
+	}
+	if (!f)
+		return 0;
+	wrote = fwrite(g_zenv.sram, 1, kSramBytes, f) == kSramBytes;
+	if (wrote && fflush(f) == 0 && fseek(f, 0, SEEK_END) == 0) {
+		sz = ftell(f);
+		if (sz >= 0 && sz <= (long)kSramBytes)
+			ftruncate(fileno(f), (off_t)kSramBytes + 1);
+		else if (sz > (long)kSramBytes)
+			ftruncate(fileno(f), (off_t)kSramBytes);
+	}
+	fsync(fileno(f));
+	return fclose(f) == 0 && wrote;
+}
+
 static int write_stdio(void)
 {
 	int i;
 
-	for (i = 0; kSavePaths[i]; i++) {
-		FILE *f = fopen(kSavePaths[i], "r+b");
-		long sz;
-		int wrote;
-
-		if (!f) {
-			FILE *probe = fopen(kSavePaths[i], "rb");
-
-			if (probe) {
-				fclose(probe);
-				continue;
-			}
-			f = fopen(kSavePaths[i], "wb");
+	if (g_write_path) {
+		ensure_parent(g_write_path);
+		if (write_one(g_write_path)) {
+			drop_loaded_root();
+			return 1;
 		}
-		if (!f)
-			continue;
-		wrote = fwrite(g_zenv.sram, 1, kSramBytes, f) == kSramBytes;
-		if (wrote && fflush(f) == 0 && fseek(f, 0, SEEK_END) == 0) {
-			sz = ftell(f);
-			if (sz >= 0 && sz <= (long)kSramBytes)
-				ftruncate(fileno(f), (off_t)kSramBytes + 1);
-			else if (sz > (long)kSramBytes)
-				ftruncate(fileno(f), (off_t)kSramBytes);
-		}
-		fsync(fileno(f));
-		if (fclose(f) == 0 && wrote)
+	}
+	for (i = 0; kRootSaves[i]; i++) {
+		if (write_one(kRootSaves[i]))
 			return 1;
 	}
 	return 0;
@@ -1053,13 +1481,14 @@ void ZeldaSaveMount(void)
 		g_status = "off";
 		return;
 	}
+	g_loaded_from = NULL;
 	g_melon = g_envExtraInfo->dldi_io_type == kMelonIo;
 	load_geometry();
 	find_dir();
 	if (read_stdio())
 		;
 	else if (g_has_fat && g_have_dir && g_cluster >= 2 && read_sram_chain(g_cluster))
-		;
+		g_loaded_from = "fat:/lttp-ds.sav";
 	else if (read_legacy())
 		;
 	else
