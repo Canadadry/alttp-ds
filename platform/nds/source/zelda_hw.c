@@ -36,7 +36,12 @@
  * is what SNES half-add color math does. That only happens when color math
  * targets the ground. Hyrule Castle puts BG1 on the subscreen with CGADSUB
  * 0x20, backdrop only, so the layer stays behind the floor and is not
- * blended: the stone and Link stay solid. Walking the castle stairs
+ * blended: the stone and Link stay solid. The stone bridge where the
+ * bottle is given keeps that subscreen 256 pixels below the floor and
+ * half-adds it. The shadow has to be drawn on the floor, in front of
+ * it, or the bank covers it and the tint is gone. It stays behind
+ * Link, so he and the man under the bridge stay solid. Rain is a
+ * different subscreen, so it still draws in front. Walking the castle stairs
  * drops him to sprite priority 1, which exists to slip behind a
  * main-screen BG1 lip. These rooms have no such lip, so for that climb
  * only he stays in front of the stone. The arch over the stair is still
@@ -151,7 +156,7 @@ static int vram_commit;
 static struct {
 	int ready;
 	int main_en, sub_en, cover;
-	int bg1_main, bg1_sub, overlay, back_add;
+	int bg1_main, bg1_sub, overlay, back_add, bridge;
 	int bg2_on, lift_bg2, stair_arch, show_bg3_lo;
 	int lamp, door_iris;
 	int bar_under_overlay;
@@ -1086,8 +1091,12 @@ static void present_mosaic(const Ppu *ppu) {
  * overlay: the subscreen is in front of every sprite (rain).
  * back_add: the subscreen is behind the ground and added into it
  * (Translucent and Addition rooms). Sprites are not a destination, so
+ * Link stays solid.
+ * bridge: the subscreen is in front of the floor and behind the sprites.
+ * Only the floor is a destination, so the shadow stays on the bank and
  * Link stays solid. */
-static void present_overlay_blend(const Ppu *ppu, int overlay, int back_add) {
+static void present_overlay_blend(const Ppu *ppu, int overlay, int back_add,
+		int bridge) {
 	int coef;
 
 	/* Cone light is hardware BG2. Adding it (coeff 16+16) onto the room
@@ -1100,12 +1109,15 @@ static void present_overlay_blend(const Ppu *ppu, int overlay, int back_add) {
 		REG_BLDALPHA = 16 | (16 << 8);
 		return;
 	}
-	if (ppu->subtractColor || (!overlay && !back_add)) {
+	if (ppu->subtractColor || (!overlay && !back_add && !bridge)) {
 		REG_BLDCNT = 0;
 		return;
 	}
 	coef = ppu->halfColor ? 8 : 16;
-	if (back_add) {
+	if (bridge) {
+		REG_BLDCNT = BLEND_ALPHA | BLEND_SRC_BG2 |
+			BLEND_DST_BG3 | BLEND_DST_BACKDROP;
+	} else if (back_add) {
 		REG_BLDCNT = BLEND_ALPHA | BLEND_SRC_BG1 | BLEND_SRC_BG3 |
 			BLEND_DST_BG2 | BLEND_DST_BACKDROP;
 	} else {
@@ -2448,6 +2460,7 @@ static void classify_picture(const Ppu *ppu) {
 	int lamp;
 	int overlay;
 	int back_add;
+	int bridge;
 	int bg2_main;
 	int bg2_on;
 	int scrolls_match;
@@ -2488,8 +2501,19 @@ static void classify_picture(const Ppu *ppu) {
 		ppu->bgLayer[0].vScroll == ppu->bgLayer[1].vScroll;
 	if (back_add)
 		overlay = 0;
+	/* The bottle bridge (overlay 0x94, CGADSUB 0x72). Its subscreen is
+	 * the shadow, held 256 pixels below the floor. Rain draws that layer
+	 * in front of every sprite, so on the bank Link and the man go
+	 * translucent and the shadow drops out. Putting the layer behind the
+	 * floor hides it under the opaque bank. It belongs between them:
+	 * on the floor, behind the sprites. */
+	bridge = overlay && !player_is_indoors && (ppu->mathEnabled & 0x02) &&
+		!ppu->subtractColor && BYTE(overlay_index) == 0x94;
+	if (bridge)
+		overlay = 0;
 	pic.overlay = overlay;
 	pic.back_add = back_add;
+	pic.bridge = bridge;
 	bg2_main = (main_en & 0x02) != 0;
 	bg2_on = ((main_en | sub_en) & 0x02) != 0;
 	pic.bg2_on = bg2_on;
@@ -2652,6 +2676,17 @@ void ZeldaHwPresent(Ppu *ppu) {
 		} else {
 			bgHide(bg_id[1]);
 		}
+	} else if (pic.bridge) {
+		/* On the floor, behind every sprite. The stone that covers Link
+		 * is the front layer and is not part of this blend. */
+		bgSetPriority(bg_id[2], 2);
+		bgShow(bg_id[2]);
+		if (bg2_front_on_slot1) {
+			bgSetPriority(bg_id[1], 1);
+			bgShow(bg_id[1]);
+		} else {
+			bgHide(bg_id[1]);
+		}
 	} else if (pic.back_add) {
 		/* Behind the ground. The blend adds this into the floor and the
 		 * doorways, and Link is drawn on top of that result. */
@@ -2701,7 +2736,7 @@ void ZeldaHwPresent(Ppu *ppu) {
 	}
 	REG_DISPCNT |= DISPLAY_SPR_ACTIVE | DISPLAY_SPR_1D | DISPLAY_SPR_1D_SIZE_32;
 	present_mosaic(ppu);
-	present_overlay_blend(ppu, pic.overlay, pic.back_add);
+	present_overlay_blend(ppu, pic.overlay, pic.back_add, pic.bridge);
 	{
 		int ime = enterCriticalSection();
 
