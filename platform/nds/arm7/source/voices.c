@@ -40,6 +40,8 @@ typedef struct Voice {
 	uint8_t last_pan;
 	uint32_t pos;
 	uint32_t frac;
+	uint32_t echo_pos;
+	uint32_t echo_frac;
 	uint32_t bytes;
 	uint32_t loop_byte;
 	int last_out;
@@ -58,6 +60,16 @@ static int s_muted;
 static int s_echo_on;
 static u64 s_echo_t0;
 static u32 s_echo_done;
+static unsigned s_echo_timer;
+static unsigned s_delay_i;
+static unsigned s_delay_len;
+static unsigned s_fir_i;
+static int16_t s_fir_l[8];
+static int16_t s_fir_r[8];
+static int s_sign_l;
+static int s_sign_r;
+/* 8 kHz samples kept ahead of the mixer. About three wakeups. */
+#define ECHO_LEAD 24
 static int s_noise_ready;
 
 static int clamp15(int s)
@@ -69,13 +81,13 @@ static int clamp15(int s)
 	return ((int16_t)((s & 0x7fff) << 1)) >> 1;
 }
 
-static int8_t clamp8(int s)
+static int clamp16(int s)
 {
-	if (s < -128)
-		return -128;
-	if (s > 127)
-		return 127;
-	return (int8_t)s;
+	if (s < -0x8000)
+		return -0x8000;
+	if (s > 0x7fff)
+		return 0x7fff;
+	return s;
 }
 
 static int iabs8(int v)
@@ -531,14 +543,16 @@ static int8_t sample_at(Voice *v)
 	return v->pcm[pos];
 }
 
+/* Pitch-mod source only. Echo has its own cursor, so a delay line cannot
+ * drag the dry voices off the samples the mixer is playing. */
 static void advance_voice(Voice *v, unsigned freq)
 {
 	int8_t s;
 
 	v->frac += freq;
-	if (v->frac >= 8000) {
-		v->pos += v->frac / 8000;
-		v->frac %= 8000;
+	while (v->frac >= 8000) {
+		v->frac -= 8000;
+		v->pos++;
 	}
 	s = sample_at(v);
 	/* sampleOut is (BRR >> 1) * gain >> 11. PCM8 already dropped 8 bits. */
@@ -595,9 +609,156 @@ static void program_voice(const ZeldaApuIpc *ipc, unsigned ch, Voice *v, unsigne
 	}
 }
 
+/* Same sums as dsp_handleEcho, at 8 kHz. The delay count is the DSP's
+ * 32 kHz length divided by 4, so the title's EDL 2 stays 32 ms. FIR preset
+ * 2 is 12, 33, 43, 43, 19, -2, -13, -7. */
+
 static int echo_wanted(const ZeldaApuIpc *ipc)
 {
-	return ipc->echo_l != 0 || ipc->echo_r != 0;
+	return ipc->echo_writes || ipc->echo_l != 0 || ipc->echo_r != 0;
+}
+
+static unsigned echo_vol(int v)
+{
+	if (v < 0)
+		v = -v;
+	if (v > 127)
+		v = 127;
+	return (unsigned)v;
+}
+
+static u32 echo_hw_pos(void)
+{
+	u64 ticks = tickGetCount() - s_echo_t0;
+
+	if (!s_echo_timer)
+		return 0;
+	return (u32)((ticks * (u64)SOUND_CLOCK) /
+		     ((u64)TICK_FREQ * s_echo_timer));
+}
+
+static void echo_reset_line(ZeldaApuIpc *ipc, unsigned len)
+{
+	memset(ipc->echo_delay_l, 0, ZELDA_APU_ECHO_DELAY_MAX * sizeof(int16_t));
+	memset(ipc->echo_delay_r, 0, ZELDA_APU_ECHO_DELAY_MAX * sizeof(int16_t));
+	memset(s_fir_l, 0, sizeof s_fir_l);
+	memset(s_fir_r, 0, sizeof s_fir_r);
+	s_delay_i = 0;
+	s_fir_i = 0;
+	s_delay_len = len;
+}
+
+static void echo_set_delay(ZeldaApuIpc *ipc)
+{
+	unsigned len = ipc->echo_delay / 4;
+
+	if (len < 1)
+		len = 1;
+	if (len > ZELDA_APU_ECHO_DELAY_MAX)
+		len = ZELDA_APU_ECHO_DELAY_MAX;
+	if (len != s_delay_len)
+		echo_reset_line(ipc, len);
+}
+
+static int8_t echo_pcm8(int s, int negative)
+{
+	s >>= 8;
+	if (negative)
+		s = -s;
+	if (s < -128)
+		s = -128;
+	if (s > 127)
+		s = 127;
+	return (int8_t)s;
+}
+
+static int8_t echo_at(Voice *v)
+{
+	uint32_t pos;
+
+	if (!v->pcm || v->bytes == 0)
+		return 0;
+	pos = v->echo_pos;
+	if (v->loop_byte != 0xffffffffu) {
+		if (pos >= v->bytes) {
+			uint32_t span = v->bytes - v->loop_byte;
+
+			if (span == 0)
+				pos = v->loop_byte;
+			else
+				pos = v->loop_byte + (pos - v->loop_byte) % span;
+			v->echo_pos = pos;
+		}
+	} else if (pos >= v->bytes) {
+		return 0;
+	}
+	return v->pcm[pos];
+}
+
+static int echo_tap(Voice *v, unsigned freq)
+{
+	int8_t s;
+
+	v->echo_frac += freq;
+	while (v->echo_frac >= ZELDA_APU_ECHO_RATE) {
+		v->echo_frac -= ZELDA_APU_ECHO_RATE;
+		v->echo_pos++;
+	}
+	s = echo_at(v);
+	return ((int)s * (int)v->gain) >> 4;
+}
+
+static void echo_sample(ZeldaApuIpc *ipc, const unsigned *freq, uint32_t pos)
+{
+	int in_l = 0;
+	int in_r = 0;
+	int sum_l = 0;
+	int sum_r = 0;
+	int i;
+	unsigned ring = pos & (ZELDA_APU_ECHO_RING - 1);
+	int fb = ipc->echo_fb;
+
+	for (i = 0; i < ZELDA_APU_VOICES; i++) {
+		Voice *v = &s_voice[i];
+		int tap;
+
+		if (!(v->flags & ZELDA_VOICE_ECHO))
+			continue;
+		tap = echo_tap(v, freq[i]);
+		in_l = clamp16(in_l + ((tap * v->volume_l) >> 6));
+		in_r = clamp16(in_r + ((tap * v->volume_r) >> 6));
+	}
+
+	s_fir_l[s_fir_i] = (int16_t)(ipc->echo_delay_l[s_delay_i] >> 1);
+	s_fir_r[s_fir_i] = (int16_t)(ipc->echo_delay_r[s_delay_i] >> 1);
+	for (i = 0; i < 7; i++) {
+		unsigned idx = (s_fir_i + (unsigned)i + 1) & 7;
+		int c = ipc->fir[i];
+
+		sum_l += (s_fir_l[idx] * c) >> 6;
+		sum_r += (s_fir_r[idx] * c) >> 6;
+	}
+	/* Hardware wraps the accumulator to 16 bits before the last tap. */
+	sum_l = (int16_t)sum_l;
+	sum_r = (int16_t)sum_r;
+	sum_l += (s_fir_l[s_fir_i] * ipc->fir[7]) >> 6;
+	sum_r += (s_fir_r[s_fir_i] * ipc->fir[7]) >> 6;
+	sum_l = clamp16(sum_l);
+	sum_r = clamp16(sum_r);
+
+	ipc->echo_l_buf[ring] = echo_pcm8(sum_l, s_sign_l < 0);
+	ipc->echo_r_buf[ring] = echo_pcm8(sum_r, s_sign_r < 0);
+
+	if (ipc->echo_writes) {
+		int w_l = clamp16(in_l + ((sum_l * fb) >> 7)) & 0xfffe;
+		int w_r = clamp16(in_r + ((sum_r * fb) >> 7)) & 0xfffe;
+
+		ipc->echo_delay_l[s_delay_i] = (int16_t)w_l;
+		ipc->echo_delay_r[s_delay_i] = (int16_t)w_r;
+	}
+	s_fir_i = (s_fir_i + 1) & 7;
+	if (++s_delay_i >= s_delay_len)
+		s_delay_i = 0;
 }
 
 static void echo_stop(void)
@@ -611,101 +772,94 @@ static void echo_stop(void)
 
 static void echo_start(ZeldaApuIpc *ipc)
 {
-	unsigned timer = timer_from_freq(8000);
-	unsigned vol_l = (unsigned)iabs8(ipc->echo_l);
-	unsigned vol_r = (unsigned)iabs8(ipc->echo_r);
+	unsigned words = ZELDA_APU_ECHO_RING / 4;
 
-	if (vol_l > 127)
-		vol_l = 127;
-	if (vol_r > 127)
-		vol_r = 127;
-	memset(ipc->echo_l_buf, 0, ZELDA_APU_ECHO_SAMPLES);
-	memset(ipc->echo_r_buf, 0, ZELDA_APU_ECHO_SAMPLES);
-	s_echo_done = 0;
+	s_echo_timer = timer_from_freq(ZELDA_APU_ECHO_RATE);
+	s_sign_l = ipc->echo_l < 0 ? -1 : 1;
+	s_sign_r = ipc->echo_r < 0 ? -1 : 1;
+	memset(ipc->echo_l_buf, 0, ZELDA_APU_ECHO_RING);
+	memset(ipc->echo_r_buf, 0, ZELDA_APU_ECHO_RING);
+	s_delay_len = 0;
+	echo_set_delay(ipc);
+	s_echo_done = ECHO_LEAD;
 	s_echo_t0 = tickGetCount();
-	soundChPreparePcm(8, vol_l, SoundVolDiv_1, 0, timer, SoundMode_Repeat,
-			  SoundFmt_Pcm8, ipc->echo_l_buf, 0,
-			  ZELDA_APU_ECHO_SAMPLES / 4);
-	soundChPreparePcm(9, vol_r, SoundVolDiv_1, 127, timer, SoundMode_Repeat,
-			  SoundFmt_Pcm8, ipc->echo_r_buf, 0,
-			  ZELDA_APU_ECHO_SAMPLES / 4);
+	soundChPreparePcm(8, echo_vol(ipc->echo_l), SoundVolDiv_1, 0,
+			  s_echo_timer, SoundMode_Repeat, SoundFmt_Pcm8,
+			  ipc->echo_l_buf, 0, words);
+	soundChPreparePcm(9, echo_vol(ipc->echo_r), SoundVolDiv_1, 127,
+			  s_echo_timer, SoundMode_Repeat, SoundFmt_Pcm8,
+			  ipc->echo_r_buf, 0, words);
 	soundChStart(8);
 	soundChStart(9);
 	s_echo_on = 1;
 }
 
-static void echo_sample(ZeldaApuIpc *ipc, uint32_t pos)
+static void echo_flip_unplayed(int8_t *buf, u32 from, u32 to)
 {
-	int in_l = 0;
-	int in_r = 0;
-	int i;
-	uint32_t read = pos % ZELDA_APU_ECHO_SAMPLES;
-	uint32_t write = (pos + ZELDA_APU_ECHO_DELAY) % ZELDA_APU_ECHO_SAMPLES;
-	int delayed_l = ipc->echo_l_buf[read];
-	int delayed_r = ipc->echo_r_buf[read];
-	int fb = ipc->echo_fb;
+	u32 i;
 
-	for (i = 0; i < ZELDA_APU_VOICES; i++) {
-		Voice *v = &s_voice[i];
+	for (i = from; i != to; i++) {
+		unsigned k = i & (ZELDA_APU_ECHO_RING - 1);
+		int s = buf[k];
 
-		if (!(v->flags & ZELDA_VOICE_ECHO))
-			continue;
-		in_l += (v->last_out * v->volume_l) >> 6;
-		in_r += (v->last_out * v->volume_r) >> 6;
+		if (s == -128)
+			s = 127;
+		else
+			s = -s;
+		buf[k] = (int8_t)s;
 	}
-	if (in_l < -0x8000)
-		in_l = -0x8000;
-	if (in_l > 0x7fff)
-		in_l = 0x7fff;
-	if (in_r < -0x8000)
-		in_r = -0x8000;
-	if (in_r > 0x7fff)
-		in_r = 0x7fff;
-	ipc->echo_l_buf[write] = clamp8((in_l >> 8) + (delayed_l * fb) / 128);
-	ipc->echo_r_buf[write] = clamp8((in_r >> 8) + (delayed_r * fb) / 128);
 }
 
-static int echo_steps(void)
+static void echo_sync_sign(ZeldaApuIpc *ipc)
 {
-	u32 want;
-	int ahead;
+	int sl = ipc->echo_l < 0 ? -1 : 1;
+	int sr = ipc->echo_r < 0 ? -1 : 1;
+	u32 hw;
 
-	if (!s_echo_on)
-		return 8;
-	want = (u32)(((tickGetCount() - s_echo_t0) * 8000ull) / TICK_FREQ);
-	ahead = (int)(want - s_echo_done);
-	if (ahead < 1)
+	if (sl == s_sign_l && sr == s_sign_r)
+		return;
+	hw = echo_hw_pos();
+	if (hw < s_echo_done) {
+		if (sl != s_sign_l)
+			echo_flip_unplayed(ipc->echo_l_buf, hw, s_echo_done);
+		if (sr != s_sign_r)
+			echo_flip_unplayed(ipc->echo_r_buf, hw, s_echo_done);
+	}
+	s_sign_l = sl;
+	s_sign_r = sr;
+}
+
+static int echo_due(void)
+{
+	u32 hw = echo_hw_pos();
+	u32 target;
+	int steps;
+
+	if (hw > s_echo_done && hw - s_echo_done > ZELDA_APU_ECHO_RING / 2)
+		s_echo_done = hw;
+	target = hw + ECHO_LEAD;
+	if (s_echo_done >= target)
 		return 0;
-	if (ahead > 48) {
-		s_echo_done = want - 48;
-		ahead = 48;
-	}
-	return ahead;
+	steps = (int)(target - s_echo_done);
+	if (steps > 32)
+		steps = 32;
+	return steps;
 }
 
-static void service_echo(ZeldaApuIpc *ipc, int steps)
+static void service_echo(ZeldaApuIpc *ipc, const unsigned *freq, int steps)
 {
-	unsigned vol_l = (unsigned)iabs8(ipc->echo_l);
-	unsigned vol_r = (unsigned)iabs8(ipc->echo_r);
 	int i;
 
-	if (vol_l > 127)
-		vol_l = 127;
-	if (vol_r > 127)
-		vol_r = 127;
 	if (!s_echo_on)
 		return;
-	soundChSetVolume(8, vol_l, SoundVolDiv_1);
-	soundChSetVolume(9, vol_r, SoundVolDiv_1);
+	echo_set_delay(ipc);
+	soundChSetVolume(8, echo_vol(ipc->echo_l), SoundVolDiv_1);
+	soundChSetVolume(9, echo_vol(ipc->echo_r), SoundVolDiv_1);
+	echo_sync_sign(ipc);
 	for (i = 0; i < steps; i++) {
-		unsigned n;
-
-		for (n = 0; n < ZELDA_APU_VOICES; n++)
-			advance_voice(&s_voice[n], voice_freq(ipc, &s_voice[n],
-							     n ? &s_voice[n - 1] : NULL));
-		echo_sample(ipc, s_echo_done + (u32)i);
+		echo_sample(ipc, freq, s_echo_done);
+		s_echo_done++;
 	}
-	s_echo_done += (u32)steps;
 }
 
 void ZeldaVoicesInit(void)
@@ -730,7 +884,6 @@ void ZeldaVoicesService(void)
 {
 	ZeldaApuIpc ipc;
 	int i;
-	int steps;
 	unsigned freq[ZELDA_APU_VOICES];
 
 	if (!snapshot(&ipc))
@@ -775,6 +928,8 @@ void ZeldaVoicesService(void)
 			v->rate_counter = 0;
 			v->pos = 0;
 			v->frac = 0;
+			v->echo_pos = 0;
+			v->echo_frac = 0;
 			v->last_out = 0;
 			v->ended = 0;
 			v->restart = 1;
@@ -787,22 +942,21 @@ void ZeldaVoicesService(void)
 		program_voice(&ipc, (unsigned)i, v, freq[i]);
 	}
 
-	if (echo_wanted(&ipc)) {
-		if (!s_echo_on && ipc.echo_l_buf && ipc.echo_r_buf)
-			echo_start(&ipc);
-	} else {
-		echo_stop();
+	/* Eight steps at 8 kHz is one millisecond, matching the thread wake.
+	 * This cursor only feeds pitch modulation. */
+	for (i = 0; i < 8; i++) {
+		int n;
+
+		for (n = 0; n < ZELDA_APU_VOICES; n++)
+			advance_voice(&s_voice[n], freq[n]);
 	}
 
-	steps = echo_steps();
-	if (!s_echo_on) {
-		for (i = 0; i < steps; i++) {
-			int n;
-
-			for (n = 0; n < ZELDA_APU_VOICES; n++)
-				advance_voice(&s_voice[n], freq[n]);
-		}
+	if (echo_wanted(&ipc) && ipc.echo_l_buf && ipc.echo_r_buf &&
+	    ipc.echo_delay_l && ipc.echo_delay_r) {
+		if (!s_echo_on)
+			echo_start(&ipc);
+		service_echo(&ipc, freq, echo_due());
 	} else {
-		service_echo(&ipc, steps);
+		echo_stop();
 	}
 }

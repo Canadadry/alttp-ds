@@ -31,8 +31,16 @@ void ZeldaAudioInit(void)
 	ipc = alloc_buf(sizeof *ipc);
 	ipc->magic = ZELDA_APU_MAGIC;
 	ipc->pcm = alloc_buf(ZELDA_APU_PCM_BYTES);
-	ipc->echo_l_buf = alloc_buf(ZELDA_APU_ECHO_SAMPLES);
-	ipc->echo_r_buf = alloc_buf(ZELDA_APU_ECHO_SAMPLES);
+	ipc->echo_l_buf = alloc_buf(ZELDA_APU_ECHO_RING);
+	ipc->echo_r_buf = alloc_buf(ZELDA_APU_ECHO_RING);
+	ipc->echo_delay_l = alloc_buf(ZELDA_APU_ECHO_DELAY_MAX * sizeof(int16_t));
+	ipc->echo_delay_r = alloc_buf(ZELDA_APU_ECHO_DELAY_MAX * sizeof(int16_t));
+	/* ARM7 and the mixer own these. Drop our cache lines so a later
+	 * writeback cannot wipe the delay line. */
+	DC_InvalidateRange(ipc->echo_l_buf, ZELDA_APU_ECHO_RING);
+	DC_InvalidateRange(ipc->echo_r_buf, ZELDA_APU_ECHO_RING);
+	DC_InvalidateRange(ipc->echo_delay_l, ZELDA_APU_ECHO_DELAY_MAX * sizeof(int16_t));
+	DC_InvalidateRange(ipc->echo_delay_r, ZELDA_APU_ECHO_DELAY_MAX * sizeof(int16_t));
 	ipc->noise = alloc_buf(ZELDA_APU_NOISE_SAMPLES);
 	DC_FlushRange(ipc, sizeof *ipc);
 
@@ -61,6 +69,11 @@ static void publish(SpcPlayer *p)
 	ipc->echo_l = dsp->echoVolumeL;
 	ipc->echo_r = dsp->echoVolumeR;
 	ipc->echo_fb = dsp->feedbackVolume;
+	ipc->echo_writes = dsp->echoWrites ? 1 : 0;
+	ipc->echo_delay = dsp->echoDelay ? dsp->echoDelay : 1;
+	if (ipc->echo_delay > ZELDA_APU_ECHO_DSP_MAX)
+		ipc->echo_delay = ZELDA_APU_ECHO_DSP_MAX;
+	memcpy(ipc->fir, dsp->firValues, sizeof ipc->fir);
 	ipc->mute = dsp->mute ? 1 : 0;
 	ipc->reset = dsp->reset ? 1 : 0;
 	ipc->noise_rate = dsp->noiseRate;
