@@ -68,7 +68,7 @@ enum { kSetOff = 0x1E00, kSetVersion = 6, kExitBytes = 0x32, kExitRam = 0xC140 }
 
 extern uint8 g_ram[];
 
-static int g_hud_top = 1;
+static int g_hud_top;
 static int g_low_hp_beep = 1;
 static int g_bomb_cap = 10;
 static int g_arrow_cap = 30;
@@ -153,7 +153,7 @@ static void settings_load(void)
 {
 	const uint8 *p = g_zenv.sram + kSetOff;
 
-	g_hud_top = 1;
+	g_hud_top = 0;
 	g_low_hp_beep = 1;
 	g_bomb_cap = 10;
 	g_arrow_cap = 30;
