@@ -38,6 +38,9 @@ typedef struct Voice {
 	uint16_t last_timer;
 	uint8_t last_vol;
 	uint8_t last_pan;
+	unsigned play_freq;
+	unsigned glide_target;
+	unsigned glide_step;
 	uint32_t pos;
 	uint32_t frac;
 	uint32_t echo_pos;
@@ -197,20 +200,24 @@ static void stop_channel(unsigned ch)
 
 /* One BRR sample per 4096 pitch counts, at the 32 kHz DSP clock.
  * Pitch 0x1000 is 32 kHz. Pitch 0x3FFF is just under 128 kHz.
- * The channel timer is 16 bits, so the hardware cannot go below ~256 Hz. */
+ * The timer itself cannot go below about 256 Hz. */
 static unsigned freq_from_pitch(unsigned pitch)
 {
-	unsigned freq;
-
 	if (!pitch)
 		return 0;
 	if (pitch > 0x3fff)
 		pitch = 0x3fff;
-	freq = (32000u * pitch) >> 12;
+	return (32000u * pitch) >> 12;
+}
+
+static unsigned limit_freq(unsigned freq)
+{
+	if (!freq)
+		return 0;
 	if (freq < 256)
 		freq = 256;
-	if (freq > 128000)
-		freq = 128000;
+	if (freq > 128000u)
+		freq = 128000u;
 	return freq;
 }
 
@@ -218,10 +225,9 @@ static unsigned timer_from_freq(unsigned freq)
 {
 	unsigned timer;
 
-	if (freq < 256)
-		freq = 256;
-	if (freq > 128000)
-		freq = 128000;
+	freq = limit_freq(freq);
+	if (!freq)
+		return 0;
 	timer = soundTimerFromHz(freq);
 	if (timer < 1)
 		timer = 1;
@@ -383,11 +389,15 @@ static void rebuild_cache(const ZeldaApuIpc *ipc)
 	if (!ram || ipc->generation == 0 || !ipc->pcm)
 		return;
 
-	for (srcn = 0; srcn < 256; srcn++) {
+	/* The directory is 32 entries. Past that the bytes are the
+	 * instrument table, and decoding them filled the pool. */
+	for (srcn = 0; srcn < 32; srcn++) {
 		uint16_t entry = (uint16_t)(ipc->dir_page + srcn * 4);
 		uint16_t src = rd16(ram, entry);
 		uint16_t loop = rd16(ram, (uint16_t)(entry + 2));
 
+		if (src < 0x4000 || src >= 0xc000)
+			continue;
 		if (cache_find(src))
 			continue;
 		if (!decode_sample(ram, src, loop))
@@ -469,16 +479,15 @@ static void silence_all(void)
 static unsigned voice_freq(const ZeldaApuIpc *ipc, const Voice *v, const Voice *prev)
 {
 	unsigned pitch = v->pitch;
+	unsigned freq;
 
 	if (v->flags & ZELDA_VOICE_NOISE) {
 		unsigned rate = ipc->noise_rate;
 		unsigned freq = rate ? 32000u / rate : 0;
 
-		if (!freq)
-			return 0;
 		if (freq > 32000)
 			freq = 32000;
-		return freq;
+		return limit_freq(freq);
 	}
 	if ((v->flags & ZELDA_VOICE_PMON) && prev) {
 		int factor = (prev->last_out >> 4) + 0x400;
@@ -487,7 +496,54 @@ static unsigned voice_freq(const ZeldaApuIpc *ipc, const Voice *v, const Voice *
 		if (pitch > 0x3fff)
 			pitch = 0x3fff;
 	}
-	return freq_from_pitch(pitch);
+	freq = freq_from_pitch(pitch);
+	return limit_freq(freq);
+}
+
+/* The driver publishes one pitch per frame. Vibrato is a fraction of a
+ * semitone, and chasing it by rewriting the hardware timer every wake
+ * buzzes the title theme, so those changes land immediately. A real
+ * slide, like the game-over sweep, moves more than a semitone between
+ * frames. Take a fixed step of that gap so the sweep arrives within the
+ * frame. A new note snaps, and so does a jump of two octaves or more. */
+static unsigned glide_freq(Voice *v, unsigned freq, int snap)
+{
+	unsigned cur, hi, lo;
+
+	if (snap || !freq || !v->play_freq) {
+		v->play_freq = freq;
+		v->glide_target = freq;
+		v->glide_step = 0;
+		return freq;
+	}
+	if (freq != v->glide_target) {
+		cur = v->play_freq;
+		hi = freq > cur ? freq : cur;
+		lo = freq > cur ? cur : freq;
+		v->glide_target = freq;
+		if (hi <= lo + lo / 16u || hi >= lo * 4u) {
+			v->play_freq = freq;
+			v->glide_step = 0;
+			return freq;
+		}
+		v->glide_step = (hi - lo) / 16u;
+		if (!v->glide_step)
+			v->glide_step = 1;
+	}
+	if (!v->glide_step || v->play_freq == v->glide_target)
+		return v->play_freq;
+	cur = v->play_freq;
+	if (v->glide_target > cur) {
+		cur += v->glide_step;
+		if (cur > v->glide_target)
+			cur = v->glide_target;
+	} else if (cur - v->glide_target <= v->glide_step) {
+		cur = v->glide_target;
+	} else {
+		cur -= v->glide_step;
+	}
+	v->play_freq = cur;
+	return cur;
 }
 
 static void attach_sample(Voice *v, const ZeldaApuIpc *ipc)
@@ -890,8 +946,21 @@ void ZeldaVoicesService(void)
 		return;
 	if (!s_noise_ready && ipc.noise)
 		fill_noise(ipc.noise);
-	if (!s_have_cache || ipc.generation != s_generation || ipc.dir_page != s_dir_page)
+	if (!s_have_cache || ipc.generation != s_generation || ipc.dir_page != s_dir_page) {
+		/* A song-bank upload replaces the samples under any voice that
+		 * is still looping. Stop those before the pool is rebuilt. */
+		if (s_have_cache && ipc.generation != s_generation) {
+			int n;
+
+			silence_all();
+			for (n = 0; n < ZELDA_APU_VOICES; n++) {
+				s_voice[n].playing = 0;
+				s_voice[n].gain = 0;
+				s_voice[n].state = 4;
+			}
+		}
 		rebuild_cache(&ipc);
+	}
 
 	if (ipc.mute || ipc.reset) {
 		if (!s_muted)
@@ -939,6 +1008,7 @@ void ZeldaVoicesService(void)
 			v->state = 4;
 		env_step(v, 32);
 		freq[i] = voice_freq(&ipc, v, i ? &s_voice[i - 1] : NULL);
+		freq[i] = glide_freq(v, freq[i], v->restart);
 		program_voice(&ipc, (unsigned)i, v, freq[i]);
 	}
 
