@@ -946,8 +946,21 @@ void ZeldaVoicesService(void)
 		return;
 	if (!s_noise_ready && ipc.noise)
 		fill_noise(ipc.noise);
-	if (!s_have_cache || ipc.generation != s_generation || ipc.dir_page != s_dir_page)
+	if (!s_have_cache || ipc.generation != s_generation || ipc.dir_page != s_dir_page) {
+		/* A song-bank upload replaces the samples under any voice that
+		 * is still looping. Stop those before the pool is rebuilt. */
+		if (s_have_cache && ipc.generation != s_generation) {
+			int n;
+
+			silence_all();
+			for (n = 0; n < ZELDA_APU_VOICES; n++) {
+				s_voice[n].playing = 0;
+				s_voice[n].gain = 0;
+				s_voice[n].state = 4;
+			}
+		}
 		rebuild_cache(&ipc);
+	}
 
 	if (ipc.mute || ipc.reset) {
 		if (!s_muted)
