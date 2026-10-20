@@ -4,7 +4,10 @@
 #include "zelda_rtl.h"
 #include "variables.h"
 #include "snes/ppu.h"
+#include "snes/snes_regs.h"
 #include "zelda_save.h"
+
+uint8_t dma_read(struct Dma *dma, uint16_t adr);
 
 /*
  * Mode 1 picture on the DS 2D engine.
@@ -86,8 +89,11 @@
  *
  * Naming a file scrolls the letter grid without moving the name. An IRQ at
  * SNES line 128 switches BG3 from the name scroll to selectfile_var8. That
- * scanline split is done here with an HBlank interrupt; the rest of the
- * picture keeps one scroll per background.
+ * scanline split is done here with an HBlank interrupt. The magic mirror is
+ * the other one: HDMA replaces BG1 and BG2 horizontal scroll on every line
+ * from the wave table, so the ground stretches into bands that travel down
+ * the screen while the palette fades through white. Sprites are not in that
+ * table, so Link stays put, and the status bar is BG3, so it stays too.
  *
  * Bank A (128KB), 16KB tile bases and 2KB map bases:
  *   0x00000 maps: HUD, BG1 high, BG1 low, BG2  (8KB each)
@@ -1297,6 +1303,7 @@ enum { kWinInside = 0x3f, kWinHud = 0x01 };
 static int bg3_split_on;
 static int scanline_handler;
 static void m7_hblank(void);
+static void scanline_irq_sync(void);
 
 /* Hardware register block at 0x04000020. The HBlank interrupt stores one
  * before the next row. HBlank DMA cannot do this here: it also runs during
@@ -1406,6 +1413,82 @@ static void iris_latch_frame(void) {
 		DISPLAY_WIN0_ON;
 }
 
+/* Mirror warp. Channels 6 and 7 write BG1HOFS and BG2HOFS from
+ * hdma_table_dynamic, one absolute scroll per SNES line. The game shifts
+ * that table down the screen while the picture fades through white.
+ * Two copies so the table can be rebuilt while a frame is still scanning
+ * the previous one. Bit 0 of the publish word is "on". The next byte is
+ * which copy to read. The byte after that is which hardware backgrounds
+ * show BG1 or BG2 (the status bar is BG3 and is not in the mask). */
+static u16 wave_hofs[2][SCREEN_HEIGHT];
+static volatile uint32 wave_publish;
+static int wave_latched;
+static volatile int wave_on;
+static unsigned wave_slots;
+
+static int wave_wanted(void) {
+	if ((HDMAEN_copy & 0xc0) != 0xc0 || !g_zenv.dma)
+		return 0;
+	return dma_read(g_zenv.dma, BBAD6) == (uint8)BG1HOFS &&
+		dma_read(g_zenv.dma, BBAD7) == (uint8)BG2HOFS;
+}
+
+/* HOFS is latched for the next line. VOFS is left alone. */
+static void wave_write(unsigned slots, u16 x) {
+	vu16 *reg = (vu16 *)0x04000010;
+
+	if (slots & 2)
+		reg[2] = x;
+	if (slots & 4)
+		reg[4] = x;
+	if (slots & 8)
+		reg[6] = x;
+}
+
+static void wave_apply_line(unsigned ds_line) {
+	if (ds_line >= SCREEN_HEIGHT)
+		return;
+	wave_write(wave_slots, wave_hofs[wave_latched][ds_line]);
+}
+
+static void wave_latch_frame(void) {
+	uint32 pub = wave_publish;
+	unsigned line = REG_VCOUNT;
+
+	wave_latched = (int)((pub >> 8) & 1);
+	wave_slots = (pub >> 16) & 0xfu;
+	wave_on = pub & 1;
+	if (!wave_on)
+		return;
+	/* Past the picture, the next line drawn is line 0. Mid-frame, the
+	 * store takes effect on the following line. */
+	if (line >= (unsigned)SCREEN_HEIGHT)
+		wave_apply_line(0);
+	else
+		wave_apply_line(line + 1);
+}
+
+/* show_bg3_lo: hardware BG3 is the name letters, not the ground. */
+static void present_wave(int show_bg3_lo) {
+	int on = wave_wanted();
+	int idx = (int)(((wave_publish >> 8) & 1) ^ 1);
+	unsigned slots = 0;
+	int i;
+
+	if (on) {
+		/* Slot 2 is BG1. Slot 1 is BG1 or BG2. Slot 3 is BG2 unless the
+		 * letters own it. Both HDMA channels carry the same scroll. */
+		slots = (1u << 1) | (1u << 2);
+		if (!show_bg3_lo)
+			slots |= 1u << 3;
+		for (i = 0; i < SCREEN_HEIGHT; i++)
+			wave_hofs[idx][i] = (u16)(hdma_table_dynamic[i + kCropY] & 0x3ff);
+	}
+	wave_publish = ((uint32)idx << 8) | (on ? 1u : 0u) | (slots << 16);
+	scanline_irq_sync();
+	wave_latch_frame();
+}
+
 /* Fires at the end of REG_VCOUNT, so the change applies to the next line.
  * Lines 261 and 262 are the end of vblank; the next drawn line is line 0. */
 static void scanline_hblank(void) {
@@ -1422,17 +1505,21 @@ static void scanline_hblank(void) {
 	}
 	if (line >= 261) {
 		iris_latch_frame();
+		wave_latch_frame();
 		return;
 	}
 	if (iris_on)
 		iris_apply_line(line + 1);
+	if (wave_on)
+		wave_apply_line(line + 1);
 }
 
 static void scanline_irq_sync(void) {
 	/* 2: mode 7 owns the interrupt. The iris window must not come back on
-	 * over the map. 1: letter grid or door iris. */
+	 * over the map. 1: letter grid, door iris, or mirror wave. */
 	int want = m7_on ? 2 :
-		(bg3_split_on || iris_on || (iris_publish & 1)) ? 1 : 0;
+		(bg3_split_on || iris_on || (iris_publish & 1) ||
+		 wave_on || (wave_publish & 1)) ? 1 : 0;
 
 	if (scanline_handler == want)
 		return;
@@ -2618,6 +2705,7 @@ void ZeldaHwPresent(Ppu *ppu) {
 	if (pic.cover && fade_level < 0)
 		REG_MASTER_BRIGHT = inidisp_to_bright(0x80);
 	present_scroll(ppu, pic.show_bg3_lo);
+	present_wave(pic.show_bg3_lo);
 	if (!pic.door_iris)
 		present_iris(ppu);
 	latch_scroll_window();
@@ -2748,4 +2836,8 @@ void ZeldaHwPresent(Ppu *ppu) {
 			REG_MASTER_BRIGHT = inidisp_to_bright(last_inidisp);
 		leaveCriticalSection(ime);
 	}
+	/* A map resize during the upload writes the single scroll back.
+	 * Put the wave on the line that store would have stuck to. */
+	if (wave_publish & 1)
+		wave_latch_frame();
 }
