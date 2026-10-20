@@ -16,6 +16,10 @@ void ZeldaBottomNoteIdle(void);
  * held and down when B was used to back out. */
 void ZeldaBottomInput(u32 *held, u32 *down);
 
+/* This frame's Start bit was added here, for the items touch or for B
+ * leaving the item menu. It means SNES Start, not the DS Start key. */
+int ZeldaBottomAddedStart(void);
+
 /* Nonzero while the gear panel is up: the game stands still, the music
  * does not. */
 int ZeldaBottomHoldsGame(void);

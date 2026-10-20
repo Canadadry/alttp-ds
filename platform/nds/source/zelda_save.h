@@ -42,6 +42,45 @@ void ZeldaSpawnSet(int dungeon);
 /* 1: the magic mirror travels either way between the two worlds. */
 int ZeldaMirrorFree(void);
 void ZeldaMirrorSet(int free);
+
+/* DS keys, in the order the mapping page cycles them. */
+enum {
+	kDsPadUp = 0,
+	kDsPadDown,
+	kDsPadLeft,
+	kDsPadRight,
+	kDsA,
+	kDsB,
+	kDsX,
+	kDsY,
+	kDsL,
+	kDsR,
+	kDsStart,
+	kDsSelect,
+	kDsButtonCount
+};
+
+/* SNES joypad bits, low bit first: B Y Select Start Up Down Left Right A X L R. */
+enum {
+	kSnesB = 0,
+	kSnesY,
+	kSnesSelect,
+	kSnesStart,
+	kSnesUp,
+	kSnesDown,
+	kSnesLeft,
+	kSnesRight,
+	kSnesA,
+	kSnesX,
+	kSnesL,
+	kSnesR,
+	kSnesButtonCount
+};
+
+/* Which DS key fires this SNES control. */
+int ZeldaButtonMap(int snes);
+void ZeldaButtonMapGet(int map[kSnesButtonCount]);
+void ZeldaButtonMapSet(const int map[kSnesButtonCount]);
 void ZeldaSpawnRemember(int slot, int entrance);
 /* Drop the remembered dungeon of an erased or newly named file. */
 void ZeldaSpawnForget(int slot);

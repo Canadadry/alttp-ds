@@ -49,10 +49,13 @@ Press **Select** in game to open the save menu. It has three rows: **Continue**,
 | Run Speed | Normal / Double / Triple | How fast Link walks, dashes, and swims |
 | Dark Rooms | Normal / Bright | Bright keeps dark rooms lit, so the lantern is optional |
 | Hair Color | Pink / Blonde | Link's hair color |
+| Button Mapping | | **A** opens a page that chooses the DS key for each SNES action |
 
-In the menu, **Up/Down** moves, **Left/Right** changes a value, **A** or **Start** confirms on **Save** or **Cancel**, and **B** cancels.
+In the menu, **Up/Down** moves, **Left/Right** changes a value, **A** or **Start** confirms on **Save** or **Cancel**, and **B** cancels. **Button Mapping** has nothing to change with **Left/Right**. **A** on that row opens its page: the SNES action is on the left and the DS key on the right. **Left/Right** cycles that key. **Save** applies the page and returns here. **Cancel** or **B** throws the page away. The new keys are used only after **Save**.
 
 ## Controls
+
+The table is the default. Button Mapping can change which DS key does each SNES action. Pause, soft reset, and quit stay on the chords below.
 
 | DS | Action |
 |---|---|

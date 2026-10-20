@@ -123,7 +123,8 @@ MemBlk __wrap_FindIndexInMemblk(MemBlk data, size_t i)
 /* kKeys "AXsSUDLRBY" before the 16-bit reverse in NMI_ReadJoypads.
  * bit 0 SNES B sword, 1 SNES Y item, 2 Select, 3 Start,
  * 4-7 Up Down Left Right, 8 SNES A lift/chest/dash, 9 SNES X, 10 SNES L, 11 SNES R.
- * DS B is the sword, DS A lifts, DS Y uses the equipped item.
+ * The button map picks the DS key for each bit. Until it is saved, the
+ * names match: DS B is the sword, DS A lifts, DS Y uses the item.
  */
 static int paused;
 static int settings_open;
@@ -147,6 +148,11 @@ enum {
 	kUiGameIn
 };
 
+enum {
+	kPageSettings = 0,
+	kPageButtons
+};
+
 static int ui;
 static int fade;
 static int cursor;
@@ -161,6 +167,8 @@ static int spawn_dungeon;
 static int mirror_free;
 static int scroll_row;
 static int save_on_exit;
+static int menu_page;
+static int map_draft[kSnesButtonCount];
 
 enum {
 	kRowHud = 0,
@@ -172,6 +180,7 @@ enum {
 	kRowSpeed,
 	kRowDark,
 	kRowHair,
+	kRowMap,
 	kRowSave,
 	kRowCancel,
 	kSettingCount = kRowSave,
@@ -229,6 +238,8 @@ static const char *settings_label(int row)
 		return "Dark Rooms";
 	case kRowHair:
 		return "Hair Color";
+	case kRowMap:
+		return "Button Mapping";
 	default:
 		return "";
 	}
@@ -255,6 +266,8 @@ static const char *settings_value(int row)
 		return dark_bright ? "Bright" : "Normal";
 	case kRowHair:
 		return hair_blonde ? "Blonde" : "Pink";
+	case kRowMap:
+		return "";
 	default:
 		return "";
 	}
@@ -385,6 +398,161 @@ static void settings_dismiss(void)
 	settings_eat = 2;
 	ui = kUiOff;
 	fade = 0;
+	menu_page = kPageSettings;
+}
+
+/* Display order. kMapBit is the joypad bit each row edits. */
+enum { kMapSave = kSnesButtonCount, kMapCancel };
+
+static const int kMapBit[kSnesButtonCount] = {
+	kSnesA, kSnesB, kSnesX, kSnesY,
+	kSnesL, kSnesR, kSnesStart, kSnesSelect,
+	kSnesUp, kSnesDown, kSnesLeft, kSnesRight
+};
+
+static const char *const kMapLabel[kSnesButtonCount] = {
+	"A Button", "B Button", "X Button", "Y Button",
+	"L Button", "R Button", "Start", "Select",
+	"Up", "Down", "Left", "Right"
+};
+
+static const char *const kDsName[kDsButtonCount] = {
+	"DPAD Up", "DPAD Down", "DPAD Left", "DPAD Right",
+	"A", "B", "X", "Y", "L", "R", "Start", "Select"
+};
+
+static int buttons_value_x(void)
+{
+	int label = 0;
+	int value = 0;
+	int i, w, x;
+
+	for (i = 0; i < kSnesButtonCount; i++) {
+		w = ZeldaVideoMenuWidth(kMapLabel[i]);
+		if (w > label)
+			label = w;
+	}
+	for (i = 0; i < kDsButtonCount; i++) {
+		w = ZeldaVideoMenuWidth(kDsName[i]);
+		if (w > value)
+			value = w;
+	}
+	x = kLabelX + label + 12;
+	if (x < kValueX)
+		x = kValueX;
+	if (x + value > 248)
+		x = 248 - value;
+	return x;
+}
+
+static void buttons_follow(void)
+{
+	if (cursor >= kSnesButtonCount)
+		return;
+	if (cursor < scroll_row)
+		scroll_row = cursor;
+	if (cursor >= scroll_row + kVisible)
+		scroll_row = cursor - kVisible + 1;
+}
+
+static int buttons_caret_y(void)
+{
+	if (cursor == kMapSave)
+		return kSaveY;
+	if (cursor == kMapCancel)
+		return kCancelY;
+	return kSlotY[cursor - scroll_row];
+}
+
+static void buttons_draw(void)
+{
+	const char *title = "Button Mapping";
+	int value_x = buttons_value_x();
+	int i;
+
+	ZeldaVideoMenuClear();
+	ZeldaVideoMenuText((256 - ZeldaVideoMenuWidth(title)) / 2, kTitleY, title);
+	for (i = 0; i < kVisible; i++) {
+		int row = scroll_row + i;
+		int ds;
+
+		if (row >= kSnesButtonCount)
+			break;
+		ds = map_draft[kMapBit[row]];
+		if ((unsigned)ds >= kDsButtonCount)
+			ds = kDsA;
+		ZeldaVideoMenuText(kLabelX, kSlotY[i], kMapLabel[row]);
+		ZeldaVideoMenuText(value_x, kSlotY[i], kDsName[ds]);
+	}
+	ZeldaVideoMenuText(kTextX, kSaveY, "Save");
+	ZeldaVideoMenuText(kTextX, kCancelY, "Cancel");
+	ZeldaVideoMenuText(kCaretX, buttons_caret_y(), ">");
+}
+
+static void buttons_move(int dir)
+{
+	if (dir < 0) {
+		if (cursor > 0)
+			cursor--;
+	} else if (cursor < kMapCancel) {
+		cursor++;
+	}
+	buttons_follow();
+	if (settings_menu)
+		buttons_draw();
+}
+
+static void buttons_scroll(int dir)
+{
+	int n = kDsButtonCount;
+	int *v;
+
+	if (cursor >= kMapSave)
+		return;
+	v = &map_draft[kMapBit[cursor]];
+	if (dir < 0)
+		*v = (*v + n - 1) % n;
+	else
+		*v = (*v + 1) % n;
+	if (settings_menu)
+		buttons_draw();
+}
+
+/* Save copies the draft into the live map. Cancel leaves that map alone. */
+static void buttons_leave(int save)
+{
+	if (save)
+		ZeldaButtonMapSet(map_draft);
+	menu_page = kPageSettings;
+	cursor = kRowMap;
+	settings_follow();
+	if (settings_menu)
+		settings_draw();
+}
+
+static void buttons_enter(void)
+{
+	ZeldaButtonMapGet(map_draft);
+	menu_page = kPageButtons;
+	cursor = 0;
+	scroll_row = 0;
+	buttons_draw();
+}
+
+static void buttons_keys(u32 down)
+{
+	if (down & KEY_UP)
+		buttons_move(-1);
+	else if (down & KEY_DOWN)
+		buttons_move(1);
+	else if (down & KEY_LEFT)
+		buttons_scroll(-1);
+	else if (down & KEY_RIGHT)
+		buttons_scroll(1);
+	else if (down & KEY_B)
+		buttons_leave(0);
+	else if ((down & (KEY_A | KEY_START)) && cursor >= kMapSave)
+		buttons_leave(cursor == kMapSave);
 }
 
 static void on_lid_sleep(void *user, PmEvent event)
@@ -573,41 +741,36 @@ static void ZeldaSettingsEnter(void)
 	cursor = kRowHud;
 	scroll_row = 0;
 	save_on_exit = 0;
+	menu_page = kPageSettings;
 }
 
 static int map_keys(u32 held)
 {
+	static const u32 kDsKey[kDsButtonCount] = {
+		KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT,
+		KEY_A, KEY_B, KEY_X, KEY_Y,
+		KEY_L, KEY_R, KEY_START, KEY_SELECT
+	};
 	int inputs = 0;
+	int added = ZeldaBottomAddedStart();
+	int i;
 
 	if ((held & (KEY_START | KEY_SELECT)) == (KEY_START | KEY_SELECT))
 		held &= ~(KEY_START | KEY_SELECT);
 	if ((held & (KEY_L | KEY_R | KEY_SELECT)) == (KEY_L | KEY_R | KEY_SELECT))
 		held &= ~(KEY_L | KEY_R | KEY_SELECT);
+	/* A Start bit the bottom screen added is SNES Start, not the DS key. */
+	if (added)
+		held &= ~KEY_START;
 
-	if (held & KEY_B)
-		inputs |= 1 << 0;
-	if (held & KEY_Y)
-		inputs |= 1 << 1;
-	if (held & KEY_SELECT)
-		inputs |= 1 << 2;
-	if (held & KEY_START)
-		inputs |= 1 << 3;
-	if (held & KEY_UP)
-		inputs |= 1 << 4;
-	if (held & KEY_DOWN)
-		inputs |= 1 << 5;
-	if (held & KEY_LEFT)
-		inputs |= 1 << 6;
-	if (held & KEY_RIGHT)
-		inputs |= 1 << 7;
-	if (held & KEY_A)
-		inputs |= 1 << 8;
-	if (held & KEY_X)
-		inputs |= 1 << 9;
-	if (held & KEY_L)
-		inputs |= 1 << 10;
-	if (held & KEY_R)
-		inputs |= 1 << 11;
+	for (i = 0; i < kSnesButtonCount; i++) {
+		int ds = ZeldaButtonMap(i);
+
+		if ((unsigned)ds < kDsButtonCount && (held & kDsKey[ds]))
+			inputs |= 1 << i;
+	}
+	if (added)
+		inputs |= 1 << kSnesStart;
 	return inputs;
 }
 
@@ -687,6 +850,7 @@ void ZeldaHostOnKeys(u32 held, u32 down)
 		settings_open = 0;
 		settings_menu = 0;
 		settings_eat = 0;
+		menu_page = kPageSettings;
 		ui = kUiOff;
 		SelectMenu_LockInput = 0;
 		ZeldaHostSave();
@@ -703,6 +867,10 @@ void ZeldaHostOnKeys(u32 held, u32 down)
 	if (settings_open) {
 		if (ui != kUiMenu)
 			return;
+		if (menu_page == kPageButtons) {
+			buttons_keys(down);
+			return;
+		}
 		if (down & KEY_UP)
 			settings_move(-1);
 		else if (down & KEY_DOWN)
@@ -713,6 +881,8 @@ void ZeldaHostOnKeys(u32 held, u32 down)
 			settings_scroll(1);
 		else if (down & KEY_B)
 			settings_close(0);
+		else if ((down & KEY_A) && cursor == kRowMap)
+			buttons_enter();
 		else if ((down & (KEY_A | KEY_START)) && cursor >= kRowSave)
 			settings_close(cursor == kRowSave);
 		return;

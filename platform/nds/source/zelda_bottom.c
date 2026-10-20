@@ -1284,6 +1284,16 @@ static void touch_item(int x, int y)
  * sword swing once play resumes, so it is taken out of the keys, and stays
  * out until B is let go. */
 static int b_eat;
+/* Start added for the touch items button or for B closing the item menu. */
+static int added_start;
+
+static void add_start(u32 *held)
+{
+	if (*held & KEY_START)
+		return;
+	*held |= KEY_START;
+	added_start = 1;
+}
 
 static void back_out(u32 *held, u32 *down)
 {
@@ -1292,17 +1302,23 @@ static void back_out(u32 *held, u32 *down)
 	if (gear_on) {
 		gear_on = 0;
 	} else if (menu_open() && start_will_work()) {
-		*held |= KEY_START;
+		add_start(held);
 	} else {
 		return;
 	}
 	b_eat = 1;
 }
 
+int ZeldaBottomAddedStart(void)
+{
+	return added_start;
+}
+
 void ZeldaBottomInput(u32 *held, u32 *down)
 {
 	touchPosition t;
 
+	added_start = 0;
 	back_out(held, down);
 	if (b_eat) {
 		if (*held & KEY_B) {
@@ -1323,12 +1339,12 @@ void ZeldaBottomInput(u32 *held, u32 *down)
 	if (button_hit(&kBoxes[1], t.px, t.py)) {
 		gear_on = 0;
 		if (start_will_work())
-			*held |= KEY_START;
+			add_start(held);
 	} else if (button_hit(&kBoxes[0], t.px, t.py)) {
 		if (menu_open()) {
 			gear_on = 1;
 			if (start_will_work())
-				*held |= KEY_START;
+				add_start(held);
 		} else {
 			gear_on = !gear_on;
 		}
