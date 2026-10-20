@@ -28,6 +28,7 @@ void ZeldaHwPresent(Ppu *ppu);
 void ZeldaHwPresentMode7(Ppu *ppu);
 void ZeldaHwPrepareMode7(const Ppu *ppu);
 void ZeldaHwComposeSprites(void);
+void ZeldaHwBuildMaps(Ppu *ppu);
 void ZeldaHwUseMasterBright(int on);
 
 /* Rows 0..15 and 208..223 are cropped. ppu_runLine(n) draws row n-1. */
@@ -104,8 +105,12 @@ void ZeldaVideoSetNewRenderer(int on)
 
 void ZeldaVideoComposeSprites(void)
 {
-	if (g_zenv.ppu)
-		ZeldaHwComposeSprites();
+	if (!g_zenv.ppu)
+		return;
+	ZeldaHwComposeSprites();
+	/* Map entries, while this picture is still up. The blank then copies
+	 * them with the scroll, instead of a frame late. */
+	ZeldaHwBuildMaps(g_zenv.ppu);
 }
 
 void ZeldaVideoPrepareMode7(void)

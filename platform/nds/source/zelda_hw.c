@@ -142,6 +142,20 @@ static int bg2_front_on_slot1;
  * scrolls without changing those maps; rebuilding it every frame is what
  * stalls the walk. */
 static int bake_valid;
+/* Set while the vblank present may write tiles that are already showing.
+ * The map itself is built earlier, into RAM. */
+static int vram_commit;
+
+/* What the next present will show. Filled before vblank, while the
+ * previous picture is still up. */
+static struct {
+	int ready;
+	int main_en, sub_en, cover;
+	int bg1_main, bg1_sub, overlay, back_add;
+	int bg2_on, lift_bg2, stair_arch, show_bg3_lo;
+	int lamp, hide_early_cone, door_iris;
+	int bar_under_overlay;
+} pic;
 /* Tile names that tile the ground. A stair lip ORs priority onto that
  * pattern; lifting those cells paints the floor over the doorway. */
 static uint8 common_floor[1024];
@@ -242,6 +256,8 @@ static void clear_tile(u16 *gfx, int tile) {
 	int i;
 	u16 *dst = gfx + tile * 16;
 
+	if (!vram_commit)
+		return;
 	for (i = 0; i < 16; i++)
 		dst[i] = 0;
 }
@@ -253,6 +269,11 @@ static void upload4_tile(const Ppu *ppu, int bank, u16 *gfx, uint16 tile_adr, in
 	int i;
 
 	if (tile_hash[bank][tile] == h)
+		return;
+	/* Map entries are built ahead of the blank. The bytes they name are
+	 * written in the blank, after the map copy, so a scan does not tear
+	 * a tile that is already on screen. */
+	if (!vram_commit)
 		return;
 	for (i = 0; i < 16; i++)
 		tmp[i] = ppu->vram[(addr + i) & 0x7fff];
@@ -464,17 +485,19 @@ static void present_bg1(Ppu *ppu, int split) {
 		map_valid[0] = 1;
 	}
 
-	for (tile = 0; tile < 1024; tile++) {
-		if (!used_bg1[tile] || tile == blank_bg1)
-			continue;
-		upload4_tile(ppu, 0, gfx, layer->tileAdr, tile);
-	}
 	/* The unused index fills the other priority layer. It has to stay
 	 * transparent even when a previous upload left pixels there and the
 	 * hash was cleared, or those pixels paint over the logo and sprites. */
 	if (blank_bg1 >= 0 && !used_bg1[blank_bg1]) {
 		clear_tile(gfx, blank_bg1);
-		tile_hash[0][blank_bg1] = 0;
+		if (vram_commit)
+			tile_hash[0][blank_bg1] = 0;
+	}
+
+	for (tile = 0; tile < 1024; tile++) {
+		if (!used_bg1[tile] || tile == blank_bg1)
+			continue;
+		upload4_tile(ppu, 0, gfx, layer->tileAdr, tile);
 	}
 }
 
@@ -572,10 +595,12 @@ static void present_bg2(Ppu *ppu, int lift, int keep_floor) {
 		queue_map(3, map_buf[3], words, layer->tilemapWider, layer->tilemapHigher, 12, 4);
 		map_sig[1] = sig;
 		map_valid[1] = 1;
-		if (!used[bg2_blank]) {
-			clear_tile(gfx, bg2_blank);
+	}
+
+	if (!used[bg2_blank]) {
+		clear_tile(gfx, bg2_blank);
+		if (vram_commit)
 			tile_hash[1][bg2_blank] = 0;
-		}
 	}
 
 	for (tile = 0; tile < 1024; tile++) {
@@ -727,6 +752,8 @@ static void present_bg3(Ppu *ppu, int show_low) {
 		addr = (uint16)((layer->tileAdr + tile * 8) & 0x7fff);
 		h = hash_words(ppu->vram, addr, 8) ^ (uint32)(pal + 1);
 		if (tile_hash[2][slot] == h)
+			continue;
+		if (!vram_commit)
 			continue;
 		for (w = 0; w < 8; w++)
 			tmp[w] = ppu->vram[(addr + w) & 0x7fff];
@@ -2328,6 +2355,7 @@ static void hw_bind(int clear_gfx) {
 	bgSetPriority(bg_id[1], 1);
 	bgSetPriority(bg_id[2], 2);
 	bgSetPriority(bg_id[3], 3);
+	pic.ready = 0;
 	bg3_split_set(0);
 
 	memset(tile_hash, 0, sizeof tile_hash);
@@ -2354,143 +2382,193 @@ void ZeldaHwWake(void) {
 	hw_bind(0);
 }
 
-void ZeldaHwPresent(Ppu *ppu) {
+static void classify_picture(const Ppu *ppu) {
 	int main_en;
 	int sub_en;
-	int cover;
-	int door_iris = iris_wanted();
+	int bg1_main;
+	int bg1_sub;
+	int layer_math;
+	int lit_still;
+	int lamp;
+	int hide_early_cone;
+	int overlay;
+	int back_add;
+	int bg2_main;
+	int bg2_on;
+	int scrolls_match;
+	int lift_bg2;
+	int stair_arch;
+	int bg3_on;
 
-	/* The shut circle has to be clipped before the map copy. That copy
-	 * runs past line 0 on a room load, which is the frame that should be
-	 * black. The lamp hole waits until the scroll below is written. */
-	if (door_iris)
-		present_iris(ppu);
-
-	/* Last frame's maps, before this frame reuses the buffers. Still in
-	 * the blank main() just waited for, so the copy finishes before line 0. */
-	flush_map_jobs();
-
-	/* Offsets, then the iris, then sprites. All three land while VCOUNT is
-	 * still in vblank. The upload after them does not fit there. Brightness
-	 * stays black through that upload when this frame leaves a force blank.
-	 * Spotlight_open leaves a closed circle; the iris is armed before the
-	 * upload so that circle is already latched when line 0 is drawn. */
-	cover = ppu->forcedBlank || file_select_not_ready(ppu);
-	ZeldaHwUseMasterBright(1);
-	if (cover && fade_level < 0)
-		REG_MASTER_BRIGHT = inidisp_to_bright(0x80);
-	main_en = cover ? 0 : ppu->screenEnabled[0];
-	sub_en = cover ? 0 : ppu->screenEnabled[1];
-	int bg1_main = (main_en & 0x01) != 0;
-	int bg1_sub = (sub_en & 0x01) != 0;
+	pic.cover = ppu->forcedBlank || file_select_not_ready(ppu);
+	main_en = pic.cover ? 0 : ppu->screenEnabled[0];
+	sub_en = pic.cover ? 0 : ppu->screenEnabled[1];
+	pic.main_en = main_en;
+	pic.sub_en = sub_en;
+	bg1_main = (main_en & 0x01) != 0;
+	bg1_sub = (sub_en & 0x01) != 0;
+	pic.bg1_main = bg1_main;
+	pic.bg1_sub = bg1_sub;
 	/* Rain and the other overworld covers: BG1 is subscreen-only, BG2 is
 	 * the opaque ground, and color math targets that ground (or another
 	 * main layer). Bit 5 is the backdrop in this PPU, which is all Hyrule
 	 * Castle writes (CGADSUB 0x20). That must not become the rain blend.
 	 * The title picture has no ground layer, so it stays behind the sprites. */
-	int layer_math = (ppu->mathEnabled & 0x1f) != 0;
-	int lit_still = lamp_lit_room_still_up();
-	int lamp = lamp_cone(ppu);
-	int hide_early_cone = lit_still && lamp_held_in_dark();
+	layer_math = (ppu->mathEnabled & 0x1f) != 0;
+	lit_still = lamp_lit_room_still_up();
+	lamp = lamp_cone(ppu);
+	hide_early_cone = lit_still && lamp_held_in_dark();
+	pic.lamp = lamp;
+	pic.hide_early_cone = hide_early_cone;
 	/* The lamp cone is subscreen BG1 with subtract math, which is the same
 	 * test as rain. It is not rain: the hole is a window, and the graphic
 	 * must not be drawn on top of the room. */
-	int overlay = !lamp && !hide_early_cone && bg1_sub && !bg1_main &&
+	overlay = !lamp && !hide_early_cone && bg1_sub && !bg1_main &&
 		(main_en & 0x02) &&
 		ppu->addSubscreen && ppu->preventMathMode != 3 &&
 		layer_math;
 	/* Rooms whose header really adds the subscreen into BG2 (Translucent,
 	 * Addition). The copy is blended into the floor behind Link. Rain stays
 	 * in front of him. */
-	int back_add = overlay && player_is_indoors && (ppu->mathEnabled & 0x02) &&
+	back_add = overlay && player_is_indoors && (ppu->mathEnabled & 0x02) &&
 		!ppu->subtractColor &&
 		ppu->bgLayer[0].hScroll == ppu->bgLayer[1].hScroll &&
 		ppu->bgLayer[0].vScroll == ppu->bgLayer[1].vScroll;
 	if (back_add)
 		overlay = 0;
-	int bg2_main = (main_en & 0x02) != 0;
-	int bg2_on = ((main_en | sub_en) & 0x02) != 0;
+	pic.overlay = overlay;
+	pic.back_add = back_add;
+	bg2_main = (main_en & 0x02) != 0;
+	bg2_on = ((main_en | sub_en) & 0x02) != 0;
+	pic.bg2_on = bg2_on;
 	/* Door frames are BG2 priority tiles. Lift them whenever the ground is
 	 * on the main screen. In a dungeon that also needs its own BG1, the
 	 * scrolls have to match so the tiles can share BG1's front layer. */
-	int scrolls_match =
+	scrolls_match =
 		ppu->bgLayer[0].hScroll == ppu->bgLayer[1].hScroll &&
 		ppu->bgLayer[0].vScroll == ppu->bgLayer[1].vScroll &&
 		ppu->bgLayer[0].tilemapWider == ppu->bgLayer[1].tilemapWider &&
 		ppu->bgLayer[0].tilemapHigher == ppu->bgLayer[1].tilemapHigher;
-	int lift_bg2 = bg2_main && (!bg1_main || scrolls_match);
+	lift_bg2 = bg2_main && (!bg1_main || scrolls_match);
+	pic.lift_bg2 = lift_bg2;
 	/* The stair arch is a BG1 priority tile. On these floors BG1 is the
 	 * subscreen, so the arch would sit behind Link. For the climb, put
 	 * just those priority tiles in front of him. */
-	int stair_arch = !lamp && climbing_stairs() && player_is_indoors &&
+	stair_arch = !lamp && climbing_stairs() && player_is_indoors &&
 		bg1_sub && !bg1_main && !overlay && scrolls_match;
-	int bg3_on = ((main_en | sub_en) & 0x04) != 0;
-	int show_bg3_lo = bg3_on && !bg2_on;
+	pic.stair_arch = stair_arch;
+	bg3_on = ((main_en | sub_en) & 0x04) != 0;
+	pic.show_bg3_lo = bg3_on && !bg2_on;
+	pic.door_iris = iris_wanted();
+	/* Rain and the lost-woods fog are drawn in front of the sprites and
+	 * behind the status bar. With the bar on the bottom screen, that
+	 * layer would put it back on top of the fog, so leave the layer off.
+	 * A message still needs it for the text box. */
+	pic.bar_under_overlay = overlay && !ZeldaHudOnTop() &&
+		main_module_index != 14;
+}
 
+static void lay_maps(Ppu *ppu) {
 	/* BG3 priority 0 and BG2 share the back background. Switching which
 	 * one owns that map has to upload it again. */
-	if (bg2_on) {
+	if (pic.bg2_on) {
 		if (back_mode != 0) {
 			back_mode = 0;
 			map_valid[1] = 0;
 		}
-	} else if (show_bg3_lo) {
+	} else if (pic.show_bg3_lo) {
 		if (back_mode != 1) {
 			back_mode = 1;
 			map_valid[2] = 0;
 		}
 	}
 
-	/* Main-screen BG1 keeps the priority split. A subscreen-only BG1 is the
-	 * title art, which is added behind the sprites instead of covering them.
+	bg2_front_on_slot1 = pic.lift_bg2 && !(pic.bg1_main || pic.stair_arch);
+	if (!pic.lamp)
+		present_bg1(ppu, pic.bg1_main || pic.stair_arch);
+	if (pic.bg2_on)
+		present_bg2(ppu, pic.lift_bg2,
+			climbing_stairs() && pic.bg1_sub && !pic.bg1_main);
+	if (pic.lift_bg2 && (pic.bg1_main || pic.stair_arch))
+		bake_bg2_doors(ppu, pic.stair_arch);
+	else if (pic.lift_bg2)
+		show_bg2_front(ppu);
+	present_bg3(ppu, pic.show_bg3_lo);
+}
+
+/* Called while the previous picture is still up. The overworld writes a
+ * new strip as the camera moves. Building that map here, and copying it
+ * at the start of the blank with the new scroll, keeps the two together.
+ * Doing the build in the blank misses the blank, and the picture is then
+ * the new scroll over the old map for a frame. */
+void ZeldaHwBuildMaps(Ppu *ppu) {
+	if (!ppu || ppu->mode == 7) {
+		pic.ready = 0;
+		return;
+	}
+	vram_commit = 0;
+	classify_picture(ppu);
+	lay_maps(ppu);
+	pic.ready = 1;
+}
+
+void ZeldaHwPresent(Ppu *ppu) {
+	if (!pic.ready)
+		ZeldaHwBuildMaps(ppu);
+	pic.ready = 0;
+
+	/* The map was built before this blank. Copy it before line 0, with
+	 * the scroll that belongs to it. A copy that slips into the picture
+	 * snows the frame, and a scroll that lands without the map shifts
+	 * the whole overworld for a frame. */
+	flush_map_jobs();
+
+	/* The shut circle has to be clipped before line 0. The lamp hole
+	 * waits until the scroll below is written. */
+	if (pic.door_iris)
+		present_iris(ppu);
+
+	/* Offsets, then the iris, then sprites. All three land while VCOUNT is
+	 * still in vblank. Tile bytes after them do not fit there. Brightness
+	 * stays black through that upload when this frame leaves a force blank.
+	 * Spotlight_open leaves a closed circle; the iris is armed before the
+	 * upload so that circle is already latched when line 0 is drawn.
 	 * Scroll changes on the next line, so it has to be written before the
-	 * upload. Writing it afterwards splits the picture on whatever line the
-	 * upload has reached: running, and the pan into the next room. */
-	bg2_front_on_slot1 = lift_bg2 && !(bg1_main || stair_arch);
-	present_scroll(ppu, show_bg3_lo);
-	if (!door_iris)
+	 * tile upload. Writing it afterwards splits the picture on whatever
+	 * line the upload has reached: running, and the pan into the next room. */
+	ZeldaHwUseMasterBright(1);
+	if (pic.cover && fade_level < 0)
+		REG_MASTER_BRIGHT = inidisp_to_bright(0x80);
+	present_scroll(ppu, pic.show_bg3_lo);
+	if (!pic.door_iris)
 		present_iris(ppu);
 	latch_scroll_window();
 	/* Already built before this vblank. Copy it up before the background
 	 * upload, or a room of guards is still being written while it is drawn. */
-	ZeldaHwCommitSprites(((main_en | sub_en) & 0x10) != 0);
-	if (main_en & 0x02)
+	ZeldaHwCommitSprites(((pic.main_en | pic.sub_en) & 0x10) != 0);
+	if (pic.main_en & 0x02)
 		iris_lay_backdrop(ppu);
-	if (!lamp)
-		present_bg1(ppu, bg1_main || stair_arch);
-	if (bg2_on)
-		present_bg2(ppu, lift_bg2,
-			climbing_stairs() && bg1_sub && !bg1_main);
-	if (lift_bg2 && (bg1_main || stair_arch))
-		bake_bg2_doors(ppu, stair_arch);
-	else if (lift_bg2)
-		show_bg2_front(ppu);
-	present_bg3(ppu, show_bg3_lo);
-	/* A stair rebuild does not fit in this blank. The copies stay queued
-	 * and land at the start of the next one. A short frame still can. */
+	vram_commit = 1;
+	lay_maps(ppu);
+	vram_commit = 0;
+	/* A stair rebuild can still queue a map. It lands here when the blank
+	 * has room, and at the start of the next one when it does not. */
 	flush_map_jobs();
 	present_palettes(ppu);
-	if (lamp)
+	if (pic.lamp)
 		bgHide(bg_id[2]);
 
-	/* Rain and the lost-woods fog are drawn in front of the sprites and
-	 * behind the status bar. With the bar on the bottom screen, that
-	 * layer would put it back on top of the fog, so leave the layer off.
-	 * A message still needs it for the text box. */
-	int bar_under_overlay = overlay && !ZeldaHudOnTop() &&
-		main_module_index != 14;
-
-	if ((main_en & 0x04) && !bar_under_overlay) {
+	if ((pic.main_en & 0x04) && !pic.bar_under_overlay) {
 		bgSetPriority(bg_id[0], 0);
 		bgShow(bg_id[0]);
-	} else if ((sub_en & 0x04) && !bar_under_overlay) {
+	} else if ((pic.sub_en & 0x04) && !pic.bar_under_overlay) {
 		bgSetPriority(bg_id[0], 3);
 		bgShow(bg_id[0]);
 	} else {
 		bgHide(bg_id[0]);
 	}
 
-	if (lamp || hide_early_cone) {
+	if (pic.lamp || pic.hide_early_cone) {
 		/* The cone lives on the subscreen layer. Door frames are BG2
 		 * priority tiles copied onto the front layer; those stay. */
 		bgHide(bg_id[2]);
@@ -2500,12 +2578,12 @@ void ZeldaHwPresent(Ppu *ppu) {
 		} else {
 			bgHide(bg_id[1]);
 		}
-	} else if (bg1_main) {
+	} else if (pic.bg1_main) {
 		bgSetPriority(bg_id[1], 1);
 		bgSetPriority(bg_id[2], 2);
 		bgShow(bg_id[1]);
 		bgShow(bg_id[2]);
-	} else if (overlay) {
+	} else if (pic.overlay) {
 		/* In front of every sprite, including a priority-3 ledge jump,
 		 * and behind the HUD. Doorways sit between the rain and Link. */
 		bgSetPriority(bg_id[2], 0);
@@ -2516,18 +2594,18 @@ void ZeldaHwPresent(Ppu *ppu) {
 		} else {
 			bgHide(bg_id[1]);
 		}
-	} else if (back_add) {
+	} else if (pic.back_add) {
 		/* Behind the ground. The blend adds this into the floor and the
 		 * doorways, and Link is drawn on top of that result. */
 		bgSetPriority(bg_id[2], 3);
 		bgShow(bg_id[2]);
-		if (bg2_front_on_slot1 || stair_arch) {
+		if (bg2_front_on_slot1 || pic.stair_arch) {
 			bgSetPriority(bg_id[1], 1);
 			bgShow(bg_id[1]);
 		} else {
 			bgHide(bg_id[1]);
 		}
-	} else if (bg1_sub) {
+	} else if (pic.bg1_sub) {
 		/* Behind the ground, and not blended. Castle's subscreen sits here:
 		 * the opaque floor covers it, so the room and Link stay solid.
 		 * With no ground (the title), this layer is the picture. Doorways
@@ -2535,7 +2613,7 @@ void ZeldaHwPresent(Ppu *ppu) {
 		 * priority part of this layer, and it is on the front layer too. */
 		bgSetPriority(bg_id[2], 3);
 		bgShow(bg_id[2]);
-		if (bg2_front_on_slot1 || stair_arch) {
+		if (bg2_front_on_slot1 || pic.stair_arch) {
 			bgSetPriority(bg_id[1], 1);
 			bgShow(bg_id[1]);
 		} else {
@@ -2550,14 +2628,14 @@ void ZeldaHwPresent(Ppu *ppu) {
 		bgHide(bg_id[2]);
 	}
 
-	if (bg2_on) {
+	if (pic.bg2_on) {
 		/* Main-screen BG2 is in the same band as BG1 priority 0: layer 2
 		 * (BG1) is in front of layer 3, Link is in front of both, and
 		 * sprites 0/1 are behind both. Subscreen-only BG2 is the title
 		 * picture, added behind every sprite. */
-		bgSetPriority(bg_id[3], (main_en & 0x02) ? 2 : 3);
+		bgSetPriority(bg_id[3], (pic.main_en & 0x02) ? 2 : 3);
 		bgShow(bg_id[3]);
-	} else if (show_bg3_lo) {
+	} else if (pic.show_bg3_lo) {
 		bgSetPriority(bg_id[3], 3);
 		bgShow(bg_id[3]);
 	} else {
@@ -2565,12 +2643,12 @@ void ZeldaHwPresent(Ppu *ppu) {
 	}
 	REG_DISPCNT |= DISPLAY_SPR_ACTIVE | DISPLAY_SPR_1D | DISPLAY_SPR_1D_SIZE_32;
 	present_mosaic(ppu);
-	present_overlay_blend(ppu, overlay, back_add);
+	present_overlay_blend(ppu, pic.overlay, pic.back_add);
 	{
 		int ime = enterCriticalSection();
 
-		picture_covered = cover;
-		last_inidisp = (cover || iris_fully_closed()) ? 0x80 : INIDISP_copy;
+		picture_covered = pic.cover;
+		last_inidisp = (pic.cover || iris_fully_closed()) ? 0x80 : INIDISP_copy;
 		if (fade_level >= 0)
 			apply_forced_fade();
 		else if (use_master_bright)
