@@ -51,15 +51,15 @@
  * that still has to sit
  * under the rain. A fixed color
  * add or subtract is applied to the palettes, which is the blue wash in
- * the opening and a dark room with no lamp. The lamp is a subscreen the
- * SNES subtracts from the room. The DS blender cannot do that, and drawing
- * the cone in front just covers the picture with an opaque hole. The cone
- * layer stays hidden. The dark part of that graphic is the hole, and the
- * window is cut to it so the room shows through. The tilemap holds four
- * cones, two on the same rows; only the one inside the scroll is the hole.
- * That shape is read from the cone tiles when they change, and walking
- * only slides it. The status
- * bar is outside that window, so it stays drawn over the darkness. Master brightness is INIDISP: one
+ * the opening, a dark room with no lamp, and a room lit by torches. The
+ * lamp is BG1 on the subscreen, CGADSUB 0xB3: subtract, no half, on the
+ * room and sprites. A transparent subscreen pixel subtracts the fixed
+ * color (31, so the room goes black). An opaque cone pixel subtracts its
+ * own color. The DS blender cannot subtract a layer, so the cone is
+ * redrawn as light added onto a room already darkened by the cone's
+ * brightest subtract, and a window blacks out everything the cone does
+ * not cover. The status bar is outside that window, so it stays drawn
+ * over the darkness. Master brightness is INIDISP: one
  * register, latched in vblank, including while a load is still running,
  * so the whole picture fades or cuts to black in one frame. Coming back
  * from black waits until that frame's tiles are uploaded, which is what
@@ -153,7 +153,7 @@ static struct {
 	int main_en, sub_en, cover;
 	int bg1_main, bg1_sub, overlay, back_add;
 	int bg2_on, lift_bg2, stair_arch, show_bg3_lo;
-	int lamp, hide_early_cone, door_iris;
+	int lamp, door_iris;
 	int bar_under_overlay;
 } pic;
 /* Tile names that tile the ground. A stair lip ORs priority onto that
@@ -288,6 +288,15 @@ static inline u16 swizzle4(uint16 entry) {
 		(((entry >> 10) & 7) << 12));
 }
 
+/* Cone pixels keep their indices and move to palettes 8-15, which the
+ * room does not use. Those colors are the light added back on top. */
+static u16 swizzle_lamp(uint16 entry) {
+	return (u16)((entry & 0x3ff) |
+		((entry & 0x4000) >> 4) |
+		((entry & 0x8000) >> 4) |
+		((8 + ((entry >> 10) & 7)) << 12));
+}
+
 static int map_words(int wider, int higher) {
 	return 1024 << ((wider ? 1 : 0) + (higher ? 1 : 0));
 }
@@ -418,7 +427,7 @@ static void queue_map(int slot, const u16 *src, int words,
 
 static int bg1_split_mode = -1;
 
-static void present_bg1(Ppu *ppu, int split) {
+static void present_bg1(Ppu *ppu, int split, int lamp) {
 	BgLayer *layer = &ppu->bgLayer[0];
 	int words = map_words(layer->tilemapWider, layer->tilemapHigher);
 	uint32 sig = sig_map(ppu, layer->tilemapAdr, words);
@@ -435,8 +444,8 @@ static void present_bg1(Ppu *ppu, int split) {
 		last_adr[0] = layer->tileAdr;
 		map_valid[0] = 0;
 	}
-	if (bg1_split_mode != split) {
-		bg1_split_mode = split;
+	if (bg1_split_mode != split + lamp * 2) {
+		bg1_split_mode = split + lamp * 2;
 		map_valid[0] = 0;
 	}
 
@@ -464,7 +473,7 @@ static void present_bg1(Ppu *ppu, int split) {
 		if (!split) {
 			memset(map_buf[1], 0, (size_t)words * sizeof(u16));
 			for (i = 0; i < words; i++)
-				map_buf[2][i] = swizzle4(src[i]);
+				map_buf[2][i] = lamp ? swizzle_lamp(src[i]) : swizzle4(src[i]);
 		} else {
 			for (i = 0; i < words; i++) {
 				uint16 entry = src[i];
@@ -943,95 +952,37 @@ static u16 math_color(u16 color, const Ppu *ppu) {
 
 static int iris_wanted(void);
 
-/* Lamp cone: BG1 is on the subscreen and color math subtracts it. A
- * transparent pixel uses the fixed color, 31 with no torches, so that
- * part of the room goes black. The cone's opaque pixels are the hole.
- * Baking the fixed color into the palettes blacks out the whole picture,
- * including the status bar. A dark-to-dark door clears the subscreen bit
- * for the pan and only puts it back at the end. The cone scroll still
- * follows Link, so keep cutting the hole or that pan is a black frame. */
-static int lamp_held_in_dark(void) {
-	return dung_want_lights_out && link_item_torch && !dung_num_lit_torches &&
-		dung_hdr_bg2_properties != 2;
-}
+/* Set by lamp_prepare. The cone is up, so palettes are the darkened
+ * base and (when the subtract stays in range) the light layer is on. */
+static int lamp_dim;
+static int lamp_show_light;
+static uint8 lamp_cmax_r, lamp_cmax_g, lamp_cmax_b;
 
-static int lamp_transition(void) {
-	return main_module_index == 7 && submodule_index != 0 &&
-		submodule_index != 20;
-}
+static void lamp_prepare(const Ppu *ppu);
+static void lamp_write_colors(void);
 
-/* Set on the first frame of a transition, before the next header
- * replaces the flag. dung_want_lights_out_copy stays from the room
- * before this one, so a lit room entered from the dark still looks
- * like a dark exit. */
-static int lamp_left_dark;
-
-static void lamp_watch_transition(void) {
-	static int watching;
-
-	if (!lamp_transition()) {
-		watching = 0;
-		return;
-	}
-	if (watching)
-		return;
-	watching = 1;
-	lamp_left_dark = dung_want_lights_out && link_item_torch &&
-		!dung_num_lit_torches;
-}
-
-/* Door load replaces the header before the scroll. The picture is
- * still the dark room until that scroll lands. */
-static int lamp_leaving_dark(void) {
-	lamp_watch_transition();
-	if (!lamp_left_dark || dung_want_lights_out)
-		return 0;
-	return submodule_index == 2 && subsubmodule_index < 9;
-}
-
-/* The next room may already be marked dark. Until the scroll, this
- * screen is still the lit one, and a cone on it is the lantern outline. */
-static int lamp_lit_room_still_up(void) {
-	lamp_watch_transition();
-	if (!lamp_transition() || lamp_left_dark)
-		return 0;
-	if (submodule_index == 2 || submodule_index == 6 ||
-	    submodule_index == 14 || submodule_index == 17 ||
-	    submodule_index == 18)
-		return subsubmodule_index < 8;
-	return 0;
-}
-
+/* BG1 subscreen, subtract, fixed color 31. CGADSUB 0xB3 has no half
+ * bit: transparent pixels subtract 31 (black), opaque cone pixels
+ * subtract their own color. Torches and the opening tint are the same
+ * subtract with the subscreen off, so they take the flat path. The
+ * door iris owns the window while it is running. */
 static int lamp_cone(const Ppu *ppu) {
-	int playing = main_module_index == 7 && submodule_index != 20;
-	int inventory = main_module_index == 14 && submodule_index == 1;
-	/* A message or the save menu switches to module 14. Dropping the
-	 * window there draws the cone graphic in front of the room, and
-	 * that graphic is the grey shape. Submodule 11 is continue / quit. */
-	int dungeon_ui = main_module_index == 14 && saved_module_for_menu == 7 &&
-		(submodule_index == 2 || submodule_index == 11);
-	int leaving = lamp_leaving_dark();
-	int cone = hdr_dungeon_dark_with_lantern ||
-		((playing || dungeon_ui) && lamp_held_in_dark()) || leaving;
-
-	if (lamp_lit_room_still_up())
+	if (iris_wanted() || ppu->forcedBlank || ppu->preventMathMode == 3)
 		return 0;
-	if ((!playing && !inventory && !dungeon_ui) || ppu->forcedBlank)
+	if (!player_is_indoors)
 		return 0;
-	if (!cone)
+	if (!ppu->subtractColor || ppu->halfColor || !ppu->addSubscreen)
 		return 0;
-	/* Lit torches replace the cone with a global brightness. */
-	if (dung_num_lit_torches && (TS_copy & 0x01) == 0)
+	if ((ppu->screenEnabled[1] & 0x01) == 0 || (ppu->screenEnabled[0] & 0x01))
 		return 0;
-	if (!ppu->addSubscreen || ppu->preventMathMode == 3)
+	if ((ppu->mathEnabled & 0x13) == 0)
 		return 0;
-	if (!ppu->subtractColor && !leaving)
-		return 0;
-	return 1;
+	return ppu->fixedColorR == 31 && ppu->fixedColorG == 31 &&
+		ppu->fixedColorB == 31;
 }
 
 static int math_active(const Ppu *ppu) {
-	if (lamp_cone(ppu) || lamp_lit_room_still_up())
+	if (lamp_cone(ppu))
 		return 0;
 	if (ppu->preventMathMode == 3 || (ppu->mathEnabled & 0x3f) == 0)
 		return 0;
@@ -1040,25 +991,68 @@ static int math_active(const Ppu *ppu) {
 	return ppu->halfColor && !ppu->addSubscreen;
 }
 
+/* main - sub, clamped. The lantern does not halve. */
+static int sub_sat(int main_c, int sub_c) {
+	if (main_c <= sub_c)
+		return 0;
+	return main_c - sub_c;
+}
+
+static u16 shade_base(u16 color) {
+	return (u16)(sub_sat(color & 31, lamp_cmax_r) |
+		(sub_sat((color >> 5) & 31, lamp_cmax_g) << 5) |
+		(sub_sat((color >> 10) & 31, lamp_cmax_b) << 10));
+}
+
+/* BG3 is colors 0-31 (the status bar). BG1 and BG2 are the room, loaded
+ * from color 32 up. Indoor subtract must not take the bar with the room. */
+static int bake_bg_color(const Ppu *ppu, int i) {
+	if (i < 32)
+		return (ppu->mathEnabled & 0x04) != 0 ||
+			!(player_is_indoors && ppu->subtractColor);
+	return (ppu->mathEnabled & 0x03) != 0;
+}
+
 static void present_palettes(const Ppu *ppu) {
 	int i;
-	int on = math_active(ppu);
-	int bg = on && (ppu->mathEnabled & 0x07);
-	int obj = on && (ppu->mathEnabled & 0x10);
-	int back = on && (ppu->mathEnabled & 0x20);
+	int on;
+	int bg;
+	int obj;
+	int back;
 	u16 color;
 
+	if (lamp_cone(ppu)) {
+		int sprites = (ppu->mathEnabled & 0x10) != 0;
+
+		lamp_prepare(ppu);
+		BG_PALETTE[0] = 0;
+		for (i = 1; i < 128; i++) {
+			color = ppu->cgram[i];
+			if (lamp_dim && i >= 32 && (ppu->mathEnabled & 0x03))
+				color = shade_base(color);
+			BG_PALETTE[i] = (u16)(color & 0x7fff);
+		}
+		for (i = 0; i < 128; i++) {
+			color = ppu->cgram[128 + i];
+			if (lamp_dim && sprites)
+				color = shade_base(color);
+			SPRITE_PALETTE[i] = (u16)(color & 0x7fff);
+		}
+		lamp_write_colors();
+		return;
+	}
+
+	on = math_active(ppu);
+	bg = on && (ppu->mathEnabled & 0x07);
+	obj = on && (ppu->mathEnabled & 0x10);
+	back = on && (ppu->mathEnabled & 0x20);
 	color = back ? math_color(ppu->cgram[0], ppu) : ppu->cgram[0];
-	/* The backdrop cannot be windowed. While the iris or the lamp cone is
-	 * up, or the SNES picture is forced blank, it has to stay black. */
-	BG_PALETTE[0] = (iris_wanted() || lamp_cone(ppu) || ppu->forcedBlank) ? 0 :
+	/* The backdrop cannot be windowed. While the iris is up, or the SNES
+	 * picture is forced blank, it has to stay black. */
+	BG_PALETTE[0] = (iris_wanted() || ppu->forcedBlank) ? 0 :
 		(u16)(color & 0x7fff);
-	/* BG3 is 2bpp and lives in colors 0-31. Dark rooms subtract from BG1,
-	 * BG2, and sprites (CGADSUB 0xB3), not from the status bar. Those
-	 * colors are shared, so leave the bar alone while the room goes dark. */
 	for (i = 1; i < 128; i++) {
-		int bake = bg && !(player_is_indoors && dung_want_lights_out &&
-			(ppu->mathEnabled & 0x04) == 0 && i < 32);
+		int bake = bg && bake_bg_color(ppu, i);
 
 		color = bake ? math_color(ppu->cgram[i], ppu) : ppu->cgram[i];
 		BG_PALETTE[i] = (u16)(color & 0x7fff);
@@ -1096,6 +1090,16 @@ static void present_mosaic(const Ppu *ppu) {
 static void present_overlay_blend(const Ppu *ppu, int overlay, int back_add) {
 	int coef;
 
+	/* Cone light is hardware BG2. Adding it (coeff 16+16) onto the room
+	 * and sprites is (base + light), clipped. The status bar is not a
+	 * destination, and it sits in front of this layer. */
+	if (lamp_show_light) {
+		REG_BLDCNT = BLEND_ALPHA | BLEND_SRC_BG2 |
+			BLEND_DST_BG1 | BLEND_DST_BG3 | BLEND_DST_SPRITE |
+			BLEND_DST_BACKDROP;
+		REG_BLDALPHA = 16 | (16 << 8);
+		return;
+	}
 	if (ppu->subtractColor || (!overlay && !back_add)) {
 		REG_BLDCNT = 0;
 		return;
@@ -1436,17 +1440,24 @@ static void bg3_split_set(int on) {
 	scanline_irq_sync();
 }
 
-/* Map-space hole. Each row can hold two cones (up/down share a band,
- * left/right share the other). A single left-to-right span would light
- * the gap between them, which is most of the screen. Rebuilt when the
- * cone tiles change. Walking only changes the scroll. */
-enum { kLampSpans = 4 };
+/* Cone in map space. Up/down share a band and left/right share the other,
+ * so one row can hold two cones. A single span across that gap would light
+ * most of the screen; each row keeps the runs apart and the scroll picks
+ * the one on screen. Opaque means a subscreen pixel other than palette
+ * index 0, which is what the SNES subtracts. Index 0 subtracts the fixed
+ * color instead, and with no torches that fixed color is 31.
+ * The floor filler is the same tile repeated across the map. The cones
+ * are a few hundred cells, so a name used more often than this is the
+ * floor and must stay black. */
+enum { kLampSpans = 4, kLampCap = 16, kLampFill = 192 };
 
 static u16 lamp_span_l[kLampSpans][512];
 static u16 lamp_span_r[kLampSpans][512];
 static uint8 lamp_span_n[512];
-static uint16 lamp_mask[8];
-static uint16 lamp_pal_used;
+static uint16 lamp_ink[8];
+static uint16 lamp_name_n[1024];
+static u16 lamp_light[8][16];
+static u16 lamp_screen[SCREEN_HEIGHT];
 static uint32 lamp_map_sig;
 static uint16 lamp_sig_map_adr;
 static uint16 lamp_sig_tile_adr;
@@ -1454,33 +1465,21 @@ static uint8 lamp_sig_geom;
 static int lamp_rows;
 static int lamp_cols;
 static int lamp_cache_ok;
-/* One decode per tile index. A dark room repeats the empty floor across
- * the whole 64x64 map; decoding it on every cell is the door stall. */
 static uint32 lamp_pix_epoch;
 static uint32 lamp_pix_gen[1024];
 static uint16 lamp_pix_attr[1024];
-static uint16 lamp_pix_bits[1024];
+static uint16 lamp_pix_ink[1024];
 static uint8 lamp_pix_rows[1024][8];
 
-/* Bit i of palette p is a cone pixel dark enough to leave the room. */
-static void lamp_open_mask(const Ppu *ppu, uint16 mask[8]) {
-	int pal;
-	int i;
+static int lamp_cap_ch(int c) {
+	return c > kLampCap ? kLampCap : c;
+}
 
-	for (pal = 0; pal < 8; pal++) {
-		uint16 bits = 0;
+static void lamp_closed(void) {
+	int y;
 
-		for (i = 1; i < 16; i++) {
-			uint16 color = ppu->cgram[pal * 16 + i];
-			int r = color & 31;
-			int g = (color >> 5) & 31;
-			int b = (color >> 10) & 31;
-
-			if (r + g + b <= 30)
-				bits = (uint16)(bits | (1 << i));
-		}
-		mask[pal] = bits;
-	}
+	for (y = 0; y < SCREEN_HEIGHT; y++)
+		lamp_screen[y] = 0x00ff;
 }
 
 static int lamp_tile_blank(const Ppu *ppu, int tile_adr) {
@@ -1521,17 +1520,17 @@ static void lamp_mark_run(int y, int x0, int x1) {
 	lamp_span_n[y] = (uint8)(n + 1);
 }
 
-static void lamp_decode_rows(const Ppu *ppu, uint16 tile, uint16 bits, uint8 rows[8]) {
+static void lamp_decode_rows(const Ppu *ppu, uint16 tile, uint8 rows[8]) {
 	const BgLayer *layer = &ppu->bgLayer[0];
 	int name = tile & 0x3ff;
 	int base = (layer->tileAdr + name * 16) & 0x7fff;
 	int vflip = (tile & 0x8000) != 0;
 	int hflip = (tile & 0x4000) != 0;
 	int row;
+	uint16 ink = 0;
 
 	if (lamp_pix_gen[name] == lamp_pix_epoch &&
-	    lamp_pix_attr[name] == (uint16)(tile & 0xfc00) &&
-	    lamp_pix_bits[name] == bits) {
+	    lamp_pix_attr[name] == (uint16)(tile & 0xc000)) {
 		memcpy(rows, lamp_pix_rows[name], 8);
 		return;
 	}
@@ -1550,15 +1549,17 @@ static void lamp_decode_rows(const Ppu *ppu, uint16 tile, uint16 bits, uint8 row
 					(((plane1 >> bit) & 1) << 2) |
 					(((plane1 >> (8 + bit)) & 1) << 3);
 
-				if (pixel && (bits & (1u << pixel)))
+				if (pixel) {
+					ink = (uint16)(ink | (1u << pixel));
 					out = (uint8)(out | (1u << col));
+				}
 			}
 		}
 		rows[row] = out;
 	}
 	lamp_pix_gen[name] = lamp_pix_epoch;
-	lamp_pix_attr[name] = (uint16)(tile & 0xfc00);
-	lamp_pix_bits[name] = bits;
+	lamp_pix_attr[name] = (uint16)(tile & 0xc000);
+	lamp_pix_ink[name] = ink;
 	memcpy(lamp_pix_rows[name], rows, 8);
 }
 
@@ -1593,7 +1594,7 @@ static void lamp_stamp_rows(int tx, int ty, const uint8 rows[8]) {
 	}
 }
 
-static int lamp_build(const Ppu *ppu, const uint16 mask[8]) {
+static int lamp_build(const Ppu *ppu) {
 	const BgLayer *layer = &ppu->bgLayer[0];
 	int wider = layer->tilemapWider;
 	int higher = layer->tilemapHigher;
@@ -1607,26 +1608,40 @@ static int lamp_build(const Ppu *ppu, const uint16 mask[8]) {
 
 	lamp_rows = height;
 	lamp_cols = tw << 3;
-	lamp_pal_used = 0;
 	if (++lamp_pix_epoch == 0) {
 		memset(lamp_pix_gen, 0, sizeof lamp_pix_gen);
 		lamp_pix_epoch = 1;
 	}
+	memset(lamp_ink, 0, sizeof lamp_ink);
+	memset(lamp_name_n, 0, sizeof lamp_name_n);
 	for (ty = 0; ty < height; ty++)
 		lamp_span_n[ty] = 0;
 	for (ty = 0; ty < th; ty++) {
 		for (tx = 0; tx < tw; tx++) {
 			uint16 tile = ppu->vram[lamp_map_word(layer, tx, ty) & 0x7fff];
+			int name = tile & 0x3ff;
+
+			if (tile0_blank && name == 0)
+				continue;
+			if (lamp_name_n[name] != 0xffff)
+				lamp_name_n[name]++;
+		}
+	}
+	for (ty = 0; ty < th; ty++) {
+		for (tx = 0; tx < tw; tx++) {
+			uint16 tile = ppu->vram[lamp_map_word(layer, tx, ty) & 0x7fff];
 			int pal = (tile >> 10) & 7;
-			uint16 bits = mask[pal];
+			int name = tile & 0x3ff;
 			uint8 rows[8];
 
-			lamp_pal_used = (uint16)(lamp_pal_used | (1u << pal));
-			if (bits == 0)
+			if (tile0_blank && name == 0)
 				continue;
-			if (tile0_blank && (tile & 0x3ff) == 0)
+			if (lamp_name_n[name] > kLampFill)
 				continue;
-			lamp_decode_rows(ppu, tile, bits, rows);
+			lamp_decode_rows(ppu, tile, rows);
+			if (lamp_pix_ink[name] == 0)
+				continue;
+			lamp_ink[pal] = (uint16)(lamp_ink[pal] | lamp_pix_ink[name]);
 			lamp_stamp_rows(tx, ty, rows);
 			saw = 1;
 		}
@@ -1697,7 +1712,7 @@ static u16 lamp_row_on_screen(int map_y, int scroll, int width) {
 	return best;
 }
 
-static void lamp_project(const BgLayer *layer, u16 *span) {
+static void lamp_project(const BgLayer *layer) {
 	int height = lamp_rows;
 	int width = lamp_cols;
 	int scroll_x = layer->hScroll;
@@ -1707,81 +1722,117 @@ static void lamp_project(const BgLayer *layer, u16 *span) {
 	for (y = 0; y < SCREEN_HEIGHT; y++) {
 		int map_y = ((y + kCropY) + scroll_y) & (height - 1);
 
-		span[y] = lamp_row_on_screen(map_y, scroll_x, width);
+		lamp_screen[y] = lamp_row_on_screen(map_y, scroll_x, width);
 	}
 }
 
-static int lamp_mask_relevant_same(const uint16 *mask) {
+/* Channels above the cap are the anti-aliased rim. Counting them raw
+ * would make the brightest subtract 31 and the add-back would no longer
+ * depend on the room color. */
+static void lamp_colors(const Ppu *ppu) {
 	int pal;
+	int i;
+	int mr = 0;
+	int mg = 0;
+	int mb = 0;
 
 	for (pal = 0; pal < 8; pal++) {
-		if ((lamp_pal_used & (1u << pal)) == 0)
-			continue;
-		if (mask[pal] != lamp_mask[pal])
-			return 0;
+		uint16 ink = lamp_ink[pal];
+
+		for (i = 1; i < 16; i++) {
+			uint16 color;
+			int r, g, b;
+
+			if ((ink & (1u << i)) == 0)
+				continue;
+			color = ppu->cgram[pal * 16 + i];
+			r = lamp_cap_ch(color & 31);
+			g = lamp_cap_ch((color >> 5) & 31);
+			b = lamp_cap_ch((color >> 10) & 31);
+			if (r > mr)
+				mr = r;
+			if (g > mg)
+				mg = g;
+			if (b > mb)
+				mb = b;
+		}
 	}
-	return 1;
+	lamp_cmax_r = (uint8)mr;
+	lamp_cmax_g = (uint8)mg;
+	lamp_cmax_b = (uint8)mb;
+	for (pal = 0; pal < 8; pal++) {
+		uint16 ink = lamp_ink[pal];
+
+		for (i = 0; i < 16; i++) {
+			uint16 color;
+			int r, g, b;
+
+			if (i == 0 || (ink & (1u << i)) == 0) {
+				lamp_light[pal][i] = 0;
+				continue;
+			}
+			color = ppu->cgram[pal * 16 + i];
+			r = lamp_cap_ch(color & 31);
+			g = lamp_cap_ch((color >> 5) & 31);
+			b = lamp_cap_ch((color >> 10) & 31);
+			lamp_light[pal][i] = (u16)(sub_sat(mr, r) |
+				(sub_sat(mg, g) << 5) |
+				(sub_sat(mb, b) << 10));
+		}
+	}
+	/* A black cone pixel subtracts nothing, so its light color is the
+	 * whole Cmax and the room shows through. An opaque zero add would
+	 * hide the room, which is only right when every cone pixel is black. */
+	lamp_show_light = (mr | mg | mb) != 0;
 }
 
-static void lamp_closed(u16 *span) {
-	int y;
+static void lamp_write_colors(void) {
+	int pal;
+	int i;
 
-	for (y = 0; y < SCREEN_HEIGHT; y++)
-		span[y] = 0x00ff;
+	if (!lamp_show_light)
+		return;
+	for (pal = 0; pal < 8; pal++) {
+		for (i = 0; i < 16; i++)
+			BG_PALETTE[(8 + pal) * 16 + i] = lamp_light[pal][i];
+	}
 }
 
-/* The hole is the dark part of the cone. If the cone has no dark pixel,
- * the opaque graphic itself is the hole. A door fade rewrites the other
- * palettes on every step, and each quadrant of the new room lands in its
- * own frame. Scanning that half-loaded map treats the previous room as
- * the hole, so the first dark room stays fully lit until the pan ends.
- * Hold a cone we already have. Otherwise keep the room black until the
- * real cone is on screen. */
-static void lamp_fill_spans(const Ppu *ppu, u16 *span) {
+static void lamp_prepare(const Ppu *ppu) {
 	const BgLayer *layer = &ppu->bgLayer[0];
-	int transitioning = lamp_transition();
-	uint16 mask[8];
 	int words;
 	uint32 sig;
 	uint8 geom;
-	int i;
 
-	if (transitioning) {
-		/* A cone cached from an earlier dark room is the wrong
-		 * hole once this transition started in a lit room. */
-		if (lamp_cache_ok && lamp_left_dark)
-			lamp_project(layer, span);
-		else
-			lamp_closed(span);
+	if (!lamp_cone(ppu)) {
+		lamp_dim = 0;
+		lamp_show_light = 0;
+		lamp_closed();
 		return;
 	}
 	words = map_words(layer->tilemapWider, layer->tilemapHigher);
 	sig = hash_words(ppu->vram, layer->tilemapAdr, words);
 	geom = (uint8)((layer->tilemapWider ? 1 : 0) |
 		(layer->tilemapHigher ? 2 : 0));
-	lamp_open_mask(ppu, mask);
 	if (!lamp_cache_ok || sig != lamp_map_sig || geom != lamp_sig_geom ||
 	    layer->tilemapAdr != lamp_sig_map_adr ||
-	    layer->tileAdr != lamp_sig_tile_adr ||
-	    !lamp_mask_relevant_same(mask)) {
-		if (!lamp_build(ppu, mask)) {
-			uint16 any[8];
-
-			for (i = 0; i < 8; i++)
-				any[i] = 0xfffe;
-			lamp_build(ppu, any);
-		}
-		for (i = 0; i < 8; i++)
-			lamp_mask[i] = mask[i];
+	    layer->tileAdr != lamp_sig_tile_adr) {
+		lamp_cache_ok = lamp_build(ppu);
 		lamp_map_sig = sig;
 		lamp_sig_geom = geom;
 		lamp_sig_map_adr = layer->tilemapAdr;
 		lamp_sig_tile_adr = layer->tileAdr;
-		lamp_cache_ok = 1;
 	}
-	lamp_project(layer, span);
+	if (!lamp_cache_ok) {
+		lamp_dim = 0;
+		lamp_show_light = 0;
+		lamp_closed();
+		return;
+	}
+	lamp_colors(ppu);
+	lamp_dim = 1;
+	lamp_project(layer);
 }
-
 /* Copy the finished iris, or build the lamp hole, and arm the scanline
  * IRQ. Latch immediately: the room upload runs past line 0, and the shut
  * circle has to already be clipping when that line is drawn. */
@@ -1795,9 +1846,15 @@ static void present_iris(const Ppu *ppu) {
 		for (i = 0; i < SCREEN_HEIGHT; i++)
 			iris_span[idx][i] = hdma_table_dynamic[i + kCropY];
 		BG_PALETTE[0] = 0;
+		lamp_show_light = 0;
+		lamp_dim = 0;
 	} else if (lamp) {
-		lamp_fill_spans(ppu, iris_span[idx]);
+		lamp_prepare(ppu);
+		memcpy(iris_span[idx], lamp_screen, sizeof lamp_screen);
 		BG_PALETTE[0] = 0;
+	} else {
+		lamp_show_light = 0;
+		lamp_dim = 0;
 	}
 	iris_publish = ((uint32)idx << 8) | ((on || lamp) ? 1u : 0u) | (lamp ? 2u : 0u);
 	scanline_irq_sync();
@@ -2388,9 +2445,7 @@ static void classify_picture(const Ppu *ppu) {
 	int bg1_main;
 	int bg1_sub;
 	int layer_math;
-	int lit_still;
 	int lamp;
-	int hide_early_cone;
 	int overlay;
 	int back_add;
 	int bg2_main;
@@ -2415,15 +2470,12 @@ static void classify_picture(const Ppu *ppu) {
 	 * Castle writes (CGADSUB 0x20). That must not become the rain blend.
 	 * The title picture has no ground layer, so it stays behind the sprites. */
 	layer_math = (ppu->mathEnabled & 0x1f) != 0;
-	lit_still = lamp_lit_room_still_up();
 	lamp = lamp_cone(ppu);
-	hide_early_cone = lit_still && lamp_held_in_dark();
 	pic.lamp = lamp;
-	pic.hide_early_cone = hide_early_cone;
 	/* The lamp cone is subscreen BG1 with subtract math, which is the same
-	 * test as rain. It is not rain: the hole is a window, and the graphic
-	 * must not be drawn on top of the room. */
-	overlay = !lamp && !hide_early_cone && bg1_sub && !bg1_main &&
+	 * test as rain. It is not rain: the cone is light added onto the room,
+	 * clipped by the window. */
+	overlay = !lamp && bg1_sub && !bg1_main &&
 		(main_en & 0x02) &&
 		ppu->addSubscreen && ppu->preventMathMode != 3 &&
 		layer_math;
@@ -2484,8 +2536,10 @@ static void lay_maps(Ppu *ppu) {
 	}
 
 	bg2_front_on_slot1 = pic.lift_bg2 && !(pic.bg1_main || pic.stair_arch);
-	if (!pic.lamp)
-		present_bg1(ppu, pic.bg1_main || pic.stair_arch);
+	if (pic.lamp)
+		present_bg1(ppu, 0, 1);
+	else
+		present_bg1(ppu, pic.bg1_main || pic.stair_arch, 0);
 	if (pic.bg2_on)
 		present_bg2(ppu, pic.lift_bg2,
 			climbing_stairs() && pic.bg1_sub && !pic.bg1_main);
@@ -2555,8 +2609,6 @@ void ZeldaHwPresent(Ppu *ppu) {
 	 * has room, and at the start of the next one when it does not. */
 	flush_map_jobs();
 	present_palettes(ppu);
-	if (pic.lamp)
-		bgHide(bg_id[2]);
 
 	if ((pic.main_en & 0x04) && !pic.bar_under_overlay) {
 		bgSetPriority(bg_id[0], 0);
@@ -2568,10 +2620,16 @@ void ZeldaHwPresent(Ppu *ppu) {
 		bgHide(bg_id[0]);
 	}
 
-	if (pic.lamp || pic.hide_early_cone) {
-		/* The cone lives on the subscreen layer. Door frames are BG2
-		 * priority tiles copied onto the front layer; those stay. */
-		bgHide(bg_id[2]);
+	if (pic.lamp) {
+		/* In front of Link and the floor, behind the status bar. The
+		 * blend adds this light onto whichever of those is showing.
+		 * Door frames stay between the light and the floor. */
+		if (lamp_show_light) {
+			bgSetPriority(bg_id[2], 0);
+			bgShow(bg_id[2]);
+		} else {
+			bgHide(bg_id[2]);
+		}
 		if (bg2_front_on_slot1) {
 			bgSetPriority(bg_id[1], 1);
 			bgShow(bg_id[1]);
