@@ -2,6 +2,10 @@
 
 *The Legend of Zelda: A Link to the Past* Dual Screen port for the Nintendo DS / DS Lite.
 
+<p align="center">
+  <img width="1200" alt="alttp" src="docs/images/showcase.jpg" />
+</p>
+
 ALTTP DS is a homebrew port of [snesrev/zelda3](https://github.com/snesrev/zelda3), a C reimplementation of the SNES game. It is not an emulator. The game logic runs natively on the DS's ARM9. The picture is built on the DS 2D engine, and the music plays on the DS sound hardware. The bottom screen can show a touch HUD with an item panel, a gear panel, and a live world or dungeon map.
 
 > **You supply the game data.** This repo contains no Nintendo ROM and no game assets. You build `zelda3_assets.dat` from a USA *A Link to the Past* ROM that you own (see [Step 2](#2-extract-the-game-assets)). This project is not affiliated with or endorsed by Nintendo.
