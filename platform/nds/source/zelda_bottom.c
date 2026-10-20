@@ -257,10 +257,12 @@ static void set_counter_palette(const HudCounters *d)
 		BG_PALETTE_SUB[kPalHud + i] = d->pal[i];
 }
 
-/* The equipped item. The game keeps the item box as a 2x2 block of BG3 tile
- * entries in its HUD buffer, so whatever it has equipped, bottles and the
- * flute included, is already there. Each pixel is drawn twice across and
- * twice down, with nothing smoothed. */
+/* The equipped item, drawn at 2x inside the selected-item border. The game
+ * keeps that picture as a 2x2 block of BG3 tile entries: the HUD item box
+ * during play, and the menu slot the cursor is on while the item menu is
+ * up. The box itself is rewritten only when the menu closes, so the slot
+ * is what moves the 2x icon with the cursor. Each pixel is drawn twice
+ * across and twice down, with nothing smoothed. */
 enum {
 	kItemX = 192,
 	kItemY = 62,
@@ -277,15 +279,14 @@ typedef struct {
 static HudItem shown_item;
 static HudItem next_item;
 
-static void build_item(HudItem *it)
+static void build_item(HudItem *it, const u16 e[4])
 {
 	const Ppu *ppu = g_zenv.ppu;
-	const u16 *box = &hud_tile_indices_buffer[kItemBoxWord];
 	int t, r, c, p;
 
 	memset(it, 0, sizeof *it);
 	for (t = 0; t < 4; t++) {
-		u16 entry = box[(t >> 1) * 32 + (t & 1)];
+		u16 entry = e[t];
 		int pal = (entry >> 10) & 7;
 		u8 tile[kTileH][kTileH];
 
@@ -1149,6 +1150,50 @@ static int menu_open(void)
 		s >= 2 && s != 5 && s != 6;
 }
 
+/* The cursor's item is in the menu tile map from the first drawn menu
+ * through the frame Start is pressed (state 5). The next frame rebuilds
+ * the HUD item box, and the 2x icon follows that again. */
+static int menu_cursor_live(void)
+{
+	int s;
+
+	if (main_module_index != 14 || submodule_index != 1)
+		return 0;
+	s = overworld_map_state;
+	return s >= 2 && s != 6;
+}
+
+/* Four tile entries, top-left, top-right, bottom-left, bottom-right. */
+static void item_entries(u16 out[4])
+{
+	const u16 *src = &hud_tile_indices_buffer[kItemBoxWord];
+	int stride = 32;
+	int item, slot, i;
+
+	if (menu_cursor_live()) {
+		item = hud_cur_item;
+		slot = -1;
+		if (item >= 1 && item <= kMenuItems) {
+			if (hud_inventory_order[0]) {
+				for (i = 0; i < kMenuItems; i++) {
+					if (hud_inventory_order[i] == item) {
+						slot = i;
+						break;
+					}
+				}
+			} else {
+				slot = item - 1;
+			}
+		}
+		if (slot >= 0)
+			src = (const u16 *)(g_ram + 0x1000) + menu_word(slot);
+	}
+	out[0] = src[0];
+	out[1] = src[1];
+	out[2] = src[stride];
+	out[3] = src[stride + 1];
+}
+
 /* Nonzero while the bottom screen is fading; see step_fade. */
 static int fade_phase;
 
@@ -1190,9 +1235,9 @@ static int start_will_work(void)
 
 /* Touching an icon on the item panel equips it, which in this game is just
  * moving the menu's cursor there: hud_cur_item is both. The game's own menu
- * code redraws the ring and the item box from it on the next frame, so the
- * panel follows with no work here, and the cursor move gets the same sound
- * and blink reset as a D-pad press.
+ * code redraws the ring from it on the next frame, and the 2x icon reads
+ * that same slot, so the panel follows with no work here. The cursor move
+ * gets the same sound and blink reset as a D-pad press.
  *
  * Each slot's touch area is its whole cell, icon plus half the gap on every
  * side, so the gaps between icons do not miss. Only the plain menu takes
@@ -1461,7 +1506,12 @@ static void draw_hud(void)
 	int i;
 
 	build_counters(&shown);
-	build_item(&shown_item);
+	{
+		u16 e[4];
+
+		item_entries(e);
+		build_item(&shown_item, e);
+	}
 	build_hearts(&shown_hearts);
 	build_magic(&shown_magic);
 	dmaCopy(tex_menuPal, BG_PALETTE_SUB, tex_menuPalLen);
@@ -1557,7 +1607,10 @@ static void refresh_counters(void)
 
 static void refresh_item(void)
 {
-	build_item(&next_item);
+	u16 e[4];
+
+	item_entries(e);
+	build_item(&next_item, e);
 	if (memcmp(&next_item, &shown_item, sizeof shown_item)) {
 		memcpy(&shown_item, &next_item, sizeof shown_item);
 		set_item_palette(&shown_item);
@@ -1596,14 +1649,17 @@ static u32 dyn_sig(void)
 {
 	const Ppu *ppu = g_zenv.ppu;
 	const u16 *buf = hud_tile_indices_buffer;
+	u16 item[4];
 	u32 h = 2166136261u;
 	int i, r;
 
-	/* The item box and the hearts. Not the meter or the counters: those
-	 * change every frame as they fill, and have their own checks. */
-	for (r = 0; r < 2; r++)
-		for (i = 0; i < 2; i++)
-			h = (h ^ buf[kItemBoxWord + r * 32 + i]) * 16777619u;
+	/* The 2x item and the hearts. Not the meter or the counters: those
+	 * change every frame as they fill, and have their own checks. The
+	 * item entries are the menu slot under the cursor while the menu is
+	 * up, so moving the cursor redraws the 2x icon this frame. */
+	item_entries(item);
+	for (i = 0; i < 4; i++)
+		h = (h ^ item[i]) * 16777619u;
 	for (r = 0; r < kHeartRows; r++)
 		for (i = 0; i < kHeartCols; i++)
 			h = (h ^ buf[kHeartWord + r * 32 + i]) * 16777619u;
