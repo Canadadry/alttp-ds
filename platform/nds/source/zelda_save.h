@@ -38,6 +38,10 @@ void ZeldaHairSet(int blonde);
 /* 1: a save made in a dungeon loads at that dungeon's entrance. */
 int ZeldaSpawnDungeon(void);
 void ZeldaSpawnSet(int dungeon);
+
+/* 1: the magic mirror travels either way between the two worlds. */
+int ZeldaMirrorFree(void);
+void ZeldaMirrorSet(int free);
 void ZeldaSpawnRemember(int slot, int entrance);
 /* Drop the remembered dungeon of an erased or newly named file. */
 void ZeldaSpawnForget(int slot);

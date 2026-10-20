@@ -158,6 +158,7 @@ static int run_speed;
 static int dark_bright;
 static int hair_blonde;
 static int spawn_dungeon;
+static int mirror_free;
 static int scroll_row;
 static int save_on_exit;
 
@@ -165,6 +166,7 @@ enum {
 	kRowHud = 0,
 	kRowBeep,
 	kRowSpawn,
+	kRowMirror,
 	kRowBomb,
 	kRowArrow,
 	kRowSpeed,
@@ -191,8 +193,13 @@ static const char *const kRunChoice[] = { "Normal", "Double", "Triple" };
 static int settings_value_x(void)
 {
 	int label = ZeldaVideoMenuWidth("Low HP Indicator");
+	int mirror = ZeldaVideoMenuWidth("Magic Mirror");
 	int value = ZeldaVideoMenuWidth("Bottom Screen");
-	int x = kLabelX + label + 12;
+	int x;
+
+	if (mirror > label)
+		label = mirror;
+	x = kLabelX + label + 12;
 
 	if (x < kValueX)
 		x = kValueX;
@@ -210,6 +217,8 @@ static const char *settings_label(int row)
 		return "Low HP Indicator";
 	case kRowSpawn:
 		return "Spawn";
+	case kRowMirror:
+		return "Magic Mirror";
 	case kRowBomb:
 		return "Bomb Capacity";
 	case kRowArrow:
@@ -234,6 +243,8 @@ static const char *settings_value(int row)
 		return kOnOff[beep_on];
 	case kRowSpawn:
 		return spawn_dungeon ? "Dungeon" : "Normal";
+	case kRowMirror:
+		return mirror_free ? "Free" : "Normal";
 	case kRowBomb:
 		return bomb_99 ? "99" : "10";
 	case kRowArrow:
@@ -313,6 +324,8 @@ static void settings_scroll(int dir)
 		v = &beep_on;
 	else if (cursor == kRowSpawn)
 		v = &spawn_dungeon;
+	else if (cursor == kRowMirror)
+		v = &mirror_free;
 	else if (cursor == kRowBomb)
 		v = &bomb_99;
 	else if (cursor == kRowArrow)
@@ -355,6 +368,7 @@ static void settings_apply(void)
 	ZeldaDarkRoomsSet(dark_bright);
 	ZeldaHairSet(hair_blonde);
 	ZeldaSpawnSet(spawn_dungeon);
+	ZeldaMirrorSet(mirror_free);
 	save_on_exit = 0;
 }
 
@@ -555,6 +569,7 @@ static void ZeldaSettingsEnter(void)
 	dark_bright = ZeldaDarkRooms() ? 1 : 0;
 	hair_blonde = ZeldaHairBlonde() ? 1 : 0;
 	spawn_dungeon = ZeldaSpawnDungeon() ? 1 : 0;
+	mirror_free = ZeldaMirrorFree() ? 1 : 0;
 	cursor = kRowHud;
 	scroll_row = 0;
 	save_on_exit = 0;

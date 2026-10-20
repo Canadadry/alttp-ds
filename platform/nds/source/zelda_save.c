@@ -63,8 +63,9 @@ const char *ZeldaSaveStatus(void)
  * Version 3 adds run speed and stores the checksum at byte 11.
  * Version 4 adds dark rooms and stores the checksum at byte 13.
  * Version 5 adds hair color and stores the checksum at byte 15.
- * Version 6 adds spawn and stores the checksum after the exit snapshots. */
-enum { kSetOff = 0x1E00, kSetVersion = 6, kExitBytes = 0x32, kExitRam = 0xC140 };
+ * Version 6 adds spawn and stores the checksum after the exit snapshots.
+ * Version 7 adds the magic mirror in the spare byte before spawn. */
+enum { kSetOff = 0x1E00, kSetVersion = 7, kExitBytes = 0x32, kExitRam = 0xC140 };
 
 extern uint8 g_ram[];
 
@@ -76,6 +77,7 @@ static int g_run_mul = 1;
 static int g_rooms_bright;
 static int g_hair_blonde;
 static int g_spawn_dungeon;
+static int g_mirror_free;
 static uint8 g_spawn_entrance[3] = { 0xff, 0xff, 0xff };
 static uint8 g_spawn_exit[3][kExitBytes];
 
@@ -117,6 +119,14 @@ static void apply_hair(void)
 	Palette_SetHairBlonde(g_hair_blonde);
 }
 
+static void apply_mirror_free(void)
+{
+	if (g_mirror_free)
+		g_wanted_zelda_features |= kFeatures0_MirrorToDarkworld;
+	else
+		g_wanted_zelda_features &= ~kFeatures0_MirrorToDarkworld;
+}
+
 static void settings_store(void)
 {
 	uint8 *p;
@@ -139,7 +149,7 @@ static void settings_store(void)
 	p[12] = (uint8)(g_rooms_bright ? 1 : 0);
 	p[13] = 0;
 	p[14] = (uint8)(g_hair_blonde ? 1 : 0);
-	p[15] = 0;
+	p[15] = (uint8)(g_mirror_free ? 1 : 0);
 	p[16] = (uint8)(g_spawn_dungeon ? 1 : 0);
 	p[17] = g_spawn_entrance[0];
 	p[18] = g_spawn_entrance[1];
@@ -161,6 +171,7 @@ static void settings_load(void)
 	g_rooms_bright = 0;
 	g_hair_blonde = 0;
 	g_spawn_dungeon = 0;
+	g_mirror_free = 0;
 	g_spawn_entrance[0] = g_spawn_entrance[1] = g_spawn_entrance[2] = 0xff;
 	memset(g_spawn_exit, 0, sizeof(g_spawn_exit));
 	if (p[0] == 'L' && p[1] == 'T' && p[2] == 'D' && p[3] == 'S' &&
@@ -199,7 +210,7 @@ static void settings_load(void)
 			g_run_mul = p[10] + 1;
 			g_rooms_bright = p[12] != 0;
 			g_hair_blonde = p[14] != 0;
-		} else if (p[4] == kSetVersion && p[7] <= 1 && p[8] <= 1 &&
+		} else if (p[4] == 6 && p[7] <= 1 && p[8] <= 1 &&
 			   p[10] <= 2 && p[12] <= 1 && p[14] <= 1 && p[16] <= 1 &&
 			   p[20 + sizeof(g_spawn_exit)] ==
 			   settings_sum(p, 20 + (int)sizeof(g_spawn_exit))) {
@@ -215,6 +226,24 @@ static void settings_load(void)
 			g_spawn_entrance[1] = p[18];
 			g_spawn_entrance[2] = p[19];
 			memcpy(g_spawn_exit, p + 20, sizeof(g_spawn_exit));
+		} else if (p[4] == kSetVersion && p[7] <= 1 && p[8] <= 1 &&
+			   p[10] <= 2 && p[12] <= 1 && p[14] <= 1 && p[15] <= 1 &&
+			   p[16] <= 1 &&
+			   p[20 + sizeof(g_spawn_exit)] ==
+			   settings_sum(p, 20 + (int)sizeof(g_spawn_exit))) {
+			g_hud_top = p[5] == 0;
+			g_low_hp_beep = p[6] == 0;
+			g_bomb_cap = p[7] ? 99 : 10;
+			g_arrow_cap = p[8] ? 99 : 30;
+			g_run_mul = p[10] + 1;
+			g_rooms_bright = p[12] != 0;
+			g_hair_blonde = p[14] != 0;
+			g_mirror_free = p[15] != 0;
+			g_spawn_dungeon = p[16] != 0;
+			g_spawn_entrance[0] = p[17];
+			g_spawn_entrance[1] = p[18];
+			g_spawn_entrance[2] = p[19];
+			memcpy(g_spawn_exit, p + 20, sizeof(g_spawn_exit));
 		}
 	}
 	apply_low_hp_beep();
@@ -222,6 +251,7 @@ static void settings_load(void)
 	apply_run_speed();
 	apply_rooms_bright();
 	apply_hair();
+	apply_mirror_free();
 }
 
 int ZeldaHudOnTop(void)
@@ -319,6 +349,18 @@ int ZeldaSpawnDungeon(void)
 void ZeldaSpawnSet(int dungeon)
 {
 	g_spawn_dungeon = dungeon != 0;
+	settings_store();
+}
+
+int ZeldaMirrorFree(void)
+{
+	return g_mirror_free;
+}
+
+void ZeldaMirrorSet(int free)
+{
+	g_mirror_free = free != 0;
+	apply_mirror_free();
 	settings_store();
 }
 
