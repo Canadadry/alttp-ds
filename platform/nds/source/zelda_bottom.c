@@ -1105,11 +1105,13 @@ void ZeldaBottomNoteIdle(void)
 }
 
 /* Modules 6 through 19 are the underworld and overworld loads, play, the
- * item menu, the iris, the transitions, and death. The title, the file
- * screens, attract, and the ending are outside that. */
+ * item menu, the iris, the transitions, and death. 22 is the crystal
+ * prize, which refills the same bar. The title, the file screens,
+ * attract, and the ending are outside that. */
 static int in_game(void)
 {
-	return main_module_index >= 6 && main_module_index <= 19;
+	return (main_module_index >= 6 && main_module_index <= 19) ||
+		main_module_index == 22;
 }
 
 /* X opens the dungeon map (submodule 3 of the menu module) or the overworld

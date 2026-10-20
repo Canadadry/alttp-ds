@@ -608,9 +608,25 @@ static int hud_strip_hidden(void)
 	mod = main_module_index;
 	if (mod == 14)
 		mod = saved_module_for_menu;
-	/* 7 indoors, 9 outdoors. 15 and 16 are the door iris. That circle
-	 * leaves those modes while it is still open across the status bar. */
-	return mod == 7 || mod == 9 || mod == 15 || mod == 16;
+	/* 7 indoors, 9 outdoors, 11 the special overworld (lost woods).
+	 * 15 and 16 are the door iris: that circle leaves play while it is
+	 * still open across the status bar. 17 is a fall down a hole, 18 is
+	 * death, 19 a pendant and 22 a crystal. Each of those keeps the
+	 * playfield, and the bar, up on this screen. */
+	switch (mod) {
+	case 7:
+	case 9:
+	case 11:
+	case 15:
+	case 16:
+	case 17:
+	case 18:
+	case 19:
+	case 22:
+		return 1;
+	default:
+		return 0;
+	}
 }
 
 /* With the HUD on the bottom screen, the item menu is drawn there. The top
@@ -2457,10 +2473,17 @@ void ZeldaHwPresent(Ppu *ppu) {
 	if (lamp)
 		bgHide(bg_id[2]);
 
-	if (main_en & 0x04) {
+	/* Rain and the lost-woods fog are drawn in front of the sprites and
+	 * behind the status bar. With the bar on the bottom screen, that
+	 * layer would put it back on top of the fog, so leave the layer off.
+	 * A message still needs it for the text box. */
+	int bar_under_overlay = overlay && !ZeldaHudOnTop() &&
+		main_module_index != 14;
+
+	if ((main_en & 0x04) && !bar_under_overlay) {
 		bgSetPriority(bg_id[0], 0);
 		bgShow(bg_id[0]);
-	} else if (sub_en & 0x04) {
+	} else if ((sub_en & 0x04) && !bar_under_overlay) {
 		bgSetPriority(bg_id[0], 3);
 		bgShow(bg_id[0]);
 	} else {
