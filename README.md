@@ -160,8 +160,8 @@ alttp-ds/
 ## Credits
 
 - [snesrev/zelda3](https://github.com/snesrev/zelda3) and its contributors, for the C reimplementation, the asset tool, and the PPU and DSP code this port builds on.
+- [zelda-alttp-3ds](https://github.com/EstebanPdN/zelda-alttp-3ds) I based much of my UI off the designs in this port.
 - [devkitPro](https://devkitpro.org/), libnds, and Calico, for the DS toolchain.
 - [melonDS](https://melonds.melonemu.org/), for the emulator used throughout development.
-- [Rinnegatamante/zelda3](https://github.com/Rinnegatamante/zelda3) and [ProbablyRohan/Z3R-3ds](https://github.com/ProbablyRohan/Z3R-3ds), as references for earlier zelda3 ports.
 
 *The Legend of Zelda* and *A Link to the Past* are trademarks of Nintendo. No Nintendo code or assets are distributed with this project.
