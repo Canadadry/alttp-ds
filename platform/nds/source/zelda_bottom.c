@@ -756,7 +756,7 @@ static void menu_changed_rows(const HudMenu *a, const HudMenu *b, int *lo, int *
  *   row 1  sword, shield, tunic, mitt, boots, flippers, moon pearl
  *   row 2  BOTTLES: four bottles          PENDANTS: three
  *   row 3  LIFE: current hearts           CRYSTALS: seven
- *   row 4  HEART PIECES: the four-part heart
+ *   row 4  HEART PIECES: the four-part heart    KEYS: only inside a dungeon
  *
  * Every picture is a list of 8x8 tile cells (x, y, tile entry). The cells
  * are always added in the same order, empty ones with entry 0, so two
@@ -778,6 +778,9 @@ enum {
 	kGearCrystalRowStep = 10,
 	kGearPiecesLabelY = 122,
 	kGearPiecesY = 132,
+	/* The key icon is 8 tall, centered on the 16-tall heart piece icon. */
+	kGearKeyY = kGearPiecesY + 4,
+	kGearKeyDigitX = kGearRight + kTileH + 2,
 	kGearTop = 24,
 	kGearBottom = 150,
 	kGearMaxCells = 128
@@ -790,6 +793,8 @@ typedef struct {
 
 typedef struct {
 	int n;
+	/* Keys in the current dungeon, or -1 outside one. */
+	int keys;
 	GearCell c[kGearMaxCells];
 	u16 pal[32];
 } HudGear;
@@ -845,6 +850,12 @@ static const u16 kGHeartPieces[4][4] = {
 	{ 0x24ad, 0x6484, 0x2485, 0x6485 },
 	{ 0x24ad, 0x6484, 0x24ae, 0x6485 },
 	{ 0x24ad, 0x64ad, 0x24ae, 0x6485 }
+};
+
+/* The status bar's key icon, and its digits (palette 1, tile 0x90 up). */
+enum {
+	kGKeyIcon = 0x2871,
+	kGKeyDigit0 = 0x2400 | kTileDigit0
 };
 
 static void gear_cell(HudGear *g, int x, int y, u16 e)
@@ -929,6 +940,15 @@ static void build_gear(HudGear *g)
 
 	/* Row 4: pieces of heart. */
 	gear_icon(g, kGearLeft, kGearPiecesY, kGHeartPieces[clamp_to(link_heart_pieces, 3)]);
+
+	/* The same row: small keys, which the game marks as being in a
+	 * dungeon by keeping the count at 0xff everywhere else. The icon and
+	 * digit are the status bar's own, and the digit is its last decimal
+	 * place. The cells are always added so the count never changes. */
+	g->keys = link_num_keys == 0xff ? -1 : link_num_keys;
+	gear_cell(g, kGearRight, kGearKeyY, g->keys >= 0 ? kGKeyIcon : 0);
+	gear_cell(g, kGearKeyDigitX, kGearKeyY,
+		  g->keys >= 0 ? kGKeyDigit0 + g->keys % 10 : 0);
 }
 
 /* Capital letters 5 pixels wide and 7 tall, like the panel titles; I is 3
@@ -947,6 +967,7 @@ static const Glyph kGlyphs[] = {
 	{ 'E', 5, { 0x1f, 0x10, 0x10, 0x1e, 0x10, 0x10, 0x1f } },
 	{ 'H', 5, { 0x11, 0x11, 0x11, 0x1f, 0x11, 0x11, 0x11 } },
 	{ 'I', 3, { 0x07, 0x02, 0x02, 0x02, 0x02, 0x02, 0x07 } },
+	{ 'K', 5, { 0x11, 0x12, 0x14, 0x18, 0x14, 0x12, 0x11 } },
 	{ 'L', 5, { 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x1f } },
 	{ 'N', 5, { 0x11, 0x19, 0x15, 0x13, 0x11, 0x11, 0x11 } },
 	{ 'O', 5, { 0x0e, 0x11, 0x11, 0x11, 0x11, 0x11, 0x0e } },
@@ -962,13 +983,15 @@ enum { kGlyphH = 7, kSpaceW = 3 };
 typedef struct {
 	int x, y;
 	const char *text;
+	u8 dungeon_only;
 } GearLabel;
 
 static const GearLabel kGearLabels[] = {
-	{ kGearLeft, kGearBottleLabelY, "BOTTLES" },
-	{ kGearRight, kGearBottleLabelY, "PENDANTS" },
-	{ kGearRight, kGearLifeY, "CRYSTALS" },
-	{ kGearLeft, kGearPiecesLabelY, "HEART PIECES" }
+	{ kGearLeft, kGearBottleLabelY, "BOTTLES", 0 },
+	{ kGearRight, kGearBottleLabelY, "PENDANTS", 0 },
+	{ kGearRight, kGearLifeY, "CRYSTALS", 0 },
+	{ kGearLeft, kGearPiecesLabelY, "HEART PIECES", 0 },
+	{ kGearRight, kGearPiecesLabelY, "KEYS", 1 }
 };
 
 static void draw_label_row(u8 *line, int y, const GearLabel *l)
@@ -1009,7 +1032,8 @@ static void compose_gear(u8 *line, int y)
 	int k;
 
 	for (i = 0; i < sizeof kGearLabels / sizeof kGearLabels[0]; i++)
-		draw_label_row(line, y, &kGearLabels[i]);
+		if (!kGearLabels[i].dungeon_only || g->keys >= 0)
+			draw_label_row(line, y, &kGearLabels[i]);
 	if (y < kGearTop || y >= kGearBottom)
 		return;
 	for (k = 0; k < g->n; k++) {
@@ -1030,6 +1054,9 @@ static void gear_changed_rows(const HudGear *a, const HudGear *b, int *lo, int *
 		note_rows(lo, hi, kGearTop, kGearBottom);
 		return;
 	}
+	/* The KEYS label comes and goes with the dungeon. */
+	if ((a->keys >= 0) != (b->keys >= 0))
+		note_rows(lo, hi, kGearPiecesLabelY, kGearPiecesLabelY + kGlyphH);
 	for (i = 0; i < a->n; i++)
 		if (a->c[i].e != b->c[i].e)
 			note_rows(lo, hi, a->c[i].y, a->c[i].y + kTileH);
