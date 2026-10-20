@@ -43,6 +43,7 @@ Press **Select** in game to open the save menu. It has three rows: **Continue**,
 | HUD | Top Screen / Bottom Screen | Where the status bar and touch HUD live |
 | Low HP Indicator | On / Off | The low-health beep |
 | Spawn | Normal / Dungeon | A save made inside a dungeon loads at that dungeon's entrance |
+| Magic Mirror | Normal / Free | Removes magic mirror use restrictions |
 | Bomb Capacity | 10 / 99 | Maximum bombs you can carry |
 | Arrow Capacity | 30 / 99 | Maximum arrows you can carry |
 | Run Speed | Normal / Double / Triple | How fast Link walks, dashes, and swims |
