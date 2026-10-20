@@ -145,6 +145,8 @@ static int bake_valid;
 /* Tile names that tile the ground. A stair lip ORs priority onto that
  * pattern; lifting those cells paints the floor over the doorway. */
 static uint8 common_floor[1024];
+/* The same for BG1 (the subscreen floor), counted while baking a stair. */
+static uint8 bg1_floor[1024];
 
 /* The VRAM words are summed up 32 bits at a time. A tilemap is up to 4096
  * words and the overworld hashes two of them every frame, so a halfword
@@ -1880,7 +1882,8 @@ static u16 swizzle_as(uint16 entry, int tile) {
 /* Dungeon BG1 already uses both spare layers. Copy doorway tiles into free
  * slots of that tileset and put them on the priority-1 map, which is the
  * layer zelda3 draws above Link and below sprite priority 3. */
-static void bake_bg2_doors(Ppu *ppu) {
+static void bake_bg2_doors(Ppu *ppu, int stair) {
+	static int last_stair = -1;
 	BgLayer *top = &ppu->bgLayer[0];
 	BgLayer *ground = &ppu->bgLayer[1];
 	int words = map_words(top->tilemapWider, top->tilemapHigher);
@@ -1897,6 +1900,10 @@ static void bake_bg2_doors(Ppu *ppu) {
 	    top->tilemapWider != ground->tilemapWider ||
 	    top->tilemapHigher != ground->tilemapHigher)
 		return;
+	if (last_stair != stair) {
+		last_stair = stair;
+		bake_valid = 0;
+	}
 	/* Door tiles are copied into the BG1 tileset. Slot 1 may still be
 	 * showing the BG2 doorway map until the queued map is committed. */
 	gfx = BG_GFX + 2 * 8192;
@@ -1915,6 +1922,22 @@ static void bake_bg2_doors(Ppu *ppu) {
 		if (!used_bg1[i] && i != blank_bg1)
 			free_tile[free_n++] = i;
 	}
+	if (stair) {
+		/* The subscreen floor is the pattern BG1 repeats without priority.
+		 * BG2 may not repeat it enough for common_floor to see it. */
+		static uint8 count[1024];
+
+		memset(count, 0, sizeof count);
+		memset(bg1_floor, 0, sizeof bg1_floor);
+		for (i = 0; i < words; i++) {
+			uint16 entry = ppu->vram[(top->tilemapAdr + i) & 0x7fff];
+
+			if (!(entry & 0x2000) && count[entry & 0x3ff] < 255)
+				count[entry & 0x3ff]++;
+		}
+		for (i = 0; i < 1024; i++)
+			bg1_floor[i] = count[i] >= 8;
+	}
 	for (i = 0; i < words; i++) {
 		uint16 above = ppu->vram[(top->tilemapAdr + i) & 0x7fff];
 		uint16 door;
@@ -1922,14 +1945,16 @@ static void bake_bg2_doors(Ppu *ppu) {
 
 		if (above & 0x2000) {
 			/* The subscreen's own copy of the floor pattern. It belongs
-			 * behind the ground. Promoting it covers the door. */
-			if (common_floor[above & 0x3ff]) {
-				map_buf[1][i] = blank;
+			 * behind the ground. Promoting it covers the door. Whatever
+			 * BG2 puts on this cell (a wall or jamb with priority) still
+			 * has to be drawn; the floor only stays behind it. */
+			if (stair && (common_floor[above & 0x3ff] || bg1_floor[above & 0x3ff])) {
 				map_buf[2][i] = swizzle4(above);
 			} else {
 				map_buf[1][i] = swizzle4(above);
+				map_buf[2][i] = blank;
+				continue;
 			}
-			continue;
 		}
 		door = ppu->vram[(ground->tilemapAdr + i) & 0x7fff];
 		if (!(door & 0x2000) || common_floor[door & 0x3ff]) {
@@ -1952,6 +1977,8 @@ static void bake_bg2_doors(Ppu *ppu) {
 		map_buf[1][i] = swizzle_as(door, dst);
 	}
 	queue_map(1, map_buf[1], words, top->tilemapWider, top->tilemapHigher, 4, 2);
+	/* The floor cells above went into the back map after it was queued. */
+	queue_map(2, map_buf[2], words, top->tilemapWider, top->tilemapHigher, 8, 2);
 	if (patched)
 		queue_map(3, map_buf[3], words, top->tilemapWider, top->tilemapHigher, 12, 4);
 	bake_valid = 1;
@@ -2419,7 +2446,7 @@ void ZeldaHwPresent(Ppu *ppu) {
 		present_bg2(ppu, lift_bg2,
 			climbing_stairs() && bg1_sub && !bg1_main);
 	if (lift_bg2 && (bg1_main || stair_arch))
-		bake_bg2_doors(ppu);
+		bake_bg2_doors(ppu, stair_arch);
 	else if (lift_bg2)
 		show_bg2_front(ppu);
 	present_bg3(ppu, show_bg3_lo);
