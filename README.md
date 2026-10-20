@@ -1,4 +1,4 @@
-# ALTTP DS
+# A Link To The Past DS
 
 *The Legend of Zelda: A Link to the Past* Dual Screen port for the Nintendo DS / DS Lite.
 
