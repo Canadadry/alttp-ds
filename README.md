@@ -1,6 +1,6 @@
 # ALTTP DS
 
-*The Legend of Zelda: A Link to the Past* for the Nintendo DS / DS Lite.
+*The Legend of Zelda: A Link to the Past* Dual Screen port for the Nintendo DS / DS Lite.
 
 ALTTP DS is a homebrew port of [snesrev/zelda3](https://github.com/snesrev/zelda3), a C reimplementation of the SNES game. It is not an emulator. The game logic runs natively on the DS's ARM9. The picture is built on the DS 2D engine, and the music plays on the DS sound hardware. The bottom screen can show a touch HUD with an item panel, a gear panel, and a live world or dungeon map.
 
@@ -49,27 +49,12 @@ Press **Select** in game to open the save menu. It has three rows: **Continue**,
 | Run Speed | Normal / Double / Triple | How fast Link walks, dashes, and swims |
 | Dark Rooms | Normal / Bright | Bright keeps dark rooms lit, so the lantern is optional |
 | Hair Color | Pink / Blonde | Link's hair color |
-| Button Mapping | | **A** opens a page that chooses the DS key for each SNES action |
+| Button Mapping | | Allows you to remap the controls |
 
-In the menu, **Up/Down** moves, **Left/Right** changes a value, **A** or **Start** confirms on **Save** or **Cancel**, and **B** cancels. **Button Mapping** has nothing to change with **Left/Right**. **A** on that row opens its page: the SNES action is on the left and the DS key on the right. **Left/Right** cycles that key. **Save** applies the page and returns here. **Cancel** or **B** throws the page away. The new keys are used only after **Save**.
+In the menu, **Up/Down** moves, **Left/Right** changes a value, **A** or **Start** confirms on **Save** or **Cancel**, and **B** cancels.
 
 ## Controls
-
-The table is the default. Button Mapping can change which DS key does each SNES action. Pause, soft reset, and quit stay on the chords below.
-
-| DS | Action |
-|---|---|
-| D-Pad | Move |
-| **B** | Sword (SNES B) |
-| **A** | Lift, open chests, talk, dash (SNES A) |
-| **Y** | Use the equipped item (SNES Y) |
-| **X**, **L**, **R** | Same as the SNES X, L, and R buttons |
-| **Start** | Item menu |
-| **Select** | Save menu (Continue / Save and Quit / Settings) |
-| **Select + Start** | Pause and unpause |
-| **L + R + Select** | Soft reset (keeps your save) |
-| **L + R + Start + Select** | Write the save and quit |
-| Touch | Items button, Gear button, tap an item to equip (bottom HUD only) |
+You can remap the controls however you like in the settings menu.
 
 ## Getting started
 
