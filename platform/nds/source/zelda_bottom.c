@@ -1120,11 +1120,20 @@ static int map_open(void)
 		(submodule_index == 3 || submodule_index == 7);
 }
 
-/* The HUD shows during play, except while a map is up. Then the bottom
- * screen goes back to the idle picture. */
+/* GAME OVER letters and the continue choice. The collapse before that
+ * still shows the playfield, so the HUD stays. A fairy revival skips this
+ * and keeps the HUD while the hearts fill back up. */
+static int game_over_screen(void)
+{
+	return main_module_index == 18 &&
+		submodule_index >= 7 && submodule_index <= 9;
+}
+
+/* The HUD shows during play, except while a map or the game over screen
+ * is up. Then the bottom screen goes back to the idle picture. */
 static int hud_wanted(void)
 {
-	return !ZeldaHudOnTop() && in_game() && !map_open();
+	return !ZeldaHudOnTop() && in_game() && !map_open() && !game_over_screen();
 }
 
 /* The item menu is up from its first drawn frame until Start closes it.
@@ -1138,7 +1147,7 @@ static int menu_open(void)
 		s >= 2 && s != 5 && s != 6;
 }
 
-/* Nonzero while a map is fading the whole screen; see step_fade. */
+/* Nonzero while the bottom screen is fading; see step_fade. */
 static int fade_phase;
 
 /* Set by the gear button; the item menu or Start clears it. */
@@ -1744,10 +1753,11 @@ static void update_panel(void)
 	}
 }
 
-/* Opening or closing a map swaps the bottom screen between the HUD and the
- * idle picture through black: fade out what is up, swap, fade the other in.
- * It runs on the sub engine's master brightness, 0 clear to 16 black, two
- * steps a frame like the top screen's fades. */
+/* Opening or closing a map, and the game over screen, swap the bottom
+ * screen between the HUD and the idle picture through black: fade out what
+ * is up, swap, fade the other in. It runs on the sub engine's master
+ * brightness, 0 clear to 16 black, two steps a frame like the top screen's
+ * fades. */
 enum {
 	kFadeNone,
 	kFadeOut,
@@ -1758,6 +1768,7 @@ enum {
 
 static int fade_level;
 static int map_was_open;
+static int over_was_up;
 
 static void set_bottom_fade(int level)
 {
@@ -1790,7 +1801,7 @@ static void step_fade(int want)
 		fade_phase = kFadeIn;
 		return;
 	}
-	/* The map was opened or closed again partway in. Go back down. */
+	/* What should be showing changed partway in. Go back down. */
 	if (want != hud_up) {
 		fade_phase = kFadeOut;
 		return;
@@ -1841,18 +1852,23 @@ void ZeldaBottomUpdate(void)
 {
 	int want = hud_wanted();
 	int map = map_open();
+	int over = game_over_screen();
 
 	update_top_dim();
 
 	if (fade_phase) {
 		map_was_open = map;
+		over_was_up = over;
 		step_fade(want);
 		return;
 	}
-	/* The map, with the HUD on the bottom setting: fade rather than cut.
-	 * The first frame of a fade is the first step of fading out. */
-	if (map != map_was_open) {
+	/* The map or the game over screen, with the HUD on the bottom
+	 * setting: fade rather than cut. The first frame of a fade is the
+	 * first step of fading out. Continue leaves the game over screen and
+	 * comes back through the load below, which fades the HUD in. */
+	if (map != map_was_open || over != over_was_up) {
 		map_was_open = map;
+		over_was_up = over;
 		if (!ZeldaHudOnTop() && in_game() && want != hud_up) {
 			fade_phase = kFadeOut;
 			fade_level = 0;
@@ -1869,8 +1885,9 @@ void ZeldaBottomUpdate(void)
 		gear_on = 0;
 	if (want == hud_up)
 		return;
-	/* Loading a game: the idle picture fades out and the HUD fades in,
-	 * the same swap the maps use. Leaving the game stays a cut. */
+	/* Loading a game, including after Continue on the game over screen:
+	 * the idle picture fades out and the HUD fades in, the same swap the
+	 * maps use. Leaving the game stays a cut. */
 	if (want) {
 		fade_phase = kFadeOut;
 		fade_level = 0;
