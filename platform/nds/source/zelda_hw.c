@@ -1097,9 +1097,11 @@ static void present_mosaic(const Ppu *ppu) {
 
 /* Half-add is (front + back) / 2. A full add clamps the sum.
  * overlay: the subscreen is in front of every sprite (rain).
- * back_add: the subscreen is behind the ground and added into it
- * (Translucent and Addition rooms). Sprites are not a destination, so
- * Link stays solid.
+ * back_add: Translucent and Addition rooms. The subscreen sits on the
+ * floor, in front of it and behind Link, and only its opaque pixels are
+ * mixed in. A transparent subscreen pixel leaves the tile alone. Mixing
+ * that tile with the backdrop instead is what halved every color.
+ * Sprites are not a destination, so Link stays solid.
  * bridge: the subscreen is in front of the floor and behind the sprites.
  * Only the floor is a destination, so the shadow stays on the bank and
  * Link stays solid. */
@@ -1126,8 +1128,12 @@ static void present_overlay_blend(const Ppu *ppu, int overlay, int back_add,
 		REG_BLDCNT = BLEND_ALPHA | BLEND_SRC_BG2 |
 			BLEND_DST_BG3 | BLEND_DST_BACKDROP;
 	} else if (back_add) {
-		REG_BLDCNT = BLEND_ALPHA | BLEND_SRC_BG1 | BLEND_SRC_BG3 |
-			BLEND_DST_BG2 | BLEND_DST_BACKDROP;
+		/* Hardware BG2 is the subscreen. It is the source, so a clear
+		 * pixel does not blend and the floor under it stays full bright.
+		 * Doorways are not a source: they sit in front of this and stay
+		 * solid. */
+		REG_BLDCNT = BLEND_ALPHA | BLEND_SRC_BG2 |
+			BLEND_DST_BG3 | BLEND_DST_BACKDROP;
 	} else {
 		REG_BLDCNT = BLEND_ALPHA | BLEND_SRC_BG2 |
 			BLEND_DST_BG0 | BLEND_DST_BG1 | BLEND_DST_BG3 |
@@ -2582,8 +2588,8 @@ static void classify_picture(const Ppu *ppu) {
 		ppu->addSubscreen && ppu->preventMathMode != 3 &&
 		layer_math;
 	/* Rooms whose header really adds the subscreen into BG2 (Translucent,
-	 * Addition). The copy is blended into the floor behind Link. Rain stays
-	 * in front of him. */
+	 * Addition). Swamp Palace is one. The subscreen is mixed into the floor
+	 * only where it is opaque, behind Link. Rain stays in front of him. */
 	back_add = overlay && player_is_indoors && (ppu->mathEnabled & 0x02) &&
 		!ppu->subtractColor &&
 		ppu->bgLayer[0].hScroll == ppu->bgLayer[1].hScroll &&
@@ -2778,9 +2784,10 @@ void ZeldaHwPresent(Ppu *ppu) {
 			bgHide(bg_id[1]);
 		}
 	} else if (pic.back_add) {
-		/* Behind the ground. The blend adds this into the floor and the
-		 * doorways, and Link is drawn on top of that result. */
-		bgSetPriority(bg_id[2], 3);
+		/* Same priority as the floor, and a lower background number, so
+		 * this layer is on top of the floor and behind every sprite.
+		 * Opaque pixels blend into the floor. Clear pixels leave it. */
+		bgSetPriority(bg_id[2], 2);
 		bgShow(bg_id[2]);
 		if (bg2_front_on_slot1 || pic.stair_arch) {
 			bgSetPriority(bg_id[1], 1);
