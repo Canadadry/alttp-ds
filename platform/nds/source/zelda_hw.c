@@ -81,7 +81,10 @@ uint8_t dma_read(struct Dma *dma, uint16_t adr);
  * already reached the picture, so the shut frame stays black. Tree edges
  * are the backdrop showing through the tiles. The backdrop itself stays
  * black so the outside of the circle is black; the real color is a sprite
- * behind the backgrounds, inside the window only. The world map is mode 7.
+ * behind the backgrounds, inside the window only. Opening a floodgate and
+ * draining the swamp use that same table with W12SEL 3: subscreen BG1
+ * shows only inside the span, so the water line moves. Outside it the
+ * floor, doors, sprites, and status bar stay. The world map is mode 7.
  * That is one 1024x1024 affine background: the same 8-bit tilemap and 8bpp
  * tiles the SNES stores. M7A and M7D are stored from an HBlank interrupt
  * before each scanline. Pixels past the 1024x1024 field are transparent,
@@ -1305,8 +1308,10 @@ void ZeldaHwCommitSprites(int sprites_on) {
 enum { kBg3SplitLine = 128 - 1 - kCropY };
 
 /* Inside the window: every layer, sprites, and the blender. Outside: nothing,
- * except the lamp, which leaves hardware BG0 (the status bar) visible. */
-enum { kWinInside = 0x3f, kWinHud = 0x01 };
+ * except the lamp, which leaves hardware BG0 (the status bar) visible.
+ * The water window leaves the floor (BG3), doors (BG1), sprites, and the
+ * status bar, and drops the subscreen (BG2) and the blend. */
+enum { kWinInside = 0x3f, kWinHud = 0x01, kWinNoWater = 0x1b };
 
 static int bg3_split_on;
 static int scanline_handler;
@@ -1335,8 +1340,9 @@ static u16 bg3_top_x, bg3_top_y, bg3_bot_x, bg3_bot_y;
 
 /* Two copies so the game can rebuild the table while a frame is still
  * scanning the previous one. Bit 0 of the publish word is "on". Bit 1 is
- * the lamp: clipped lines still show the status bar. The following byte
- * is which copy the next frame should read. */
+ * the lamp: clipped lines still show the status bar. Bit 2 is the water
+ * window: clipped lines hide the subscreen and the blend. The following
+ * byte is which copy the next frame should read. */
 static u16 iris_span[2][SCREEN_HEIGHT];
 static volatile uint32 iris_publish;
 static int iris_latched;
@@ -1345,6 +1351,17 @@ static u16 iris_outside;
 
 static int iris_wanted(void) {
 	return (HDMAEN_copy & 0x80) && W12SEL_copy == 0x33 && WOBJSEL_copy == 0x33;
+}
+
+/* Floodgate and swamp drain. Window 1 is enabled and inverted on BG1, and
+ * TSW bit 0 windows that layer on the subscreen, so the water shows only
+ * inside the span. Channel 7 is the same WH0 table the iris uses. */
+static int water_wanted(void) {
+	if (!(HDMAEN_copy & 0x80) || W12SEL_copy != 3 || !(TSW_copy & 1))
+		return 0;
+	if (!g_zenv.dma)
+		return 0;
+	return dma_read(g_zenv.dma, BBAD7) == (uint8)WH0;
 }
 
 /* One store. The low byte is the exclusive right edge (0 means 256) and
@@ -1405,7 +1422,12 @@ static void iris_latch_frame(void) {
 		REG_DISPCNT &= ~DISPLAY_WIN0_ON;
 		return;
 	}
-	iris_outside = (pub & 2) ? kWinHud : 0;
+	if (pub & 2)
+		iris_outside = kWinHud;
+	else if (pub & 4)
+		iris_outside = kWinNoWater;
+	else
+		iris_outside = 0;
 	WIN0_Y0 = 0;
 	WIN0_Y1 = (u8)SCREEN_HEIGHT;
 	WIN_IN = kWinInside;
@@ -1945,14 +1967,16 @@ static void lamp_prepare(const Ppu *ppu) {
  * circle has to already be clipping when that line is drawn. */
 static void present_iris(const Ppu *ppu) {
 	int on = iris_wanted();
-	int lamp = !on && lamp_cone(ppu);
+	int water = !on && water_wanted();
+	int lamp = !on && !water && lamp_cone(ppu);
 	int idx = (int)(((iris_publish >> 8) & 1) ^ 1);
 	int i;
 
-	if (on) {
+	if (on || water) {
 		for (i = 0; i < SCREEN_HEIGHT; i++)
 			iris_span[idx][i] = hdma_table_dynamic[i + kCropY];
-		BG_PALETTE[0] = 0;
+		if (on)
+			BG_PALETTE[0] = 0;
 		lamp_show_light = 0;
 		lamp_dim = 0;
 	} else if (lamp) {
@@ -1963,7 +1987,8 @@ static void present_iris(const Ppu *ppu) {
 		lamp_show_light = 0;
 		lamp_dim = 0;
 	}
-	iris_publish = ((uint32)idx << 8) | ((on || lamp) ? 1u : 0u) | (lamp ? 2u : 0u);
+	iris_publish = ((uint32)idx << 8) | ((on || lamp || water) ? 1u : 0u) |
+		(lamp ? 2u : 0u) | (water ? 4u : 0u);
 	scanline_irq_sync();
 	/* Spotlight_open leaves a closed circle, and the room upload can still
 	 * be going when line 0 is drawn. Latch whatever line is current. The
@@ -1978,7 +2003,7 @@ static int iris_fully_closed(void) {
 	int idx;
 	int i;
 
-	if (!(iris_publish & 1) || (iris_publish & 2))
+	if (!(iris_publish & 1) || (iris_publish & 6))
 		return 0;
 	idx = (int)((iris_publish >> 8) & 1);
 	for (i = 0; i < SCREEN_HEIGHT; i++) {
@@ -2016,7 +2041,7 @@ static void iris_lay_backdrop(const Ppu *ppu) {
 	int n;
 	int used[12];
 
-	if (!(iris_publish & 1) || (iris_publish & 2) || iris_fully_closed())
+	if (!(iris_publish & 1) || (iris_publish & 6) || iris_fully_closed())
 		return;
 	back = math_active(ppu) && (ppu->mathEnabled & 0x20);
 	color = back ? math_color(ppu->cgram[0], ppu) : ppu->cgram[0];

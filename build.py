@@ -31,7 +31,13 @@ def toolchain_ready(path):
         path / "tools" / "bin" / "ndstool",
         path / "tools" / "bin" / "grit",
     )
-    return all(item.is_file() for item in needed)
+    for item in needed:
+        if item.is_file():
+            continue
+        if os.name == "nt" and item.with_suffix(".exe").is_file():
+            continue
+        return False
+    return True
 
 
 def devkitpro():
