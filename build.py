@@ -21,6 +21,19 @@ def posix(path):
     return text
 
 
+def toolchain_ready(path):
+    """A GBA-only devkitPro tree has ds_rules but cannot link an NDS ROM."""
+    needed = (
+        path / "devkitARM" / "ds_rules",
+        path / "libnds" / "lib" / "libnds9.a",
+        path / "libnds" / "lib" / "libfat.a",
+        path / "calico" / "include" / "calico.h",
+        path / "tools" / "bin" / "ndstool",
+        path / "tools" / "bin" / "grit",
+    )
+    return all(item.is_file() for item in needed)
+
+
 def devkitpro():
     candidates = []
     if os.environ.get("DEVKITPRO"):
@@ -40,9 +53,74 @@ def devkitpro():
         if key in seen:
             continue
         seen.add(key)
-        if (path / "devkitARM" / "ds_rules").is_file():
+        if toolchain_ready(path):
             return path
     return None
+
+
+def venv_python():
+    if os.name == "nt":
+        candidate = ROOT / ".venv" / "Scripts" / "python.exe"
+    else:
+        candidate = ROOT / ".venv" / "bin" / "python"
+    return candidate if candidate.is_file() else None
+
+
+def has_asset_modules(executable):
+    try:
+        subprocess.check_call(
+            [str(executable), "-c", "import PIL, yaml"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return False
+    return True
+
+
+def current_has_asset_modules():
+    try:
+        import PIL  # noqa: F401
+        import yaml  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
+def ensure_interpreter():
+    """Asset extraction and the banner tools import Pillow and PyYAML.
+
+    Compare sys.prefix to the venv directory. Resolving .venv/bin/python
+    follows Homebrew's symlink back to the framework binary, so it looks
+    like the system interpreter.
+    """
+    if current_has_asset_modules():
+        return None
+    candidate = venv_python()
+    in_venv = Path(sys.prefix).resolve() == (ROOT / ".venv").resolve()
+    if candidate and not in_venv and has_asset_modules(candidate):
+        script = str(Path(__file__).resolve())
+        os.execv(str(candidate), [str(candidate), script, *sys.argv[1:]])
+    if os.name == "nt":
+        setup = (
+            "From the project root:\n"
+            "  py -3 -m venv .venv\n"
+            "  .venv\\Scripts\\pip install Pillow PyYAML\n"
+            "  py build.py"
+        )
+    else:
+        setup = (
+            "Homebrew Python blocks a normal pip install. From the project root:\n"
+            "  python3 -m venv .venv\n"
+            "  .venv/bin/pip install Pillow PyYAML\n"
+            "  python3 build.py"
+        )
+    code = fail(
+        "error: asset extraction needs Python 3.8 or newer, plus Pillow and PyYAML.\n"
+        "This interpreter is %s and does not have those libraries.\n%s"
+        % (sys.version.split()[0], setup)
+    )
+    return code
 
 
 def pause_if_windows_console():
@@ -66,13 +144,20 @@ def pause_if_windows_console():
 
 
 def main(argv):
+    code = ensure_interpreter()
+    if code:
+        pause_if_windows_console()
+        return code
+
     dk = devkitpro()
     if dk is None:
         code = fail(
-            "error: devkitPro with devkitARM was not found.\n"
-            "Install the nds-dev package from https://devkitpro.org/\n"
-            "Windows looks in C:\\devkitPro. macOS and Linux look in /opt/devkitpro.\n"
-            "Or set DEVKITPRO to that directory."
+            "error: devkitPro with the Nintendo DS libraries was not found.\n"
+            "Install devkitPro from https://devkitpro.org/, then install nds-dev:\n"
+            "  sudo dkp-pacman -S nds-dev\n"
+            "devkitARM alone is not enough. The tree needs libnds, calico, and ndstool.\n"
+            "Windows looks in C:\\devkitPro. macOS and Linux look in /opt/devkitpro\n"
+            "and ~/devkitpro. Or set DEVKITPRO to that directory."
         )
         pause_if_windows_console()
         return code
@@ -110,7 +195,10 @@ def main(argv):
     elif result != 0 and not cleaning:
         print("")
         print("Build failed. lttp-ds.nds was not created.")
-        print("Put your USA ROM at vendor/zelda3/assets/zelda3.sfc.")
+        rom = ROOT / "vendor" / "zelda3" / "assets" / "zelda3.sfc"
+        dat = ROOT / "zelda3_assets.dat"
+        if not rom.is_file() and not dat.is_file():
+            print("Put your USA ROM at vendor/zelda3/assets/zelda3.sfc.")
     pause_if_windows_console()
     return result
 

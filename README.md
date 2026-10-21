@@ -66,8 +66,21 @@ You can remap the controls however you like in the settings menu.
 
 - A legally obtained **USA** *A Link to the Past* ROM, named `zelda3.sfc`.
   SHA-256: `66871d66be19ad2c34c927d6b14cd8eb6fc3181965b6e517cb361f7316009cfb`
-- [devkitPro](https://devkitpro.org/) with **devkitARM** and **libnds**. Install the `nds-dev` package group. The build is tested with libnds 2.0. On Windows the installer uses `C:\devkitPro`. On macOS and Linux it is `/opt/devkitpro`. Set `DEVKITPRO` if you installed it somewhere else.
-- [Python 3.8](https://www.python.org/) or newer, with `Pillow` and `PyYAML` (`pip install Pillow PyYAML`). If `python` on PATH is older, the build uses the newest `py -3` that has those libraries.
+- [devkitPro](https://devkitpro.org/) with the **nds-dev** group: libnds 2.0, libfat, calico, and ndstool. On macOS and Linux, after the installer:
+
+  ```sh
+  sudo dkp-pacman -S nds-dev
+  ```
+
+  On Windows, select nds-dev in the installer, or run `dkp-pacman -S nds-dev` from a devkitPro shell. `build.py` looks at `DEVKITPRO`, then `C:\devkitPro` or `/opt/devkitpro`, then `~/devkitpro`. Set `DEVKITPRO` if you installed it somewhere else.
+- [Python 3.8](https://www.python.org/) or newer, with `Pillow` and `PyYAML`. Homebrew Python blocks a normal `pip install`, so from the project root:
+
+  ```sh
+  python3 -m venv .venv
+  .venv/bin/pip install Pillow PyYAML
+  ```
+
+  On Windows: `py -3 -m venv .venv`, then `.venv\Scripts\pip install Pillow PyYAML`. `python3 build.py` uses that `.venv` when the Python on `PATH` does not already have those libraries. On a very new Python, PyYAML may compile from source. On macOS that needs the Xcode command line tools (`xcode-select --install`).
 - Git.
 - To run it: [melonDS](https://melonds.melonemu.org/), or a DS, DS Lite, or DSi with a DLDI flashcart or Twilight Menu++.
 
@@ -94,7 +107,9 @@ From the project root:
 python3 build.py
 ```
 
-On Windows, `py build.py` does the same thing. When it finishes, **`lttp-ds.nds`** is in the project root. If `zelda3.sfc` is missing, the build stops and does not write that file. Double-clicking `build.py` on Windows leaves the window open so you can read the error.
+On Windows, `py build.py` does the same thing. Either command uses `.venv` when the default Python is missing Pillow or PyYAML. `python3 build.py -j8` compiles in parallel. When it finishes, **`lttp-ds.nds`** is in the project root. If `zelda3.sfc` is missing, the build stops and does not write that file. Double-clicking `build.py` on Windows leaves the window open so you can read the error.
+
+If make stops with `target pattern contains no '%'`, dependency files in `platform/nds/arm7/build/` were written on Windows and still contain `C:` paths. Run `python3 build.py clean` and build again. The ARM7 makefile also drops those files when it sees them.
 
 ### 4. Run
 

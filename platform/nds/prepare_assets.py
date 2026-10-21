@@ -4,6 +4,7 @@ The file has to already exist, or a USA ROM has to be present so restool
 can extract one. The .nds links those bytes into the ARM9 binary.
 """
 
+import os
 import shutil
 import subprocess
 import sys
@@ -100,11 +101,19 @@ def restool_python():
         found = supports(out) if out else None
         if found:
             return found
+    if os.name == "nt":
+        setup = "py -3 -m pip install Pillow PyYAML"
+    else:
+        setup = (
+            "python3 -m venv .venv && "
+            ".venv/bin/pip install Pillow PyYAML && "
+            "python3 build.py"
+        )
     fail(
         "error: asset extraction needs Python 3.8 or newer, plus Pillow and PyYAML.\n"
         "python on PATH is %s.\n"
-        "Install Python 3.11, then run: py -3.11 -m pip install pillow pyyaml"
-        % sys.version.split()[0]
+        "Install them with: %s"
+        % (sys.version.split()[0], setup)
     )
 
 

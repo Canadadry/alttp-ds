@@ -64,6 +64,13 @@ else
 
 DEPENDS := $(OFILES:.o=.d)
 
+# A dependency file written on Windows starts with C:/. GNU make reads
+# that colon as a rule and stops with "target pattern contains no '%'".
+BADDEPS := $(shell grep -l '^[A-Za-z]:' *.d 2>/dev/null)
+ifneq ($(strip $(BADDEPS)),)
+$(shell rm -f $(BADDEPS))
+endif
+
 $(ARM7ELF): $(OFILES)
 
 -include $(DEPENDS)
