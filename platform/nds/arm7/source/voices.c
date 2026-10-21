@@ -343,7 +343,11 @@ static int decode_sample(const uint8_t *ram, uint16_t src, uint16_t loop_addr)
 			s = clamp15(s);
 			older = old;
 			old = s;
-			dst[pos++] = (int8_t)(s >> 8);
+			/* 15-bit BRR fits in a byte at >> 8, and that leaves every
+			 * voice at half of what the mixer can play. >> 7 fills the
+			 * byte, so the whole mix is twice as loud. Pitch mod and
+			 * the echo sum undo this extra bit. */
+			dst[pos++] = (int8_t)(s >> 7);
 		}
 		blocks++;
 		if (flags & 1) {
@@ -415,7 +419,7 @@ static void fill_noise(int8_t *dst)
 
 		noise = ((noise >> 1) & 0x3fff) | (bit << 14);
 		noise = (int16_t)(((noise & 0x7fff) << 1)) >> 1;
-		dst[i] = (int8_t)(noise >> 8);
+		dst[i] = (int8_t)(noise >> 7);
 	}
 	s_noise_ready = 1;
 }
@@ -611,8 +615,9 @@ static void advance_voice(Voice *v, unsigned freq)
 		v->pos++;
 	}
 	s = sample_at(v);
-	/* sampleOut is (BRR >> 1) * gain >> 11. PCM8 already dropped 8 bits. */
-	v->last_out = ((int)s * (int)v->gain) >> 4;
+	/* sampleOut is (BRR >> 1) * gain >> 11. The byte is one bit hotter
+	 * than that, so this extra shift puts the modulator back. */
+	v->last_out = ((int)s * (int)v->gain) >> 5;
 }
 
 static void program_voice(const ZeldaApuIpc *ipc, unsigned ch, Voice *v, unsigned freq)
@@ -678,6 +683,8 @@ static unsigned echo_vol(int v)
 {
 	if (v < 0)
 		v = -v;
+	/* Same extra bit as the dry samples, so the wash stays in balance. */
+	v *= 2;
 	if (v > 127)
 		v = 127;
 	return (unsigned)v;
@@ -761,7 +768,8 @@ static int echo_tap(Voice *v, unsigned freq)
 		v->echo_pos++;
 	}
 	s = echo_at(v);
-	return ((int)s * (int)v->gain) >> 4;
+	/* Undo the extra bit on the dry samples. Echo volume puts it back. */
+	return ((int)s * (int)v->gain) >> 5;
 }
 
 static void echo_sample(ZeldaApuIpc *ipc, const unsigned *freq, uint32_t pos)
