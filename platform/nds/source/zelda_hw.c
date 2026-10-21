@@ -656,8 +656,9 @@ static int hud_strip_hidden(void)
 	/* 7 indoors, 9 outdoors, 11 the special overworld (lost woods).
 	 * 15 and 16 are the door iris: that circle leaves play while it is
 	 * still open across the status bar. 17 is a fall down a hole, 18 is
-	 * death, 19 a pendant and 22 a crystal. Each of those keeps the
-	 * playfield, and the bar, up on this screen. */
+	 * death, 19 a pendant and 22 a crystal. 23 is save and quit: the
+	 * playfield stays up while the screen fades. Each of those keeps the
+	 * bar up on this screen. */
 	switch (mod) {
 	case 7:
 	case 9:
@@ -668,6 +669,7 @@ static int hud_strip_hidden(void)
 	case 18:
 	case 19:
 	case 22:
+	case 23:
 		return 1;
 	default:
 		return 0;
