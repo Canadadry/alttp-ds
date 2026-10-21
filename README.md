@@ -8,7 +8,7 @@
 
 ALTTP DS is a homebrew port of [snesrev/zelda3](https://github.com/snesrev/zelda3), a C reimplementation of the SNES game. It is not an emulator. The game logic runs natively on the DS's ARM9. The picture is built on the DS 2D engine, and the music plays on the DS sound hardware. The bottom screen can show a touch HUD with an item panel, a gear panel, and a live world or dungeon map.
 
-> **You supply the game data.** This repo contains no Nintendo ROM and no game assets. You build `zelda3_assets.dat` from a USA *A Link to the Past* ROM that you own (see [Step 2](#2-extract-the-game-assets)). This project is not affiliated with or endorsed by Nintendo.
+> **You supply the game data.** This repo contains no Nintendo ROM and no game assets. The build links `zelda3_assets.dat` into `lttp-ds.nds`. You provide that file, or a USA *A Link to the Past* ROM that you own so the build can extract it (see [Step 2](#2-provide-the-game-data)). This project is not affiliated with or endorsed by Nintendo.
 
 ## Features
 
@@ -64,10 +64,10 @@ You can remap the controls however you like in the settings menu.
 
 ### What you need
 
-- A **USA** *A Link to the Past* ROM that you own, named `zelda3.sfc`.
+- Game data from a **USA** *A Link to the Past* ROM that you own. Either `zelda3_assets.dat`, or the ROM itself, named `zelda3.sfc`.
   SHA-256: `66871d66be19ad2c34c927d6b14cd8eb6fc3181965b6e517cb361f7316009cfb`
 - [devkitPro](https://devkitpro.org/) with **devkitARM** and **libnds**. Install the `nds-dev` package group. The build is tested with libnds 2.0 on Windows and expects devkitPro at `C:\devkitPro`.
-- [Python 3](https://www.python.org/) with `Pillow` and `PyYAML` (`pip install Pillow PyYAML`).
+- [Python 3](https://www.python.org/). Extracting from a ROM also needs `Pillow` and `PyYAML` (`pip install Pillow PyYAML`).
 - Git.
 - To run it: [melonDS](https://melonds.melonemu.org/) or a DS / DS Lite with a DLDI flashcart.
 
@@ -82,22 +82,14 @@ cd alttp-ds
 
 If you already cloned without them: `git submodule update --init`.
 
-### 2. Extract the game assets
+### 2. Provide the game data
 
-Copy your ROM to `vendor/zelda3/zelda3.sfc`, then:
+Use one of these. The build stops if neither is present.
 
-```sh
-cd vendor/zelda3
-python assets/restool.py --extract-from-rom
-```
+- Copy `zelda3_assets.dat` to the project root. `data/zelda3_assets.dat` and a `zelda3_assets.dat` on your Desktop are also accepted.
+- Or copy your USA ROM to `vendor/zelda3/zelda3.sfc` (`.smc` is accepted too). The build runs `assets/restool.py --extract-from-rom` and writes `zelda3_assets.dat` to the project root. That file is about 684 KB.
 
-This creates `zelda3_assets.dat` (about 684 KB). Copy it to the project root:
-
-```sh
-copy zelda3_assets.dat ..\..\zelda3_assets.dat
-```
-
-Neither the ROM nor `zelda3_assets.dat` is committed. Both are in `.gitignore`.
+The ROM stays on the PC. Neither the ROM nor `zelda3_assets.dat` is committed. Both are in `.gitignore`.
 
 ### 3. Build
 
@@ -107,11 +99,13 @@ From the project root on Windows:
 build.bat
 ```
 
-`build.bat` sets up the devkitPro environment, copies `zelda3_assets.dat` into the ROM's NitroFS, and runs `make`. From an MSYS2 or Unix shell with `DEVKITARM` set, run `make`. Copy `zelda3_assets.dat` into `platform/nds/nitrofiles/` yourself in that case.
+`build.bat` sets up the devkitPro environment and runs `make`. From an MSYS2 or Unix shell with `DEVKITARM` set, run `make`.
 
-The build also compiles the ARM7 sound core in `platform/nds/arm7`. The output is **`lttp-ds.nds`** in the project root. `make clean` cleans both.
+The asset file is linked into the ARM9 binary, and `lttp-ds.nds` carries the game data itself. The build also compiles the ARM7 sound core in `platform/nds/arm7`. The output is **`lttp-ds.nds`** in the project root. `make clean` cleans both.
 
 ### 4. Run
+
+Copy `lttp-ds.nds` only. The game data is already inside it. This is the file a flashcart menu launches, and the file Twilight Menu++ launches.
 
 **melonDS**
 
@@ -122,8 +116,7 @@ The build also compiles the ARM7 sound core in `platform/nds/arm7`. The output i
 **DS / DS Lite flashcart**
 
 1. Copy `lttp-ds.nds` to the card and launch it with your usual loader. Twilight Menu++ also works.
-2. The save follows TWiLight Menu++ Save Location. The default is a `saves` folder next to the ROM (`lttp-ds.sav`, or the ROM's own name if you renamed it). The other settings put that file beside the ROM, or in `_nds/TWiLightMenu/saves`. A `lttp-ds.sav` left at the card root by an older build is loaded and moved on the next save. This needs a loader that patches in the card's DLDI driver, which most do.
-3. The game assets are inside the `.nds`, so no other files are needed.
+2. The save follows TWiLight Menu++ Save Location. The default is a `saves` folder next to the ROM (`lttp-ds.sav`, or the ROM's own name if you renamed it). The other settings put that file beside the ROM, or in `_nds/TWiLightMenu/saves`. A `lttp-ds.sav` left at the card root by an older build is loaded and moved on the next save. Saving needs a loader that patches in the card's DLDI driver, which most do. The game data is already inside `lttp-ds.nds`.
 
 ## Saves
 
@@ -145,8 +138,8 @@ alttp-ds/
     arm7/               ARM7: sound-channel driver
     bottom-screen/      HUD artwork (PNG + grit)
     include/            stubs that replace SDL / Opus
-  Makefile, build.bat   build
-  PORTING.md            original porting plan and design notes
+    prepare_assets.py   requires zelda3_assets.dat or a USA ROM, then stages the dat for the link
+  Makefile, build.bat   build. The dat is linked into lttp-ds.nds
 ```
 
 ## Credits

@@ -1,4 +1,5 @@
 #include <nds.h>
+#include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include "types.h"
@@ -20,7 +21,8 @@ uint32 g_asset_sizes[kNumberOfAssets];
 
 void NORETURN Die(const char *error)
 {
-	(void)error;
+	consoleDemoInit();
+	iprintf("\n%s\n", error ? error : "error");
 	for (;;)
 		swiWaitForVBlank();
 }
@@ -33,23 +35,18 @@ void ZeldaApuUnlock(void)
 {
 }
 
+/* The build links zelda3_assets.dat into this image. The bytes are in RAM
+ * when the ARM9 binary is loaded, so a menu that cannot reopen the .nds
+ * still has the game data. */
+extern const uint8 zelda3_assets_dat[];
+extern const uint8 zelda3_assets_dat_end[];
+
 void ZeldaLoadAssets(void)
 {
-	static const char *paths[] = {
-		"nitro:/zelda3_assets.dat",
-		"zelda3_assets.dat",
-		"fat:/zelda3_assets.dat",
-		"fat:/lttp-ds/zelda3_assets.dat",
-		NULL
-	};
-	size_t length = 0;
-	uint8 *data = NULL;
-	int i;
+	uint8 *data = (uint8 *)zelda3_assets_dat;
+	size_t length = (size_t)(zelda3_assets_dat_end - zelda3_assets_dat);
 
-	for (i = 0; paths[i] && !data; i++)
-		data = ReadWholeFile(paths[i], &length);
-
-	if (!data)
+	if (length < 16)
 		Die("Failed to read zelda3_assets.dat");
 
 	{

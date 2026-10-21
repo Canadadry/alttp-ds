@@ -1,6 +1,5 @@
 #include <nds.h>
 #include <fat.h>
-#include <filesystem.h>
 
 #include "zelda_bottom.h"
 #include "zelda_host.h"
@@ -13,7 +12,6 @@ int main(int argc, char **argv)
 
 	lcdMainOnTop();
 	ZeldaVideoShowBottom();
-	nitroFSInit(NULL);
 	fatInitDefault();
 	ZeldaSavePrepare(argc, argv);
 

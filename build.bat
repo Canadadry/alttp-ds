@@ -4,12 +4,18 @@ set DEVKITPRO=C:/devkitPro
 set DEVKITARM=C:/devkitPro/devkitARM
 set PATH=C:\devkitPro\msys2\usr\bin;C:\devkitPro\devkitARM\bin;%PATH%
 
-if exist "%~dp0zelda3_assets.dat" (
-  copy /Y "%~dp0zelda3_assets.dat" "%~dp0platform\nds\nitrofiles\zelda3_assets.dat" >nul
-) else if exist "%USERPROFILE%\Desktop\ALTTP-DS\zelda3_assets.dat" (
-  copy /Y "%USERPROFILE%\Desktop\ALTTP-DS\zelda3_assets.dat" "%~dp0platform\nds\nitrofiles\zelda3_assets.dat" >nul
-) else if exist "%~dp0data\zelda3_assets.dat" (
-  copy /Y "%~dp0data\zelda3_assets.dat" "%~dp0platform\nds\nitrofiles\zelda3_assets.dat" >nul
-)
-
 make %*
+set ERR=%ERRORLEVEL%
+if %ERR%==0 (
+  echo.
+  echo Built %~dp0lttp-ds.nds
+  goto done
+)
+echo.
+echo Build failed. lttp-ds.nds was not created.
+echo Put zelda3_assets.dat in this folder or on your Desktop,
+echo or put your USA ROM at vendor\zelda3\zelda3.sfc.
+:done
+echo %cmdcmdline% | find /i "%~f0" >nul
+if not errorlevel 1 pause
+exit /b %ERR%

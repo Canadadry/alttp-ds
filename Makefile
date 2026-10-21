@@ -30,7 +30,6 @@ GRAPHICS := platform/nds/bottom-screen/images
 AUDIO    :=
 # 32x32 PNG. The build quantizes it to the 16-color banner BMP.
 ICON     := icon.png
-NITRO    := platform/nds/nitrofiles
 ZELDA3   := vendor/zelda3
 
 ZELDA_SRC := $(wildcard $(ZELDA3)/src/*.c) $(wildcard $(ZELDA3)/snes/*.c)
@@ -56,7 +55,7 @@ ASFLAGS  := -g $(ARCH)
 LDFLAGS   = -specs=ds_arm9.specs -g $(ARCH) -Wl,-Map,$(notdir $*.map) \
             -Wl,--wrap=FindIndexInMemblk,--wrap=ppu_runLine,--wrap=ZeldaReadSram,--wrap=ZeldaWriteSram
 
-LIBS := -lfilesystem -lfat -lnds9 -lm
+LIBS := -lfat -lnds9 -lm
 
 LIBDIRS := $(LIBNDS) $(PORTLIBS)
 
@@ -82,10 +81,6 @@ SFILES   := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.s)))
 PNGFILES := $(foreach dir,$(GRAPHICS),$(notdir $(wildcard $(dir)/*.png)))
 BINFILES := $(foreach dir,$(DATA),$(notdir $(wildcard $(dir)/*.*)))
 
-ifneq ($(strip $(NITRO)),)
-  export NITRO_FILES := $(CURDIR)/$(NITRO)
-endif
-
 ifeq ($(strip $(CPPFILES)),)
   export LD := $(CC)
 else
@@ -96,7 +91,7 @@ export OFILES_BIN   :=	$(addsuffix .o,$(BINFILES))
 # ppu.itcm.o matches the DS linker's *.itcm.* rule, so the software
 # renderer executes from instruction RAM instead of main memory.
 export OFILES_SOURCES := $(filter-out ppu.o,$(CPPFILES:.cpp=.o) $(CFILES:.c=.o) $(SFILES:.s=.o)) ppu.itcm.o
-export OFILES := $(PNGFILES:.png=.o) $(OFILES_BIN) $(OFILES_SOURCES)
+export OFILES := $(PNGFILES:.png=.o) $(OFILES_BIN) zelda3_assets.dat.o $(OFILES_SOURCES)
 export HFILES := $(PNGFILES:.png=.h) $(addsuffix .h,$(subst .,_,$(BINFILES)))
 
 export INCLUDE  := $(foreach dir,$(INCLUDES),-I$(CURDIR)/$(dir))\
@@ -123,11 +118,17 @@ else
   export GAME_ICON := $(CURDIR)/$(BUILD)/$(notdir $(basename $(ICON))).grf
 endif
 
-.PHONY: $(BUILD) clean
+.PHONY: $(BUILD) clean prepare-assets
 
-$(BUILD):
+$(BUILD): prepare-assets
 	@mkdir -p $@
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile
+
+# zelda3_assets.dat from the project root, data/, or vendor/zelda3/, or
+# extracted from a USA ROM. Linked into the ARM9 binary below.
+prepare-assets:
+	$(SILENTMSG) assets
+	$(SILENTCMD)python "$(LTTP_ROOT)/platform/nds/prepare_assets.py"
 
 clean:
 	@echo clean ...
@@ -138,7 +139,7 @@ clean:
 else
 #---------------------------------------------------------------------------------
 
-$(OUTPUT).nds: $(OUTPUT).elf $(NITRO_FILES) $(GAME_ICON) $(ARM7_ELF)
+$(OUTPUT).nds: $(OUTPUT).elf $(GAME_ICON) $(ARM7_ELF)
 $(OUTPUT).elf: $(OFILES)
 
 ifeq ($(suffix $(ICON)),.png)
@@ -160,6 +161,21 @@ ppu.itcm.o: ppu.c
 %.bin.o %_bin.h : %.bin
 	@echo $(notdir $<)
 	@$(bin2o)
+
+# .incbin keeps the 684 KB asset file out of a byte-by-byte listing.
+# The path is relative to build/, where this makefile runs.
+zelda3_assets.dat.o: embed/zelda3_assets.dat
+	@echo zelda3_assets.dat
+	$(SILENTCMD)printf '%s\n' \
+		'.section .rodata' \
+		'.balign 4' \
+		'.global zelda3_assets_dat' \
+		'.global zelda3_assets_dat_end' \
+		'zelda3_assets_dat:' \
+		'.incbin "embed/zelda3_assets.dat"' \
+		'zelda3_assets_dat_end:' \
+		> zelda3_assets.s
+	$(SILENTCMD)$(CC) $(ASFLAGS) -c zelda3_assets.s -o $@
 
 # grit ignores alpha, so transparent pixels are matted to FF00FF first.
 %.s %.h: %.png %.grit
