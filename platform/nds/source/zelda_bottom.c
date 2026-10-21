@@ -14,6 +14,7 @@
 #include "items-text.h"
 #include "selected-item-border.h"
 #include "life-text.h"
+#include "one-half.h"
 
 enum {
 	kWidth = 256,
@@ -450,7 +451,12 @@ enum {
 	/* Fill tiles from the game's own meter table. */
 	kFillEmpty = 0x3cf5,
 	kFillFull = 0x3c5e,
-	kFillEdge = 0x3c4e
+	kFillEdge = 0x3c4e,
+	/* The 1/2 upgrade's label, just above the meter. */
+	kHalfX = 201,
+	kHalfY = 136,
+	kHalfW = 13,
+	kHalfH = 7
 };
 
 typedef struct {
@@ -460,6 +466,7 @@ typedef struct {
 
 static HudMagic shown_magic;
 static HudMagic next_magic;
+static int shown_half;
 
 static void note_pal(HudMagic *m, const Ppu *ppu, u16 entry)
 {
@@ -558,6 +565,28 @@ static void set_magic_palette(const HudMagic *m)
 	for (i = 0; i < 32; i++)
 		if (i & 3)
 			BG_PALETTE_SUB[kPalMagic + i] = m->pal[i];
+}
+
+/* link_magic_consumption == 1 is the 1/2 magic upgrade. */
+static int half_magic(void)
+{
+	return link_magic_consumption == 1;
+}
+
+/* Black and white, drawn with the HUD's own black and white. Index 0 of
+ * the bitmap is clear; a 0 palette entry is black and anything else white. */
+static void draw_half_row(u8 *line, int y)
+{
+	const u8 *src;
+	int x;
+
+	if (!half_magic() || y < kHalfY || y >= kHalfY + kHalfH)
+		return;
+	src = (const u8 *)one_halfBitmap + (y - kHalfY) * STRIDE(kHalfW);
+	for (x = 0; x < kHalfW; x++) {
+		if (src[x])
+			line[kHalfX + x] = one_halfPal[src[x]] ? kPalText : kPalBlack;
+	}
 }
 
 /* The item panel. The game keeps its item menu as a 32-word-wide tile map
@@ -1446,6 +1475,7 @@ static void compose_row(u8 *line, int y)
 				line[kMeterX + x] = row[x];
 		}
 	}
+	draw_half_row(line, y);
 
 	if (y >= kHeartY && y < kHeartY + kHeartH) {
 		const u8 *row = shown_hearts.px[y - kHeartY];
@@ -1554,6 +1584,7 @@ static void draw_hud(void)
 	set_item_palette(&shown_item);
 	set_heart_palette(&shown_hearts);
 	set_magic_palette(&shown_magic);
+	shown_half = half_magic();
 	/* The panel comes up already showing what the game is in. */
 	panel_shown = panel_target();
 	panel_level = 0;
@@ -1646,12 +1677,17 @@ static void refresh_hearts(void)
 
 static void refresh_magic(void)
 {
+	int half = half_magic();
+
 	build_magic(&next_magic);
-	if (memcmp(&next_magic, &shown_magic, sizeof shown_magic)) {
-		memcpy(&shown_magic, &next_magic, sizeof shown_magic);
-		set_magic_palette(&shown_magic);
-		put_rows(kMeterY, kMeterY + kMeterThick);
-	}
+	if (!memcmp(&next_magic, &shown_magic, sizeof shown_magic) &&
+	    half == shown_half)
+		return;
+	memcpy(&shown_magic, &next_magic, sizeof shown_magic);
+	shown_half = half;
+	set_magic_palette(&shown_magic);
+	/* The label sits a few rows above the meter and overlaps its top. */
+	put_rows(kHalfY, kMeterY + kMeterThick);
 }
 
 /* Building the four snapshots decodes a few thousand pixels, and doing all
@@ -1690,6 +1726,8 @@ static u32 magic_sig(void)
 	const u16 *buf = hud_tile_indices_buffer;
 	u32 h = (u32)link_magic_power + 2166136261u;
 	int r, i;
+
+	h = (h ^ link_magic_consumption) * 16777619u;
 
 	for (r = 0; r < 6; r++)
 		for (i = 0; i < 3; i++)
