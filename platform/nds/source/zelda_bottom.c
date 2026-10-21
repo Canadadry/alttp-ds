@@ -426,21 +426,23 @@ static void read_entry(const Ppu *ppu, u16 entry, u8 out[kTileH][kTileH])
  * tiles, standing up and filling from the bottom. Its ends are rounded
  * caps and between them is a straight pocket of 32 rows. Here the caps keep
  * their pixels and only the pocket grows, from 32 to kMeterPocket, so a full
- * sprite is 5 + 69 + 5 = 79 long. The top tile has three more rows above
- * the cap, where the game draws its own 1/2. Those rows are left off.
+ * sprite is 5 + 69 + 5 = 79 long. The game replaces that top tile with
+ * its own 1/2, so the plain cap is read instead and the label rows above
+ * it are left off.
  *
  * The game fills its pocket in steps of 8 magic, which would stretch to
  * steps 2 or 3 pixels wide. Instead the fill is drawn from link_magic_power
  * itself, 0 to 128, over the whole pocket. Pocket rows are cut from the
  * game's own tiles: an empty row, a filled row, and the bright row that
- * leads the fill. The frame and the caps are read live from the HUD buffer. */
+ * leads the fill. The frame and the bottom cap are read live from the
+ * HUD buffer. */
 enum {
 	kMeterX = 169,
 	kMeterY = 140,
 	kMeterThick = 16,
 	/* Where the capsule sits in its 3-tile-wide block. */
 	kSrcLeft = 4,
-	kTopRows = 8,		/* source rows 0..7; 0..2 are the game's 1/2 */
+	kTopRows = 8,		/* source rows 0..7 of the plain top tile */
 	kTopCapRows = 5,	/* source rows 3..7, the rounded end */
 	kBottomRows = 5,	/* source rows 40..44 */
 	kMeterPocket = 69,
@@ -505,6 +507,8 @@ static void pocket_section(HudMagic *m, const Ppu *ppu, const u16 *buf,
 
 static void build_magic(HudMagic *m)
 {
+	/* Row 0 of the meter becomes the game's 1/2. These are the plain cap. */
+	static const u16 kPlainTop[3] = { 0x2850, 0xa856, 0x2852 };
 	const Ppu *ppu = g_zenv.ppu;
 	const u16 *buf = &hud_tile_indices_buffer[0];
 	u8 section_empty[kMeterThick], section_full[kMeterThick], section_edge[kMeterThick];
@@ -522,7 +526,8 @@ static void build_magic(HudMagic *m)
 	/* Tile rows 0 and 5 of the block hold the two caps. */
 	for (t = 0; t < 2; t++) {
 		for (i = 0; i < 3; i++) {
-			cap_entry[t][i] = buf[(t ? 5 : 0) * 32 + kMagicWord + i];
+			cap_entry[t][i] = t ? buf[5 * 32 + kMagicWord + i]
+					    : kPlainTop[i];
 			read_entry(ppu, cap_entry[t][i], caps[t][i]);
 			note_pal(m, ppu, cap_entry[t][i]);
 		}
