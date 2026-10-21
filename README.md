@@ -64,12 +64,12 @@ You can remap the controls however you like in the settings menu.
 
 ### What you need
 
-- Game data from a **USA** *A Link to the Past* ROM that you own. Either `zelda3_assets.dat`, or the ROM itself, named `zelda3.sfc`.
+- Game data from a **USA** *A Link to the Past* ROM that you own. Either an extracted `zelda3_assets.dat` (about 684 KB), or the ROM itself (`zelda3.sfc` or `zelda3.smc`).
   SHA-256: `66871d66be19ad2c34c927d6b14cd8eb6fc3181965b6e517cb361f7316009cfb`
-- [devkitPro](https://devkitpro.org/) with **devkitARM** and **libnds**. Install the `nds-dev` package group. The build is tested with libnds 2.0 on Windows and expects devkitPro at `C:\devkitPro`.
-- [Python 3](https://www.python.org/). Extracting from a ROM also needs `Pillow` and `PyYAML` (`pip install Pillow PyYAML`).
+- [devkitPro](https://devkitpro.org/) with **devkitARM** and **libnds**. Install the `nds-dev` package group. The build is tested with libnds 2.0 on Windows. `build.bat` expects devkitPro at `C:\devkitPro`.
+- [Python 3](https://www.python.org/) on `PATH`. Extracting from a ROM also needs `Pillow` and `PyYAML` (`pip install Pillow PyYAML`).
 - Git.
-- To run it: [melonDS](https://melonds.melonemu.org/) or a DS / DS Lite with a DLDI flashcart.
+- To run it: [melonDS](https://melonds.melonemu.org/), or a DS, DS Lite, or DSi with a DLDI flashcart or Twilight Menu++.
 
 ### 1. Clone
 
@@ -84,28 +84,39 @@ If you already cloned without them: `git submodule update --init`.
 
 ### 2. Provide the game data
 
-Use one of these. The build stops if neither is present.
+The build takes the first `zelda3_assets.dat` it finds, in this order:
 
-- Copy `zelda3_assets.dat` to the project root. `data/zelda3_assets.dat` and a `zelda3_assets.dat` on your Desktop are also accepted.
-- Or copy your USA ROM to `vendor/zelda3/zelda3.sfc` (`.smc` is accepted too). The build runs `assets/restool.py --extract-from-rom` and writes `zelda3_assets.dat` to the project root. That file is about 684 KB.
+1. The project root
+2. `data/zelda3_assets.dat`
+3. `vendor/zelda3/zelda3_assets.dat`
+4. `zelda3_assets.dat` on your Desktop
+5. `Desktop/ALTTP-DS/zelda3_assets.dat`
 
-The ROM stays on the PC. Neither the ROM nor `zelda3_assets.dat` is committed. Both are in `.gitignore`.
+If none of those exist, it extracts one from the first ROM it finds:
+
+1. `vendor/zelda3/zelda3.sfc` or `vendor/zelda3/zelda3.smc`
+2. `zelda3.sfc` or `zelda3.smc` in the project root
+3. `data/zelda3.sfc` or `data/zelda3.smc`
+
+Extraction runs `vendor/zelda3/assets/restool.py --extract-from-rom` and writes `zelda3_assets.dat` to the project root. The ROM stays on the PC. Neither the ROM nor `zelda3_assets.dat` is committed. Both are in `.gitignore`.
+
+A `zelda3_assets.dat` that is present but is not a Zelda3 asset file stops the build. An existing dat is used as-is, so a ROM next to it is not read.
 
 ### 3. Build
 
-From the project root on Windows:
+From the project root on Windows, double-click `build.bat` or run:
 
 ```bat
 build.bat
 ```
 
-`build.bat` sets up the devkitPro environment and runs `make`. From an MSYS2 or Unix shell with `DEVKITARM` set, run `make`.
+`build.bat` sets `DEVKITPRO` to `C:\devkitPro` and runs `make`. The asset file is linked into the ARM9 binary. The build also compiles the ARM7 sound core in `platform/nds/arm7`. When it finishes it prints `Built` and the full path of **`lttp-ds.nds`** in the project root.
 
-The asset file is linked into the ARM9 binary, and `lttp-ds.nds` carries the game data itself. The build also compiles the ARM7 sound core in `platform/nds/arm7`. The output is **`lttp-ds.nds`** in the project root. `make clean` cleans both.
+If the game data is missing, the build stops and does not write `lttp-ds.nds`. Double-clicking `build.bat` leaves the window open so you can read the error. From an MSYS2 or Unix shell with `DEVKITARM` set, run `make` from the project root. `make clean` cleans the ARM9 and ARM7 builds.
 
 ### 4. Run
 
-Copy `lttp-ds.nds` only. The game data is already inside it. This is the file a flashcart menu launches, and the file Twilight Menu++ launches.
+Copy `lttp-ds.nds` only. The game data is already inside it. A loose `zelda3_assets.dat` on the card is ignored. If the linked data is not a real asset file, the bottom screen says `Invalid assets file` and the game waits there.
 
 **melonDS**
 
@@ -113,10 +124,10 @@ Copy `lttp-ds.nds` only. The game data is already inside it. This is the file a 
 2. For saves to persist, go to *Config → Emu settings → DLDI*, turn on DLDI and folder sync, and pick a folder.
 3. Your save appears there as `lttp-ds.sav`.
 
-**DS / DS Lite flashcart**
+**DS, DS Lite, or DSi**
 
-1. Copy `lttp-ds.nds` to the card and launch it with your usual loader. Twilight Menu++ also works.
-2. The save follows TWiLight Menu++ Save Location. The default is a `saves` folder next to the ROM (`lttp-ds.sav`, or the ROM's own name if you renamed it). The other settings put that file beside the ROM, or in `_nds/TWiLightMenu/saves`. A `lttp-ds.sav` left at the card root by an older build is loaded and moved on the next save. Saving needs a loader that patches in the card's DLDI driver, which most do. The game data is already inside `lttp-ds.nds`.
+1. Copy `lttp-ds.nds` to the flashcart microSD, or to the DSi SD card, and launch it from the cart menu or from Twilight Menu++.
+2. The save follows TWiLight Menu++ Save Location. The default is a `saves` folder next to the ROM (`lttp-ds.sav`, or the ROM's own name if you renamed it). The other settings put that file beside the ROM, or in `_nds/TWiLightMenu/saves`. A `lttp-ds.sav` left at the card root by an older build is loaded and moved on the next save. Saving needs a loader that patches in the card's DLDI driver, which most do, including Twilight Menu++.
 
 ## Saves
 
