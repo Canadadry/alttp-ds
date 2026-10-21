@@ -143,7 +143,7 @@ $(OUTPUT).nds: $(OUTPUT).elf $(GAME_ICON) $(ARM7_ELF)
 $(OUTPUT).elf: $(OFILES)
 
 ifeq ($(suffix $(ICON)),.png)
-$(GAME_ICON): $(LTTP_ROOT)/$(ICON)
+$(GAME_ICON): $(LTTP_ROOT)/$(ICON) $(LTTP_ROOT)/platform/nds/png2banner.py
 	$(SILENTMSG) banner $(notdir $@)
 	$(SILENTCMD)python $(LTTP_ROOT)/platform/nds/png2banner.py $< $@
 endif

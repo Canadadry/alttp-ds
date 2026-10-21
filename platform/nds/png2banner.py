@@ -3,7 +3,8 @@
 
 ndstool expects a 32x32 BMP with 16 palette entries. Palette index 0 is
 transparent in the DS launcher and Twilight Menu, so that slot is left
-unused and the background is stored as opaque black.
+unused. The background is the darkest gray that is still non-zero in
+15-bit color, because a palette value of 0 is also drawn transparent.
 """
 import struct
 import sys
@@ -45,7 +46,9 @@ def main():
         )
         if background == 0:
             background = nearest
-    palette[background * 3:background * 3 + 3] = [0, 0, 0]
+    # 8 survives the conversion to RGB15 (low 3 bits are dropped). 0 does not,
+    # and a zero palette entry is transparent even when it is not index 0.
+    palette[background * 3:background * 3 + 3] = [8, 8, 8]
     if any(p == 0 for p in indices):
         sys.exit("banner background was left on the transparent palette entry")
     write_bmp(dst, indices, palette)
