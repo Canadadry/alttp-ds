@@ -28,6 +28,8 @@ DAT_CANDIDATES = [
 ROM_CANDIDATES = [
     ROOT / "vendor" / "zelda3" / "zelda3.sfc",
     ROOT / "vendor" / "zelda3" / "zelda3.smc",
+    ROOT / "vendor" / "zelda3" / "assets" / "zelda3.sfc",
+    ROOT / "vendor" / "zelda3" / "assets" / "zelda3.smc",
     ROOT / "zelda3.sfc",
     ROOT / "zelda3.smc",
     ROOT / "data" / "zelda3.sfc",
@@ -65,13 +67,55 @@ def publish(src):
     shutil.copy2(src, EMBED)
 
 
+def restool_python():
+    """restool uses syntax that needs Python 3.8. python on PATH may be older."""
+    probe = (
+        "import sys; assert sys.version_info >= (3, 8); "
+        "import PIL, yaml; print(sys.executable)"
+    )
+
+    def supports(executable):
+        try:
+            out = subprocess.check_output(
+                [executable, "-c", probe],
+                stderr=subprocess.DEVNULL,
+                universal_newlines=True,
+            ).strip()
+        except (OSError, subprocess.CalledProcessError):
+            return None
+        return out or None
+
+    found = supports(sys.executable)
+    if found:
+        return found
+    for ver in ("3.12", "3.11", "3.10", "3.9", "3.8"):
+        try:
+            out = subprocess.check_output(
+                ["py", "-" + ver, "-c", "import sys; print(sys.executable)"],
+                stderr=subprocess.DEVNULL,
+                universal_newlines=True,
+            ).strip()
+        except (OSError, subprocess.CalledProcessError):
+            continue
+        found = supports(out) if out else None
+        if found:
+            return found
+    fail(
+        "error: asset extraction needs Python 3.8 or newer, plus Pillow and PyYAML.\n"
+        "python on PATH is %s.\n"
+        "Install Python 3.11, then run: py -3.11 -m pip install pillow pyyaml"
+        % sys.version.split()[0]
+    )
+
+
 def extract(rom):
     restool = ROOT / "vendor" / "zelda3" / "assets" / "restool.py"
     if not restool.is_file():
         fail("error: vendor/zelda3 is missing. Run: git submodule update --init")
+    python = restool_python()
     print("assets: extracting zelda3_assets.dat from %s" % rom)
     subprocess.check_call(
-        [sys.executable, str(restool), "--extract-from-rom", "--rom", str(rom)],
+        [python, str(restool), "--extract-from-rom", "--rom", str(rom)],
         cwd=str(ROOT / "vendor" / "zelda3"),
     )
     if not valid_dat(EXTRACTED):
@@ -95,11 +139,10 @@ def main():
         fail(
             "error: this build needs game data from a USA A Link to the Past ROM you own.\n"
             "\n"
-            "Copy zelda3_assets.dat to the project root or your Desktop, or copy\n"
-            "your ROM to vendor/zelda3/zelda3.sfc.\n"
+            "Copy your USA ROM to vendor/zelda3/assets/zelda3.sfc.\n"
             "USA ROM SHA-256: %s\n"
             "\n"
-            "The ROM is only used to extract zelda3_assets.dat. Neither file is committed."
+            "The ROM stays on your PC and is not committed."
             % USA_SHA256
         )
     publish(extract(rom))

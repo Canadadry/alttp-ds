@@ -8,7 +8,7 @@
 
 ALTTP DS is a homebrew port of [snesrev/zelda3](https://github.com/snesrev/zelda3), a C reimplementation of the SNES game. It is not an emulator. The game logic runs natively on the DS's ARM9. The picture is built on the DS 2D engine, and the music plays on the DS sound hardware. The bottom screen can show a touch HUD with an item panel, a gear panel, and a live world or dungeon map.
 
-> **You supply the game data.** This repo contains no Nintendo ROM and no game assets. The build links `zelda3_assets.dat` into `lttp-ds.nds`. You provide that file, or a USA *A Link to the Past* ROM that you own so the build can extract it (see [Step 2](#2-provide-the-game-data)). This project is not affiliated with or endorsed by Nintendo.
+> **You supply the ROM.** This repo contains no Nintendo ROM and no game assets. Put a legally obtained USA `zelda3.sfc` in `vendor/zelda3/assets` and run `build.bat`. This project is not affiliated with or endorsed by Nintendo.
 
 ## Features
 
@@ -64,10 +64,10 @@ You can remap the controls however you like in the settings menu.
 
 ### What you need
 
-- Game data from a **USA** *A Link to the Past* ROM that you own. Either an extracted `zelda3_assets.dat` (about 684 KB), or the ROM itself (`zelda3.sfc` or `zelda3.smc`).
+- A legally obtained **USA** *A Link to the Past* ROM, named `zelda3.sfc`.
   SHA-256: `66871d66be19ad2c34c927d6b14cd8eb6fc3181965b6e517cb361f7316009cfb`
 - [devkitPro](https://devkitpro.org/) with **devkitARM** and **libnds**. Install the `nds-dev` package group. The build is tested with libnds 2.0 on Windows. `build.bat` expects devkitPro at `C:\devkitPro`.
-- [Python 3](https://www.python.org/) on `PATH`. Extracting from a ROM also needs `Pillow` and `PyYAML` (`pip install Pillow PyYAML`).
+- [Python 3.8](https://www.python.org/) or newer, with `Pillow` and `PyYAML` (`pip install Pillow PyYAML`). If `python` on PATH is older, the build uses the newest `py -3` that has those libraries.
 - Git.
 - To run it: [melonDS](https://melonds.melonemu.org/), or a DS, DS Lite, or DSi with a DLDI flashcart or Twilight Menu++.
 
@@ -82,25 +82,9 @@ cd alttp-ds
 
 If you already cloned without them: `git submodule update --init`.
 
-### 2. Provide the game data
+### 2. Add your ROM
 
-The build takes the first `zelda3_assets.dat` it finds, in this order:
-
-1. The project root
-2. `data/zelda3_assets.dat`
-3. `vendor/zelda3/zelda3_assets.dat`
-4. `zelda3_assets.dat` on your Desktop
-5. `Desktop/ALTTP-DS/zelda3_assets.dat`
-
-If none of those exist, it extracts one from the first ROM it finds:
-
-1. `vendor/zelda3/zelda3.sfc` or `vendor/zelda3/zelda3.smc`
-2. `zelda3.sfc` or `zelda3.smc` in the project root
-3. `data/zelda3.sfc` or `data/zelda3.smc`
-
-Extraction runs `vendor/zelda3/assets/restool.py --extract-from-rom` and writes `zelda3_assets.dat` to the project root. The ROM stays on the PC. Neither the ROM nor `zelda3_assets.dat` is committed. Both are in `.gitignore`.
-
-A `zelda3_assets.dat` that is present but is not a Zelda3 asset file stops the build. An existing dat is used as-is, so a ROM next to it is not read.
+Copy `zelda3.sfc` to `vendor/zelda3/assets/`. It stays on your PC and is not committed.
 
 ### 3. Build
 
@@ -110,13 +94,11 @@ From the project root on Windows, double-click `build.bat` or run:
 build.bat
 ```
 
-`build.bat` sets `DEVKITPRO` to `C:\devkitPro` and runs `make`. The asset file is linked into the ARM9 binary. The build also compiles the ARM7 sound core in `platform/nds/arm7`. When it finishes it prints `Built` and the full path of **`lttp-ds.nds`** in the project root.
-
-If the game data is missing, the build stops and does not write `lttp-ds.nds`. Double-clicking `build.bat` leaves the window open so you can read the error. From an MSYS2 or Unix shell with `DEVKITARM` set, run `make` from the project root. `make clean` cleans the ARM9 and ARM7 builds.
+When it finishes, **`lttp-ds.nds`** is in the project root. If `zelda3.sfc` is missing, the build stops and does not write that file. Double-clicking `build.bat` leaves the window open so you can read the error.
 
 ### 4. Run
 
-Copy `lttp-ds.nds` only. The game data is already inside it. A loose `zelda3_assets.dat` on the card is ignored. If the linked data is not a real asset file, the bottom screen says `Invalid assets file` and the game waits there.
+Copy `lttp-ds.nds` only. The game data is already inside it. If that data is not from a USA ROM, the bottom screen says `Invalid assets file` and the game waits there.
 
 **melonDS**
 
@@ -149,8 +131,8 @@ alttp-ds/
     arm7/               ARM7: sound-channel driver
     bottom-screen/      HUD artwork (PNG + grit)
     include/            stubs that replace SDL / Opus
-    prepare_assets.py   requires zelda3_assets.dat or a USA ROM, then stages the dat for the link
-  Makefile, build.bat   build. The dat is linked into lttp-ds.nds
+    prepare_assets.py   reads vendor/zelda3/assets/zelda3.sfc and stages the game data for the link
+  Makefile, build.bat   build. The game data is linked into lttp-ds.nds
 ```
 
 ## Credits

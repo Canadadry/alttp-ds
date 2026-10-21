@@ -13,8 +13,7 @@ if %ERR%==0 (
 )
 echo.
 echo Build failed. lttp-ds.nds was not created.
-echo Put zelda3_assets.dat in this folder or on your Desktop,
-echo or put your USA ROM at vendor\zelda3\zelda3.sfc.
+echo Put your USA ROM at vendor\zelda3\assets\zelda3.sfc.
 :done
 echo %cmdcmdline% | find /i "%~f0" >nul
 if not errorlevel 1 pause
