@@ -238,7 +238,12 @@ static unsigned timer_from_freq(unsigned freq)
 
 static unsigned side_level(int gain, int vol, int master)
 {
-	int amp = (gain * iabs8(vol) * iabs8(master)) >> 18;
+	/* gain, voice, and master are 11, 7, and 7 bits. >> 18 maps a fully
+	 * open DSP onto one channel. The songs leave the master at 0x60 and
+	 * the voice volumes far below 127, so that mapping only fills about
+	 * a quarter of the register. >> 16 puts a normal note on the
+	 * hardware maximum. */
+	int amp = (gain * iabs8(vol) * iabs8(master)) >> 16;
 
 	if (amp < 0)
 		amp = 0;
@@ -683,8 +688,9 @@ static unsigned echo_vol(int v)
 {
 	if (v < 0)
 		v = -v;
-	/* Same extra bit as the dry samples, so the wash stays in balance. */
-	v *= 2;
+	/* *2 matches the extra bit on the dry samples. *4 matches the
+	 * channel boost in side_level, so the wash stays in balance. */
+	v *= 8;
 	if (v > 127)
 		v = 127;
 	return (unsigned)v;
