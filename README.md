@@ -8,7 +8,7 @@
 
 ALTTP DS is a homebrew port of [snesrev/zelda3](https://github.com/snesrev/zelda3), a C reimplementation of the SNES game. It is not an emulator. The game logic runs natively on the DS's ARM9. The picture is built on the DS 2D engine, and the music plays on the DS sound hardware. The bottom screen can show a touch HUD with an item panel, a gear panel, and a live world or dungeon map.
 
-> **You supply the ROM.** This repo contains no Nintendo ROM and no game assets. Put a legally obtained USA `zelda3.sfc` in `vendor/zelda3/assets` and run `build.bat`. This project is not affiliated with or endorsed by Nintendo.
+> **You supply the ROM.** This repo contains no Nintendo ROM and no game assets. Put a legally obtained USA `zelda3.sfc` in `vendor/zelda3/assets` and run `build.py`. This project is not affiliated with or endorsed by Nintendo.
 
 ## Features
 
@@ -66,7 +66,7 @@ You can remap the controls however you like in the settings menu.
 
 - A legally obtained **USA** *A Link to the Past* ROM, named `zelda3.sfc`.
   SHA-256: `66871d66be19ad2c34c927d6b14cd8eb6fc3181965b6e517cb361f7316009cfb`
-- [devkitPro](https://devkitpro.org/) with **devkitARM** and **libnds**. Install the `nds-dev` package group. The build is tested with libnds 2.0 on Windows. `build.bat` expects devkitPro at `C:\devkitPro`.
+- [devkitPro](https://devkitpro.org/) with **devkitARM** and **libnds**. Install the `nds-dev` package group. The build is tested with libnds 2.0. On Windows the installer uses `C:\devkitPro`. On macOS and Linux it is `/opt/devkitpro`. Set `DEVKITPRO` if you installed it somewhere else.
 - [Python 3.8](https://www.python.org/) or newer, with `Pillow` and `PyYAML` (`pip install Pillow PyYAML`). If `python` on PATH is older, the build uses the newest `py -3` that has those libraries.
 - Git.
 - To run it: [melonDS](https://melonds.melonemu.org/), or a DS, DS Lite, or DSi with a DLDI flashcart or Twilight Menu++.
@@ -88,13 +88,13 @@ Copy `zelda3.sfc` to `vendor/zelda3/assets/`.
 
 ### 3. Build
 
-From the project root on Windows, double-click `build.bat` or run:
+From the project root:
 
-```bat
-build.bat
+```sh
+python3 build.py
 ```
 
-When it finishes, **`lttp-ds.nds`** is in the project root. If `zelda3.sfc` is missing, the build stops and does not write that file. Double-clicking `build.bat` leaves the window open so you can read the error.
+On Windows, `py build.py` does the same thing. When it finishes, **`lttp-ds.nds`** is in the project root. If `zelda3.sfc` is missing, the build stops and does not write that file. Double-clicking `build.py` on Windows leaves the window open so you can read the error.
 
 ### 4. Run
 
@@ -132,7 +132,7 @@ alttp-ds/
     bottom-screen/      HUD artwork (PNG + grit)
     include/            stubs that replace SDL / Opus
     prepare_assets.py   reads vendor/zelda3/assets/zelda3.sfc and stages the game data for the link
-  Makefile, build.bat   build. The game data is linked into lttp-ds.nds
+  build.py, Makefile    build. The game data is linked into lttp-ds.nds
 ```
 
 ## Credits

@@ -17,6 +17,11 @@ export LTTP_ROOT
 
 include $(DEVKITARM)/ds_rules
 
+ifeq ($(strip $(PYTHON)),)
+  PYTHON := $(shell command -v python3 2>/dev/null || command -v python 2>/dev/null)
+endif
+export PYTHON
+
 ARM7_ELF := $(LTTP_ROOT)/platform/nds/arm7/zelda_arm7.elf
 _ARM7_ELF := -7 $(ARM7_ELF)
 
@@ -128,7 +133,7 @@ $(BUILD): prepare-assets
 # extracted from a USA ROM. Linked into the ARM9 binary below.
 prepare-assets:
 	$(SILENTMSG) assets
-	$(SILENTCMD)python "$(LTTP_ROOT)/platform/nds/prepare_assets.py"
+	$(SILENTCMD)"$(PYTHON)" "$(LTTP_ROOT)/platform/nds/prepare_assets.py"
 
 clean:
 	@echo clean ...
@@ -145,7 +150,7 @@ $(OUTPUT).elf: $(OFILES)
 ifeq ($(suffix $(ICON)),.png)
 $(GAME_ICON): $(LTTP_ROOT)/$(ICON) $(LTTP_ROOT)/platform/nds/png2banner.py
 	$(SILENTMSG) banner $(notdir $@)
-	$(SILENTCMD)python $(LTTP_ROOT)/platform/nds/png2banner.py $< $@
+	$(SILENTCMD)"$(PYTHON)" "$(LTTP_ROOT)/platform/nds/png2banner.py" $< $@
 endif
 
 $(ARM7_ELF):
@@ -179,7 +184,7 @@ zelda3_assets.dat.o: embed/zelda3_assets.dat
 
 # grit ignores alpha, so transparent pixels are matted to FF00FF first.
 %.s %.h: %.png %.grit
-	$(SILENTCMD)python $(LTTP_ROOT)/platform/nds/png_matte.py $< $*.matte.png
+	$(SILENTCMD)"$(PYTHON)" "$(LTTP_ROOT)/platform/nds/png_matte.py" $< $*.matte.png
 	$(DEVKITPRO)/tools/bin/grit $*.matte.png -ff $(filter %.grit,$^) -fts -o$*
 	@$(RM) $*.matte.png
 
