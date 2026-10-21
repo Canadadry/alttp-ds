@@ -84,7 +84,7 @@ If you already cloned without them: `git submodule update --init`.
 
 ### 2. Add your ROM
 
-Copy `zelda3.sfc` to `vendor/zelda3/assets/`. It stays on your PC and is not committed.
+Copy `zelda3.sfc` to `vendor/zelda3/assets/`.
 
 ### 3. Build
 
