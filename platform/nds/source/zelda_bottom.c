@@ -426,25 +426,25 @@ static void read_entry(const Ppu *ppu, u16 entry, u8 out[kTileH][kTileH])
  * tiles, standing up and filling from the bottom. Its ends are rounded
  * caps and between them is a straight pocket of 32 rows. Here the caps keep
  * their pixels and only the pocket grows, from 32 to kMeterPocket, so a full
- * sprite is 5 + 69 + 5 = 79 long (the top cap has 3 more blank rows, which
- * the half-magic label uses).
+ * sprite is 5 + 69 + 5 = 79 long. The top tile has three more rows above
+ * the cap, where the game draws its own 1/2. Those rows are left off.
  *
  * The game fills its pocket in steps of 8 magic, which would stretch to
  * steps 2 or 3 pixels wide. Instead the fill is drawn from link_magic_power
  * itself, 0 to 128, over the whole pocket. Pocket rows are cut from the
  * game's own tiles: an empty row, a filled row, and the bright row that
- * leads the fill. The frame and the caps are read live from the HUD buffer,
- * so the half-magic cap shows up by itself. */
+ * leads the fill. The frame and the caps are read live from the HUD buffer. */
 enum {
 	kMeterX = 169,
 	kMeterY = 140,
 	kMeterThick = 16,
 	/* Where the capsule sits in its 3-tile-wide block. */
 	kSrcLeft = 4,
-	kTopRows = 8,		/* source rows 0..7, 5 of them drawn normally */
+	kTopRows = 8,		/* source rows 0..7; 0..2 are the game's 1/2 */
+	kTopCapRows = 5,	/* source rows 3..7, the rounded end */
 	kBottomRows = 5,	/* source rows 40..44 */
 	kMeterPocket = 69,
-	kMeterLen = kBottomRows + kMeterPocket + kTopRows,
+	kMeterLen = kBottomRows + kMeterPocket + kTopCapRows,
 	kMagicMax = 128,
 	/* HUDXY(2, 0) in the 32-word-wide HUD buffer. */
 	kMagicWord = 2,
@@ -453,7 +453,7 @@ enum {
 	kFillFull = 0x3c5e,
 	kFillEdge = 0x3c4e,
 	/* The 1/2 upgrade's label, just above the meter. */
-	kHalfX = 201,
+	kHalfX = 203,
 	kHalfY = 136,
 	kHalfW = 13,
 	kHalfH = 7
