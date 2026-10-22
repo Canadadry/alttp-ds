@@ -32,6 +32,12 @@ void ZeldaMapPutRow(u8 *fb, int pitch, int y, u8 border);
 /* Nonzero once after the map's colors change. */
 int ZeldaMapTakePalette(void);
 
+/* The magic mirror's fade, for the map's own colors. Positive: add that
+ * much white to each channel. Negative: each channel is at least that far
+ * toward white, which is the fade back down. Zero when the mirror is not
+ * running. */
+int ZeldaMapMirrorWhite(void);
+
 /* Colors of the map, by entry, and the palette slot each is shown in. */
 const u16 *ZeldaMapColors(void);
 u8 ZeldaMapSlot(int entry);

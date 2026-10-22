@@ -7,7 +7,10 @@
 #include "zelda_rtl.h"
 #include "variables.h"
 #include "load_gfx.h"
+#include "snes/snes_regs.h"
 #include "zelda_bottom_map.h"
+
+uint8_t dma_read(struct Dma *dma, uint16_t adr);
 
 /* What is on screen is a view of one of two things.
  *
@@ -21,7 +24,14 @@
  * own map is open, so they are unpacked from the game's data here.
  *
  * Both draw with palette entries 0 to kMapColors - 1. The last three are
- * the markers. A table says which palette slot each is shown in. */
+ * the markers. A table says which palette slot each is shown in.
+ *
+ * The magic mirror stretches the top screen into horizontal bands that
+ * travel downward while the colors fade through white. The same bands are
+ * applied here, one per map row, and the map's colors follow that fade.
+ * The world index flips at the start of the warp, while the picture on
+ * top is still the world being left, so this map keeps that world until
+ * the fade turns around at white. */
 
 #include "zelda_map_tab.h"
 
@@ -75,6 +85,14 @@ typedef struct {
 
 static View shown = { kModeNone };
 
+/* The mirror wave, one shift per map row, and how white the colors are.
+ * See mirror_track. mirror_from is the world shown until the fade peaks;
+ * -1 while that hold is not in use. */
+static int wave_on;
+static int wave_dx[kMapH];
+static int wave_white;
+static int mirror_from = -1;
+
 /* The graphics: world tiles already as palette slots, or dungeon tiles as
  * their 3-bit pixel values, 64 tiles to each of the four graphics packs. */
 enum { kTilesNone, kTilesWorld, kTilesDungeon };
@@ -127,6 +145,11 @@ u8 ZeldaMapSlot(int entry)
 {
 	init_slots();
 	return slot_tab[entry];
+}
+
+int ZeldaMapMirrorWhite(void)
+{
+	return wave_white;
 }
 
 static void marker_colors(void)
@@ -229,9 +252,45 @@ static void world_view(View *v)
 	v->on = (frame_counter & 0x10) != 0;
 }
 
+/* A larger scroll shows land from further right, so the row slides left.
+ * Past the land, the edge pixel is repeated. */
 static void world_row(u8 *dst, int r)
 {
-	memcpy(dst, &world_pic[shown.oy + r - kLandMin][shown.ox - kLandMin], kMapW);
+	int yy = shown.oy + r - kLandMin;
+	int x0 = shown.ox - kLandMin;
+	int dx = wave_on ? wave_dx[r] : 0;
+	int s0, left, n;
+
+	if ((unsigned)yy >= (unsigned)kLandSize) {
+		memset(dst, slot_tab[kBlack], kMapW);
+		return;
+	}
+	s0 = x0 + dx;
+	if (s0 >= 0 && s0 + kMapW <= kLandSize) {
+		memcpy(dst, &world_pic[yy][s0], kMapW);
+		return;
+	}
+	left = 0;
+	if (s0 < 0) {
+		left = -s0;
+		if (left > kMapW)
+			left = kMapW;
+		memset(dst, world_pic[yy][0], left);
+		s0 = 0;
+	}
+	n = kMapW - left;
+	if (s0 >= kLandSize) {
+		memset(dst + left, world_pic[yy][kLandSize - 1], n);
+		return;
+	}
+	if (s0 + n > kLandSize) {
+		int fit = kLandSize - s0;
+
+		memcpy(dst + left, &world_pic[yy][s0], fit);
+		memset(dst + left + fit, world_pic[yy][kLandSize - 1], n - fit);
+		return;
+	}
+	memcpy(dst + left, &world_pic[yy][s0], n);
 }
 
 /* ---- Dungeon ---- */
@@ -497,6 +556,24 @@ static void draw_mark(u8 *dst, int r, int cx, int cy, const char *const *pat, in
 	}
 }
 
+/* The dungeon picture is only as wide as the box, so a shift past either
+ * end is the empty color. The marker is drawn afterwards, unshifted:
+ * on the top screen the wave scrolls the ground and leaves Link put. */
+static void blit_shifted(u8 *dst, const u8 *src, int dx, u8 fill)
+{
+	int x;
+
+	if (!dx) {
+		memcpy(dst, src, kMapW);
+		return;
+	}
+	for (x = 0; x < kMapW; x++) {
+		int s = x + dx;
+
+		dst[x] = (unsigned)s < (unsigned)kMapW ? src[s] : fill;
+	}
+}
+
 void ZeldaMapRow(u8 *dst, int y)
 {
 	int r = y - kMapY;
@@ -507,7 +584,8 @@ void ZeldaMapRow(u8 *dst, int y)
 	if (shown.mode == kModeWorld)
 		world_row(dst, r);
 	else if (shown.mode == kModeDungeon)
-		memcpy(dst, dung_pic[r], kMapW);
+		blit_shifted(dst, dung_pic[r], wave_on ? wave_dx[r] : 0,
+			     slot_tab[kBlack]);
 	else
 		memset(dst, slot_tab[kBlack], kMapW);
 
@@ -548,7 +626,9 @@ void ZeldaMapPutRow(u8 *fb, int pitch, int y, u8 border)
 
 	if (r < 0 || r >= kMapH)
 		return;
-	if (shown.mode == kModeWorld &&
+	/* The straight copy has no per-row shift, so the wave takes the
+	 * path that builds the row. */
+	if (shown.mode == kModeWorld && !wave_on &&
 	    !(shown.on && r >= shown.cy - 3 && r <= shown.cy + 3)) {
 		put_world_row(row, r, border);
 		return;
@@ -593,12 +673,105 @@ static void mark_rows(const View *v, int *lo, int *hi)
 		note_rows(lo, hi, v->by, 2);
 }
 
+/* Channels 6 and 7 writing both background scrolls: the mirror wave, and
+ * not the door iris. The top screen reads the same registers. */
+static int mirror_running(void)
+{
+	if ((HDMAEN_copy & 0xc0) != 0xc0 || !g_zenv.dma)
+		return 0;
+	return dma_read(g_zenv.dma, BBAD6) == (uint8)BG1HOFS &&
+		dma_read(g_zenv.dma, BBAD7) == (uint8)BG2HOFS;
+}
+
+/* Countdown climbs to 31 on the way to white. On the way back the
+ * picture stays white until the new world's colors are loaded
+ * (overworld_map_state step 9), and each step after that lets one
+ * level of white go, which is what the subtractive filter does once
+ * it has those colors to move toward. */
+static int mirror_white_of(int on)
+{
+	static int back = -1;
+	unsigned dark = darkening_or_lightening_screen;
+	unsigned c = palette_filter_countdown;
+	int left;
+
+	if (!on) {
+		back = -1;
+		return 0;
+	}
+	if (dark == 2) {
+		back = -1;
+		return c > 31 ? 31 : (int)c;
+	}
+	if (dark != 0 || c < 31)
+		return 0;
+	if (overworld_map_state < 9) {
+		back = -1;
+		return -31;
+	}
+	if (back < 0)
+		back = (int)c;
+	left = 31 - ((int)c - back);
+	return left > 0 ? -left : 0;
+}
+
+/* Rows of the SNES picture the top screen actually shows. The map is
+ * shorter, so each of its rows takes the line at the same fraction. */
+enum { kMirrorCrop = 16 };
+
+/* Sample the wave. Returns nonzero when the shifts changed and the map
+ * picture has to be drawn again. A change in the white level is reported
+ * through the palette flag instead. */
+static int mirror_track(void)
+{
+	int on = mirror_running();
+	int white = mirror_white_of(on);
+	int changed = on != wave_on;
+	int i;
+
+	if (on) {
+		for (i = 0; i < kMapH; i++) {
+			int line = kMirrorCrop +
+				(i * (SCREEN_HEIGHT - 1)) / (kMapH - 1);
+			int d = (int16)(uint16)(hdma_table_dynamic[line] -
+						BG2HOFS_copy2);
+
+			if (d != wave_dx[i])
+				changed = 1;
+			wave_dx[i] = d;
+		}
+	} else if (changed) {
+		memset(wave_dx, 0, sizeof wave_dx);
+	}
+	wave_on = on;
+	if (white != wave_white) {
+		wave_white = white;
+		pal_dirty = 1;
+	}
+	return changed;
+}
+
+/* The index already names the destination. Keep drawing the world we
+ * left until the fade reaches white and turns around. */
+static void mirror_hold_world(View *n)
+{
+	if (wave_on && darkening_or_lightening_screen == 2) {
+		if (mirror_from < 0)
+			mirror_from = n->id ^ 1;
+		n->id = mirror_from;
+	} else {
+		mirror_from = -1;
+	}
+}
+
 int ZeldaMapUpdate(int *lo, int *hi)
 {
 	View n;
 	int full = 0;
+	int wave_rows;
 
 	init_slots();
+	wave_rows = mirror_track();
 	memset(&n, 0, sizeof n);
 	n.mode = kModeNone;
 
@@ -624,13 +797,16 @@ int ZeldaMapUpdate(int *lo, int *hi)
 				full = 1;
 			}
 		}
+		mirror_from = -1;
 	} else if (player_is_indoors) {
 		/* A cave or house, which has no map. Draw nothing. */
 		if (shown.mode != kModeNone || shown.id != -1)
 			full = 1;
 		n.id = -1;
+		mirror_from = -1;
 	} else {
 		world_view(&n);
+		mirror_hold_world(&n);
 		if (shown.mode != kModeWorld || world_dark != n.id) {
 			build_world(n.id);
 			full = 1;
@@ -639,7 +815,7 @@ int ZeldaMapUpdate(int *lo, int *hi)
 			full = 1;
 	}
 
-	if (full) {
+	if (full || wave_rows) {
 		*lo = kMapY;
 		*hi = kMapY + kMapH;
 		shown = n;
@@ -653,8 +829,15 @@ int ZeldaMapUpdate(int *lo, int *hi)
 		mark_rows(&shown, lo, hi);
 		mark_rows(&n, lo, hi);
 		shown = n;
-		return *hi > *lo;
+		if (*hi > *lo)
+			return 1;
+	} else {
+		shown = n;
 	}
-	shown = n;
+	/* The fade moved and the picture did not. */
+	if (pal_dirty) {
+		*lo = *hi = kMapY;
+		return 1;
+	}
 	return 0;
 }

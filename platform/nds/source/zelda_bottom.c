@@ -1109,6 +1109,29 @@ static u16 dim(u16 c, int level)
 		     ((c >> 10) & 31) * keep / kPanelBlack);
 }
 
+/* The mirror fade. Positive adds white; negative holds every channel at
+ * least that high, which is the trip back down from white. */
+static u16 wash(u16 c, int white)
+{
+	int ch[3], i;
+
+	if (!white)
+		return c;
+	for (i = 0; i < 3; i++) {
+		int v = (c >> (5 * i)) & 31;
+
+		if (white > 0) {
+			v += white;
+			if (v > 31)
+				v = 31;
+		} else if (v < -white) {
+			v = -white;
+		}
+		ch[i] = v;
+	}
+	return RGB15(ch[0], ch[1], ch[2]);
+}
+
 /* The panel's colors at the current fade. The box behind them is black, so
  * dimming each color toward black is the same as fading the panel. */
 static void set_panel_palette(void)
@@ -1119,9 +1142,11 @@ static void set_panel_palette(void)
 	/* The map uses the same slots, and all it needs besides. */
 	if (panel_shown == kPanelNormal) {
 		const u16 *map = ZeldaMapColors();
+		int white = ZeldaMapMirrorWhite();
 
 		for (i = 0; i < kMapColors; i++)
-			BG_PALETTE_SUB[ZeldaMapSlot(i)] = dim(map[i], panel_level);
+			BG_PALETTE_SUB[ZeldaMapSlot(i)] =
+				dim(wash(map[i], white), panel_level);
 		return;
 	}
 	for (i = 0; i < 32; i++)
