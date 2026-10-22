@@ -1175,11 +1175,19 @@ static int in_game(void)
 }
 
 /* X opens the dungeon map (submodule 3 of the menu module) or the overworld
- * map (submodule 7). Start's item menu is submodule 1 and is not this. */
+ * map (submodule 7). The flute's bird map is submodule 10. Choosing a place
+ * leaves state 5 for 6, which only fades the world map out; Link is still
+ * standing where he called the bird, so the mini map would come back on
+ * the old spot. State 7 loads the chosen place, which is what moves the
+ * map, and leaves the state at 8. The idle picture stays until then.
+ * Start's item menu is submodule 1 and is not this. */
 static int map_open(void)
 {
-	return main_module_index == 14 &&
-		(submodule_index == 3 || submodule_index == 7);
+	if (main_module_index != 14)
+		return 0;
+	if (submodule_index == 3 || submodule_index == 7)
+		return 1;
+	return submodule_index == 10 && overworld_map_state < 8;
 }
 
 /* GAME OVER letters and the continue choice. The collapse before that
