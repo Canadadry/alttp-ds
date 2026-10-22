@@ -161,6 +161,9 @@ static int bg2_front_on_slot1;
  * scrolls without changing those maps; rebuilding it every frame is what
  * stalls the walk. */
 static int bake_valid;
+/* Slot 1 is showing BG2 priority tiles copied onto BG1. Those tiles share
+ * BG1's scroll, so they have to come back off when that scroll leaves BG2. */
+static int bg1_baked;
 /* Set while the vblank present may write tiles that are already showing.
  * The map itself is built earlier, into RAM. */
 static int vram_commit;
@@ -2697,6 +2700,8 @@ static void classify_picture(const Ppu *ppu) {
 }
 
 static void lay_maps(Ppu *ppu) {
+	int bake;
+
 	/* BG3 priority 0 and BG2 share the back background. Switching which
 	 * one owns that map has to upload it again. */
 	if (pic.bg2_on) {
@@ -2712,6 +2717,15 @@ static void lay_maps(Ppu *ppu) {
 	}
 
 	bg2_front_on_slot1 = pic.lift_bg2 && !(pic.bg1_main || pic.stair_arch);
+	/* The black room border is a BG2 priority tile. While the two scrolls
+	 * match it is copied onto the shell's layer. Trinexx then moves that
+	 * layer, and the border goes with it. Put the shell back on its own
+	 * so the border stays with the room. */
+	bake = pic.lift_bg2 && (pic.bg1_main || pic.stair_arch);
+	if (!bake && bg1_baked) {
+		map_valid[0] = 0;
+		bg1_baked = 0;
+	}
 	if (pic.lamp)
 		present_bg1(ppu, 0, 1);
 	else
@@ -2719,10 +2733,12 @@ static void lay_maps(Ppu *ppu) {
 	if (pic.bg2_on)
 		present_bg2(ppu, pic.lift_bg2,
 			climbing_stairs() && pic.bg1_sub && !pic.bg1_main);
-	if (pic.lift_bg2 && (pic.bg1_main || pic.stair_arch))
+	if (bake) {
 		bake_bg2_doors(ppu, pic.stair_arch);
-	else if (pic.lift_bg2)
+		bg1_baked = 1;
+	} else if (pic.lift_bg2) {
 		show_bg2_front(ppu);
+	}
 	present_bg3(ppu, pic.show_bg3_lo);
 }
 
