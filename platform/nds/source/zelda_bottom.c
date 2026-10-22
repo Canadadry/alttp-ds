@@ -790,7 +790,7 @@ static void menu_changed_rows(const HudMenu *a, const HudMenu *b, int *lo, int *
  *
  *   row 1  sword, shield, tunic, mitt, boots, flippers, moon pearl
  *   row 2  BOTTLES: four bottles          PENDANTS: three
- *   row 3  LIFE: current hearts           CRYSTALS: seven
+ *   row 3  LIFE: current hearts           CRYSTALS: four, then three
  *   row 4  HEART PIECES: the four-part heart    KEYS: only inside a dungeon
  *
  * Every picture is a list of 8x8 tile cells (x, y, tile entry). The cells
@@ -805,10 +805,10 @@ enum {
 	kGearBottleLabelY = 46,
 	kGearBottleY = 56,
 	kGearPendantPitch = 18,
-	kGearLifeY = 78,
 	/* The heart shape starts one pixel into its tile. */
 	kGearHeartY = 88 - 1,
 	kGearHeartX = kGearLeft - 1,
+	kGearCrystalLabelY = 78,
 	kGearCrystalY = 88,
 	kGearCrystalRowStep = 10,
 	kGearPiecesLabelY = 122,
@@ -912,6 +912,14 @@ static void gear_icon(HudGear *g, int x, int y, const u16 *v)
 		gear_cell(g, x + (i & 1) * kTileH, y + (i >> 1) * kTileH, v ? v[i] : 0);
 }
 
+/* The inventory crystal, one 16x8 picture. Owned or not, both tiles are
+ * added so the cell count never changes. */
+static void gear_crystal(HudGear *g, int x, int y, int got)
+{
+	gear_cell(g, x, y, got ? 0x2d44 : 0);
+	gear_cell(g, x + kTileH, y, got ? 0x2d45 : 0);
+}
+
 static int clamp_to(int v, int max)
 {
 	return v < 0 ? 0 : v > max ? max : v;
@@ -921,8 +929,6 @@ static void build_gear(HudGear *g)
 {
 	const Ppu *ppu = g_zenv.ppu;
 	const u16 *hearts = &hud_tile_indices_buffer[kHeartWord];
-	static const u8 kCrystalRowStart[7] = { 0, 0, 0, 1, 1, 2, 2 };
-	static const u8 kCrystalColumn[7] = { 0, 1, 2, 0, 1, 0, 1 };
 	int sword = link_sword_type == 0xff ? 0 : clamp_to(link_sword_type, 4);
 	int x, i, r, c;
 
@@ -960,17 +966,23 @@ static void build_gear(HudGear *g)
 		for (c = 0; c < kHeartCols; c++)
 			gear_cell(g, kGearHeartX + c * kTileH, kGearHeartY + r * kTileH,
 				  hearts[r * 32 + c]);
-	/* Seven crystals, 16 wide and 8 tall: three, two, two. */
-	for (i = 0; i < 7; i++) {
-		int cx, cy;
-		int got = (link_has_crystals >> i) & 1;
+	/* The same crystal seven times. Top row, right to left: 1 2 3 4.
+	 * The row under it, also right to left and centered: 5 6 7.
+	 * The save's bits are not in that order. 1 Palace of Darkness,
+	 * 2 Swamp, 3 Skull Woods, 4 Thieves' Town, 5 Ice Palace,
+	 * 6 Misery Mire, 7 Turtle Rock. */
+	{
+		static const u8 kCrystalX[7] = {
+			137, 123, 109, 95,
+			130, 116, 102
+		};
+		static const u8 kCrystalRow[7] = { 0, 0, 0, 0, 1, 1, 1 };
+		static const u8 kCrystalBit[7] = { 1, 4, 6, 5, 2, 0, 3 };
 
-		cy = kGearCrystalY + kCrystalRowStart[i] * kGearCrystalRowStep;
-		/* Rows of two sit centered under the row of three. */
-		cx = kGearRight + kCrystalColumn[i] * kGearPendantPitch +
-			(kCrystalRowStart[i] ? kGearPendantPitch / 2 : 0);
-		gear_cell(g, cx, cy, got ? 0x2d44 : 0);
-		gear_cell(g, cx + kTileH, cy, got ? 0x2d45 : 0);
+		for (i = 0; i < 7; i++)
+			gear_crystal(g, kCrystalX[i],
+				     kGearCrystalY + kCrystalRow[i] * kGearCrystalRowStep,
+				     (link_has_crystals >> kCrystalBit[i]) & 1);
 	}
 
 	/* Row 4: pieces of heart. */
@@ -1024,7 +1036,7 @@ typedef struct {
 static const GearLabel kGearLabels[] = {
 	{ kGearLeft, kGearBottleLabelY, "BOTTLES", 0 },
 	{ kGearRight, kGearBottleLabelY, "PENDANTS", 0 },
-	{ kGearRight, kGearLifeY, "CRYSTALS", 0 },
+	{ kGearRight, kGearCrystalLabelY, "CRYSTALS", 0 },
 	{ kGearLeft, kGearPiecesLabelY, "HEART PIECES", 0 },
 	{ kGearRight, kGearPiecesLabelY, "KEYS", 1 }
 };
