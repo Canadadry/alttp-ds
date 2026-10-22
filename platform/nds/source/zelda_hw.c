@@ -54,7 +54,9 @@ uint8_t dma_read(struct Dma *dma, uint16_t adr);
  * else stays behind the floor, which is how he walks under a bridge.
  * The same climb
  * can take every sprite off the main screen and leave it on the
- * subscreen; those are still drawn. A ledge jump
+ * subscreen; those are still drawn. When that climb forces every
+ * sprite to priority 3, the floor still covers them, and Link's own
+ * sprites stay in front of it. A ledge jump
  * raises Link to sprite priority 3 (sideways, south, and diagonal), and
  * that still has to sit
  * under the rain. A fixed color
@@ -1168,16 +1170,33 @@ static int climbing_stairs(void) {
 	}
 }
 
-static int ds_sprite_priority(int snes_priority, int bg1_main) {
+/* LinkOam_Main writes his body, sword, shield, and shadow into this block.
+ * The regions monsters allocate from stop on either side of it. */
+static int link_oam_slot(int sprite) {
+	int base = (int)sort_sprites_offset_into_oam_buffer >> 2;
+
+	return sprite >= base && sprite < base + 12;
+}
+
+static int ds_sprite_priority(int snes_priority, int bg1_main, int sprite) {
 	/* Same interleave as PpuDrawBackgrounds: 3 above BG1-high, 2 above
 	 * BG1-low, 0 and 1 above only the back layer. Priority 1 sits under a
 	 * main-screen BG1 lip, and under a bridge. Hyrule Castle has no
-	 * main-screen BG1, so that priority would bury the stair sprite under
-	 * the only floor. Raise it for the climb only. */
-	if (snes_priority >= 3)
+	 * main-screen BG1, so that priority would bury Link under the only
+	 * floor. Raise his block for the climb. A monster on the lower floor
+	 * uses the same priority to stay under a bridge, and stays there.
+	 * A spiral climb off the lower floor forces every sprite to priority 3
+	 * and leaves OBJ on the subscreen, so the floor still covers them.
+	 * Drawn on the main screen that priority is in front of the bridge. */
+	int link = link_oam_slot(sprite);
+
+	if (snes_priority >= 3) {
+		if (link_is_on_lower_level == 3 && !link)
+			return 3;
 		return 1;
+	}
 	if (snes_priority == 2 ||
-	    (snes_priority == 1 && !bg1_main && climbing_stairs()))
+	    (snes_priority == 1 && !bg1_main && climbing_stairs() && link))
 		return 2;
 	return 3;
 }
@@ -1257,7 +1276,7 @@ static void compose_sprites(Ppu *ppu, int sprites_on) {
 		}
 
 		oamSet(&oamMain, sprite, x, y,
-			ds_sprite_priority((oam1 >> 12) & 3, bg1_main),
+			ds_sprite_priority((oam1 >> 12) & 3, bg1_main, sprite),
 			(oam1 >> 9) & 7,
 			size == 16 ? SpriteSize_16x16 : SpriteSize_8x8,
 			SpriteColorFormat_16Color, SPRITE_GFX + sprite * 64, -1, false, false,
