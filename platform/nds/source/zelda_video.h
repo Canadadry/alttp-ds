@@ -8,6 +8,12 @@ void ZeldaVideoInit(void);
 void ZeldaVideoShowBottom(void);
 /* 256x256 8-bit bitmap of the bottom screen. Valid after ZeldaVideoShowBottom. */
 u16 *ZeldaVideoBottomFramebuffer(void);
+/* The bottom screen's rain layer, a text background in the VRAM the bitmap
+ * does not use. Configure picks the map size; the epoch changes when that
+ * layer's VRAM has to be written again. The id is -1 until the first init. */
+void ZeldaVideoRainConfigure(int wider, int higher);
+int ZeldaVideoRainEpoch(void);
+int ZeldaVideoRainBg(void);
 /* Lid sleep powers the LCDs off. The next present has to rebuild both screens. */
 void ZeldaVideoWake(void);
 void ZeldaVideoComposeSprites(void);

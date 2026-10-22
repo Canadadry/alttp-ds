@@ -8,7 +8,9 @@
 #include "variables.h"
 #include "load_gfx.h"
 #include "snes/snes_regs.h"
+#include "snes/ppu.h"
 #include "zelda_bottom_map.h"
+#include "zelda_video.h"
 
 uint8_t dma_read(struct Dma *dma, uint16_t adr);
 
@@ -31,7 +33,13 @@ uint8_t dma_read(struct Dma *dma, uint16_t adr);
  * applied here, one per map row, and the map's colors follow that fade.
  * The world index flips at the start of the warp, while the picture on
  * top is still the world being left, so this map keeps that world until
- * the fade turns around at white. */
+ * the fade turns around at white.
+ *
+ * Rain is the overworld's BG1 overlay, the same tiles the top screen
+ * blends over the ground. It is its own layer here, scrolled with that
+ * one and mixed the same way: half of the rain color, or all of it while
+ * the lightning is on. That mix is the rainy light. A window holds it to
+ * the map, so the rest of the HUD stays solid. */
 
 #include "zelda_map_tab.h"
 
@@ -592,7 +600,7 @@ void ZeldaMapRow(u8 *dst, int y)
 	if (shown.mode == kModeWorld) {
 		if (shown.on)
 			draw_mark(dst, r, shown.cx, shown.cy, kWorldMark, 7);
-	} else if (shown.mode == kModeDungeon) {
+	} else 	if (shown.mode == kModeDungeon) {
 		if (shown.boss_on)
 			draw_mark(dst, r, shown.bx, shown.by, kBossMark, 5);
 		if (shown.on)
@@ -749,6 +757,358 @@ static int mirror_track(void)
 		pal_dirty = 1;
 	}
 	return changed;
+}
+
+/* The rain layer. Tiles are the SNES 4bpp ones, expanded to 8bpp so each
+ * pixel is the cgram index it already was. Color 0 stays transparent.
+ * Slot 0 is that empty tile. One view of the map is about 400 tiles, and
+ * the cache holds a few more than that before it starts over. */
+enum {
+	kRainTiles = 448,
+	kRainKeys = 1024 * 8
+};
+
+static u8 rain_gfx[kRainTiles][64] __attribute__((aligned(32)));
+static u8 rain_tile_dirty[kRainTiles];
+static uint32 rain_hash[kRainTiles];
+static short rain_slot[kRainKeys];
+static int rain_used;
+static int rain_cache_on;
+
+static u16 rain_map[64 * 64] __attribute__((aligned(4)));
+static int rain_map_dirty;
+static int rain_seen_epoch;
+
+static int rain_active;
+/* The window is armed. Vblank holds its top at 7, and line 0 puts it
+ * back on the map. See ZeldaMapRainVblank. */
+static int rain_guard;
+static int rain_wider;
+static int rain_higher;
+static int rain_scroll_x;
+static int rain_scroll_y;
+static int rain_half;
+
+static void rain_cache_reset(void)
+{
+	int i;
+
+	for (i = 0; i < kRainKeys; i++)
+		rain_slot[i] = -1;
+	memset(rain_gfx, 0, sizeof rain_gfx);
+	memset(rain_tile_dirty, 0, sizeof rain_tile_dirty);
+	memset(rain_map, 0, sizeof rain_map);
+	rain_tile_dirty[0] = 1;
+	rain_used = 1;
+	rain_map_dirty = 1;
+	rain_cache_on = 1;
+}
+
+/* Word offset of a tile in a SNES map and in the DS map, which is laid
+ * out the same way. */
+static int rain_words(const BgLayer *layer, int tx, int ty)
+{
+	int adr = ((ty & 31) << 5) | (tx & 31);
+
+	if ((tx & 32) && layer->tilemapWider)
+		adr += 0x400;
+	if ((ty & 32) && layer->tilemapHigher)
+		adr += layer->tilemapWider ? 0x800 : 0x400;
+	return adr;
+}
+
+static int rain_gfx_base(const BgLayer *layer, int name)
+{
+	return (layer->tileAdr + name * 16) & 0x7fff;
+}
+
+static int rain_blank(const Ppu *ppu, int base)
+{
+	int i;
+
+	for (i = 0; i < 16; i++)
+		if (ppu->vram[(base + i) & 0x7fff])
+			return 0;
+	return 1;
+}
+
+static uint32 rain_tile_hash(const Ppu *ppu, int base)
+{
+	uint32 h = 2166136261u;
+	int i;
+
+	for (i = 0; i < 16; i++) {
+		h ^= ppu->vram[(base + i) & 0x7fff];
+		h *= 16777619u;
+	}
+	return h ? h : 1;
+}
+
+static void rain_decode(const Ppu *ppu, int base, int pal, u8 *dst)
+{
+	int row;
+
+	for (row = 0; row < 8; row++) {
+		uint16 plane0 = ppu->vram[(base + row) & 0x7fff];
+		uint16 plane1 = ppu->vram[(base + 8 + row) & 0x7fff];
+		int col;
+
+		for (col = 0; col < 8; col++) {
+			int bit = 7 - col;
+			int pix = ((plane0 >> bit) & 1) |
+				(((plane0 >> (8 + bit)) & 1) << 1) |
+				(((plane1 >> bit) & 1) << 2) |
+				(((plane1 >> (8 + bit)) & 1) << 3);
+
+			dst[row * 8 + col] = pix ? (u8)(pal * 16 + pix) : 0;
+		}
+	}
+}
+
+/* The DS tile for this SNES map entry, or -1 when the cache is full.
+ * A clear tile is index 0, which stays transparent. */
+static int rain_ensure(const Ppu *ppu, const BgLayer *layer, uint16 entry)
+{
+	int name = entry & 0x3ff;
+	int pal = (entry >> 10) & 7;
+	int base = rain_gfx_base(layer, name);
+	int key = name * 8 + pal;
+	uint32 h;
+	int slot;
+
+	if (rain_blank(ppu, base))
+		return 0;
+	h = rain_tile_hash(ppu, base);
+	slot = rain_slot[key];
+	if (slot > 0 && rain_hash[slot] == h)
+		return slot;
+	if (slot <= 0) {
+		if (rain_used >= kRainTiles)
+			return -1;
+		slot = rain_used++;
+		rain_slot[key] = (short)slot;
+	}
+	rain_decode(ppu, base, pal, rain_gfx[slot]);
+	rain_hash[slot] = h;
+	rain_tile_dirty[slot] = 1;
+	return slot;
+}
+
+static int rain_fill(const Ppu *ppu, const BgLayer *layer,
+		int tx0, int tx1, int ty0, int ty1)
+{
+	int tx, ty;
+
+	for (ty = ty0; ty <= ty1; ty++) {
+		for (tx = tx0; tx <= tx1; tx++) {
+			uint16 entry = ppu->vram[
+				(layer->tilemapAdr + rain_words(layer, tx, ty)) & 0x7fff];
+			int slot = rain_ensure(ppu, layer, entry);
+			int at;
+			u16 ds;
+
+			if (slot < 0)
+				return 0;
+			/* Bits 10 and 11 are the DS flips. Bits 14 and 15
+			 * are the SNES ones. */
+			ds = (u16)((slot & 0x3ff) |
+				((entry & 0x4000) ? 0x400 : 0) |
+				((entry & 0x8000) ? 0x800 : 0));
+			at = rain_words(layer, tx, ty);
+			if (rain_map[at] != ds) {
+				rain_map[at] = ds;
+				rain_map_dirty = 1;
+			}
+		}
+	}
+	return 1;
+}
+
+void ZeldaMapRainPrepare(int show)
+{
+	const Ppu *ppu;
+	const BgLayer *layer;
+	int sx, sy, tx0, tx1, ty0, ty1;
+
+	rain_active = 0;
+	if (!show || player_is_indoors || BYTE(overlay_index) != 0x9f)
+		return;
+	ppu = g_zenv.ppu;
+	if (!ppu)
+		return;
+	if (!rain_cache_on)
+		rain_cache_reset();
+	layer = &ppu->bgLayer[0];
+	/* The top screen drops the first 16 SNES lines, and its rain scroll
+	 * is shifted by that much. The same shift puts the same streaks on
+	 * the same pixels here. */
+	sx = (int)layer->hScroll;
+	sy = (int)layer->vScroll + kMirrorCrop;
+	tx0 = (kMapX + sx) >> 3;
+	tx1 = (kMapX + kMapW - 1 + sx) >> 3;
+	ty0 = (kMapY + sy) >> 3;
+	ty1 = (kMapY + kMapH - 1 + sy) >> 3;
+	if (!rain_fill(ppu, layer, tx0, tx1, ty0, ty1)) {
+		rain_cache_reset();
+		if (!rain_fill(ppu, layer, tx0, tx1, ty0, ty1))
+			return;
+	}
+	rain_wider = layer->tilemapWider;
+	rain_higher = layer->tilemapHigher;
+	rain_scroll_x = sx;
+	rain_scroll_y = sy;
+	rain_half = ppu->halfColor;
+	rain_active = 1;
+}
+
+static u16 rain_dim_color(u16 c, int level)
+{
+	int keep;
+
+	if (level <= 0)
+		return c;
+	if (level >= 16)
+		return 0;
+	keep = 16 - level;
+	return RGB15(((c >> 0) & 31) * keep / 16,
+		     ((c >> 5) & 31) * keep / 16,
+		     ((c >> 10) & 31) * keep / 16);
+}
+
+/* Line 0 and scanline 256 both match a Y trigger of 0. Only line 0 is
+ * past the vblank match, so the top can move back onto the map. */
+static void rain_line0(void)
+{
+	if (!rain_guard || REG_VCOUNT != 0)
+		return;
+	SUB_WIN0_Y0 = (u8)kMapY;
+}
+
+static void rain_guard_on(void)
+{
+	if (rain_guard)
+		return;
+	rain_guard = 1;
+	SetYtrigger(0);
+	irqSet(IRQ_VCOUNT, rain_line0);
+	irqEnable(IRQ_VCOUNT);
+	REG_DISPSTAT |= DISP_YTRIGGER_IRQ;
+}
+
+static void rain_guard_off(void)
+{
+	if (!rain_guard)
+		return;
+	rain_guard = 0;
+	irqDisable(IRQ_VCOUNT);
+	REG_DISPSTAT &= ~DISP_YTRIGGER_IRQ;
+}
+
+void ZeldaMapRainVblank(void)
+{
+	if (!rain_guard)
+		return;
+	/* 6 also compares equal to scanline 262. Leaving it there turns the
+	 * window on in vblank, and it stays on from the top of the screen. */
+	SUB_WIN0_Y0 = (u8)(kMapY + 1);
+}
+
+static void rain_hide(void)
+{
+	int bg = ZeldaVideoRainBg();
+
+	rain_guard_off();
+	if (bg >= 0)
+		bgHide(bg);
+	REG_BLDCNT_SUB = 0;
+	windowDisableSub(WINDOW_0);
+}
+
+/* The panel fade dims its own colors. Dim the rain by the same amount and
+ * the blend stays the rainy color, only darker, instead of mixing black
+ * back onto the map. */
+static void rain_palette(const Ppu *ppu, int level)
+{
+	int i;
+
+	vramSetBankH(VRAM_H_LCD);
+	for (i = 0; i < 128; i++)
+		VRAM_H_EXT_PALETTE[0][0][i] =
+			rain_dim_color((u16)(ppu->cgram[i] & 0x7fff), level);
+	vramSetBankH(VRAM_H_SUB_BG_EXT_PALETTE);
+}
+
+static void rain_upload(int bg)
+{
+	u16 *gfx = bgGetGfxPtr(bg);
+	u16 *map = bgGetMapPtr(bg);
+	int words = 1024 << ((rain_wider ? 1 : 0) + (rain_higher ? 1 : 0));
+	int i;
+
+	for (i = 0; i < rain_used; i++) {
+		if (!rain_tile_dirty[i])
+			continue;
+		DC_FlushRange(rain_gfx[i], 64);
+		dmaCopy(rain_gfx[i], gfx + i * 32, 64);
+		rain_tile_dirty[i] = 0;
+	}
+	if (!rain_map_dirty)
+		return;
+	DC_FlushRange(rain_map, (u32)words * 2);
+	dmaCopy(rain_map, map, (u32)words * 2);
+	rain_map_dirty = 0;
+}
+
+static void rain_show(int bg)
+{
+	int coef = rain_half ? 8 : 16;
+
+	/* In vblank the top stays at 7. Line 0 moves it to the map, which
+	 * is line 6, after scanline 262 has already gone by. */
+	windowSetBoundsSub(WINDOW_0, kMapX,
+		(u8)(REG_VCOUNT >= (unsigned)SCREEN_HEIGHT ? kMapY + 1 : kMapY),
+		(u8)(kMapX + kMapW), (u8)(kMapY + kMapH));
+	rain_guard_on();
+	/* Inside the map: the rain, the picture, and the blend. Outside:
+	 * the picture only, so hearts and counters stay solid. */
+	SUB_WIN_IN = (u16)(BIT(0) | BIT(3) | BIT(5));
+	SUB_WIN_OUT = (u16)BIT(3);
+	windowEnableSub(WINDOW_0);
+	REG_BLDCNT_SUB = BLEND_ALPHA | BLEND_SRC_BG0 | BLEND_DST_BG3 |
+		BLEND_DST_BACKDROP;
+	REG_BLDALPHA_SUB = (u16)(coef | (coef << 8));
+	REG_BG0HOFS_SUB = (u16)rain_scroll_x;
+	REG_BG0VOFS_SUB = (u16)rain_scroll_y;
+	bgSetScroll(bg, rain_scroll_x, rain_scroll_y);
+	bgSetPriority(bg, 0);
+	bgExtPaletteEnableSub();
+	bgShow(bg);
+}
+
+void ZeldaMapRainCommit(int dim)
+{
+	int bg, ep, i;
+
+	if (!rain_active || dim < 0 || !g_zenv.ppu) {
+		rain_hide();
+		return;
+	}
+	ZeldaVideoRainConfigure(rain_wider, rain_higher);
+	bg = ZeldaVideoRainBg();
+	if (bg < 0) {
+		rain_hide();
+		return;
+	}
+	ep = ZeldaVideoRainEpoch();
+	if (ep != rain_seen_epoch) {
+		rain_seen_epoch = ep;
+		for (i = 0; i < rain_used; i++)
+			rain_tile_dirty[i] = 1;
+		rain_map_dirty = 1;
+	}
+	rain_upload(bg);
+	rain_palette(g_zenv.ppu, dim);
+	rain_show(bg);
 }
 
 /* The index already names the destination. Keep drawing the world we

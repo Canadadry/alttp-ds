@@ -6,6 +6,7 @@
 #include "snes/ppu.h"
 #include "snes/snes_regs.h"
 #include "zelda_save.h"
+#include "zelda_bottom_map.h"
 
 uint8_t dma_read(struct Dma *dma, uint16_t adr);
 
@@ -896,6 +897,7 @@ static unsigned shown_inidisp(unsigned inidisp) {
 }
 
 static void vblank_bright(void) {
+	ZeldaMapRainVblank();
 	if (fade_level >= 0) {
 		apply_forced_fade();
 		return;

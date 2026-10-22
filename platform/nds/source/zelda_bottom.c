@@ -1998,6 +1998,20 @@ static void update_top_dim(void)
 	ZeldaHwSetDim(top_dim);
 }
 
+static void finish_rain(void)
+{
+	int dim = -1;
+
+	if (hud_up && panel_shown == kPanelNormal)
+		dim = panel_level;
+	ZeldaMapRainCommit(dim);
+}
+
+void ZeldaBottomPrepare(void)
+{
+	ZeldaMapRainPrepare(hud_up && panel_shown == kPanelNormal);
+}
+
 void ZeldaBottomUpdate(void)
 {
 	int want = hud_wanted();
@@ -2010,6 +2024,7 @@ void ZeldaBottomUpdate(void)
 		map_was_open = map;
 		over_was_up = over;
 		step_fade(want);
+		finish_rain();
 		return;
 	}
 	/* The map or the game over screen, with the HUD on the bottom
@@ -2023,18 +2038,22 @@ void ZeldaBottomUpdate(void)
 			fade_phase = kFadeOut;
 			fade_level = 0;
 			step_fade(want);
+			finish_rain();
 			return;
 		}
 	}
 	if (want && hud_up) {
 		refresh_dynamic();
 		update_panel();
+		finish_rain();
 		return;
 	}
 	if (!hud_up)
 		gear_on = 0;
-	if (want == hud_up)
+	if (want == hud_up) {
+		finish_rain();
 		return;
+	}
 	/* Loading a game, including after Continue on the game over screen:
 	 * the idle picture fades out and the HUD fades in, the same swap the
 	 * maps use. Leaving the game stays a cut. */
@@ -2042,7 +2061,9 @@ void ZeldaBottomUpdate(void)
 		fade_phase = kFadeOut;
 		fade_level = 0;
 		step_fade(want);
+		finish_rain();
 		return;
 	}
 	swap_picture(want);
+	finish_rain();
 }

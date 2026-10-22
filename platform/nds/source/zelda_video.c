@@ -15,7 +15,35 @@ enum {
 static int bg_main;
 static int hw_bound;
 static int bg_bottom;
+static int bg_rain = -1;
+static int rain_wide = -1;
+static int rain_high = -1;
+static int rain_epoch;
 static uint32 g_ppu_render_flags;
+
+/* Map base is a 16KB step for a bitmap. 4 puts the 64KB picture in the
+ * upper half of bank C. The lower half is the only place a text map can
+ * be addressed, and that is where the rain layer lives. */
+static BgSize rain_bg_size(int wider, int higher)
+{
+	if (wider && higher)
+		return BgSize_T_512x512;
+	if (wider)
+		return BgSize_T_512x256;
+	if (higher)
+		return BgSize_T_256x512;
+	return BgSize_T_256x256;
+}
+
+static void rain_layer(int wider, int higher)
+{
+	bg_rain = bgInitSub(0, BgType_Text8bpp, rain_bg_size(wider, higher), 0, 1);
+	bgSetPriority(bg_rain, 0);
+	bgHide(bg_rain);
+	rain_wide = wider ? 1 : 0;
+	rain_high = higher ? 1 : 0;
+	rain_epoch++;
+}
 
 void ZeldaHwInit(void);
 void ZeldaHwWake(void);
@@ -44,7 +72,11 @@ void ZeldaVideoShowBottom(void)
 {
 	videoSetModeSub(MODE_5_2D);
 	vramSetBankC(VRAM_C_SUB_BG);
-	bg_bottom = bgInitSub(3, BgType_Bmp8, BgSize_B8_256x256, 0, 0);
+	bg_bottom = bgInitSub(3, BgType_Bmp8, BgSize_B8_256x256, 4, 0);
+	/* Rain colors live in their own palette, so they are not the HUD's. */
+	vramSetBankH(VRAM_H_SUB_BG_EXT_PALETTE);
+	bgExtPaletteEnableSub();
+	rain_layer(1, 1);
 	dmaCopy(bottom_screen_idleBitmap, bgGetGfxPtr(bg_bottom), bottom_screen_idleBitmapLen);
 	dmaCopy(bottom_screen_idlePal, BG_PALETTE_SUB, bottom_screen_idlePalLen);
 	ZeldaBottomNoteIdle();
@@ -53,6 +85,25 @@ void ZeldaVideoShowBottom(void)
 u16 *ZeldaVideoBottomFramebuffer(void)
 {
 	return bgGetGfxPtr(bg_bottom);
+}
+
+void ZeldaVideoRainConfigure(int wider, int higher)
+{
+	wider = wider ? 1 : 0;
+	higher = higher ? 1 : 0;
+	if (bg_rain >= 0 && wider == rain_wide && higher == rain_high)
+		return;
+	rain_layer(wider, higher);
+}
+
+int ZeldaVideoRainEpoch(void)
+{
+	return rain_epoch;
+}
+
+int ZeldaVideoRainBg(void)
+{
+	return bg_rain;
 }
 
 void ZeldaVideoWake(void)

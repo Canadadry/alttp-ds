@@ -38,6 +38,7 @@ int main(int argc, char **argv)
 		/* Matrix for the map, before the blank, so vblank only stores
 		 * line 0. Building it in the blank was running into that line. */
 		ZeldaVideoPrepareMode7();
+		ZeldaBottomPrepare();
 
 		/* Present during vblank. A window or palette write during the
 		 * picture shows up as a full-width bar. */

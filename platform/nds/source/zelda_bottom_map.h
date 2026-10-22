@@ -38,6 +38,17 @@ int ZeldaMapTakePalette(void);
  * running. */
 int ZeldaMapMirrorWhite(void);
 
+/* Build this frame's rain, before vblank. show is nonzero while the world
+ * map is actually on the bottom screen. */
+void ZeldaMapRainPrepare(int show);
+/* Start of vblank, before line 262. The map's top line is 6, and the DS
+ * also matches that number in vblank, which would open the rain window
+ * from the top of the screen. */
+void ZeldaMapRainVblank(void);
+/* Put that rain up, in vblank. dim is the panel fade, 0 clear through 16
+ * black; negative leaves the rain off. */
+void ZeldaMapRainCommit(int dim);
+
 /* Colors of the map, by entry, and the palette slot each is shown in. */
 const u16 *ZeldaMapColors(void);
 u8 ZeldaMapSlot(int entry);
