@@ -113,18 +113,7 @@ If make stops with `target pattern contains no '%'`, dependency files in `platfo
 
 ### 4. Run
 
-Copy `lttp-ds.nds` only. The game data is already inside it. If that data is not from a USA ROM, the bottom screen says `Invalid assets file` and the game waits there.
-
-**melonDS**
-
-1. Open `lttp-ds.nds`.
-2. For saves to persist, go to *Config → Emu settings → DLDI*, turn on DLDI and folder sync, and pick a folder.
-3. Your save appears there as `lttp-ds.sav`.
-
-**DS, DS Lite, or DSi**
-
-1. Copy `lttp-ds.nds` to the flashcart microSD, or to the DSi SD card, and launch it from the cart menu or from Twilight Menu++.
-2. The save follows TWiLight Menu++ Save Location. The default is a `saves` folder next to the ROM (`lttp-ds.sav`, or the ROM's own name if you renamed it). The other settings put that file beside the ROM, or in `_nds/TWiLightMenu/saves`. A `lttp-ds.sav` left at the card root by an older build is loaded and moved on the next save. Saving needs a loader that patches in the card's DLDI driver, which most do, including Twilight Menu++.
+`lttp-ds.nds` is generated with the game data inside it. If that data is not from a USA ROM, the bottom screen says `Invalid assets file` and the game waits there.
 
 ## Saves
 
