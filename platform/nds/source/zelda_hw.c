@@ -668,9 +668,11 @@ static int hud_strip_hidden(void)
 	 * 15 and 16 are the door iris: that circle leaves play while it is
 	 * still open across the status bar. 17 is a fall down a hole, 18 is
 	 * death, 19 a pendant and 22 a crystal. 23 is save and quit: the
-	 * playfield stays up while the screen fades. 25 is the triforce
-	 * chamber: the speech is on this layer, and the bar stays on the
-	 * bottom screen. Each of those keeps the bar up on this screen. */
+	 * playfield stays up while the screen fades. 24 is Agahnim's defeat:
+	 * the flute bird, then the bat at the pyramid. The bottom screen is
+	 * the idle picture for that, so the bar stays off this screen too.
+	 * 25 is the triforce chamber: the speech is on this layer, and the
+	 * bar stays on the bottom screen. */
 	switch (mod) {
 	case 7:
 	case 9:
@@ -682,6 +684,7 @@ static int hud_strip_hidden(void)
 	case 19:
 	case 22:
 	case 23:
+	case 24:
 	case 25:
 		return 1;
 	default:

@@ -1178,12 +1178,21 @@ void ZeldaBottomNoteIdle(void)
 
 /* Modules 6 through 19 are the underworld and overworld loads, play, the
  * item menu, the iris, the transitions, and death. 22 is the crystal
- * prize, which refills the same bar. The title, the file screens,
- * attract, and the ending are outside that. */
+ * prize, which refills the same bar. 24 is Agahnim's defeat, the flute
+ * bird through the bat at the pyramid: the idle picture takes this screen
+ * for that, then play fades back. The title, the file screens, attract,
+ * and the ending are outside this too. */
 static int in_game(void)
 {
 	return (main_module_index >= 6 && main_module_index <= 19) ||
 		main_module_index == 22;
+}
+
+/* The flute bird is called here, and the cutscene runs until Link is set
+ * down at the pyramid. */
+static int bird_cutscene(void)
+{
+	return main_module_index == 24;
 }
 
 /* X opens the dungeon map (submodule 3 of the menu module) or the overworld
@@ -1931,6 +1940,7 @@ enum {
 static int fade_level;
 static int map_was_open;
 static int over_was_up;
+static int bird_was;
 
 static void set_bottom_fade(int level)
 {
@@ -2029,24 +2039,30 @@ void ZeldaBottomUpdate(void)
 	int want = hud_wanted();
 	int map = map_open();
 	int over = game_over_screen();
+	int bird = bird_cutscene();
 
 	update_top_dim();
 
 	if (fade_phase) {
 		map_was_open = map;
 		over_was_up = over;
+		bird_was = bird;
 		step_fade(want);
 		finish_rain();
 		return;
 	}
-	/* The map or the game over screen, with the HUD on the bottom
-	 * setting: fade rather than cut. The first frame of a fade is the
-	 * first step of fading out. Continue leaves the game over screen and
-	 * comes back through the load below, which fades the HUD in. */
-	if (map != map_was_open || over != over_was_up) {
+	/* The map, the game over screen, and the flute-bird cutscene, with
+	 * the HUD on the bottom setting: fade rather than cut. The cutscene
+	 * fades the idle picture in, and fading back to the HUD is the return
+	 * to play below once that module ends. The first frame of a fade is
+	 * the first step of fading out. Continue leaves the game over screen
+	 * and comes back through the load below, which fades the HUD in. */
+	if (map != map_was_open || over != over_was_up || bird != bird_was) {
 		map_was_open = map;
 		over_was_up = over;
-		if (!ZeldaHudOnTop() && in_game() && want != hud_up) {
+		bird_was = bird;
+		if (!ZeldaHudOnTop() && want != hud_up &&
+		    (in_game() || bird || map || over)) {
 			fade_phase = kFadeOut;
 			fade_level = 0;
 			step_fade(want);
