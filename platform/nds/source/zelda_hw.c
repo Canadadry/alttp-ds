@@ -664,16 +664,20 @@ static int hud_strip_hidden(void)
 	mod = main_module_index;
 	if (mod == 14)
 		mod = saved_module_for_menu;
-	/* 7 indoors, 9 outdoors, 11 the special overworld (lost woods).
-	 * 15 and 16 are the door iris: that circle leaves play while it is
-	 * still open across the status bar. 17 is a fall down a hole, 18 is
-	 * death, 19 a pendant and 22 a crystal. 23 is save and quit: the
+	/* 5 is loading a save. Save and Continue, and Don't Save and
+	 * Continue, set this a frame before the load blanks the picture,
+	 * and that frame is still the game over screen. 7 indoors, 9
+	 * outdoors, 11 the special overworld (lost woods). 15 and 16 are
+	 * the door iris: that circle leaves play while it is still open
+	 * across the status bar. 17 is a fall down a hole, 18 is death,
+	 * 19 a pendant and 22 a crystal. 23 is save and quit: the
 	 * playfield stays up while the screen fades. 24 is Agahnim's defeat:
 	 * the flute bird, then the bat at the pyramid. The bottom screen is
 	 * the idle picture for that, so the bar stays off this screen too.
 	 * 25 is the triforce chamber: the speech is on this layer, and the
 	 * bar stays on the bottom screen. */
 	switch (mod) {
+	case 5:
 	case 7:
 	case 9:
 	case 11:
