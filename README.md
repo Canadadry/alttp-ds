@@ -35,7 +35,7 @@ When no game is running (title, file select, boot), the bottom screen shows a Tr
 
 - **Settings menu.** Open it from the save menu (see [Settings](#settings)).
 - **Title skip.** Pressing a button during the intro jumps to the sword drop, after a short bit of the title theme.
-- **Fast dialogue.** Hold **A** to speed through dialogue that has no text box, such as Zelda's plea.
+- **Fast dialogue.** Hold **A** during dialogue that has no text box, such as Zelda's plea. The letters still appear one at a time, only faster.
 - **Launcher icon and title.** The ROM has its own banner icon and title in the DS launcher and in Twilight Menu++.
 
 ### Settings
