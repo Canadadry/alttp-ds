@@ -12,10 +12,10 @@ ALTTP DS is a port of [snesrev/zelda3](https://github.com/snesrev/zelda3), a C r
 
 ## Features
 
-### A native port, not an emulator
+### A native port
 
 - **Full game.** The entire game is playable, running zelda3's reimplemented game logic.
-- **Optimized for DS screen size** The SNES picture is 224 lines and the DS screen is 192. The overworld and dungeon cameras scroll a little past room and area edges, so Link and the action stay in view.
+- **Optimized for DS screen size.** The SNES picture is 224 lines and the DS screen is 192. The overworld and dungeon cameras scroll a little past room and area edges, so Link and the action stay in view.
 - **Lid handling.** Closing the DS lid pauses the game.
 
 ### Bottom-screen HUD and touch controls
