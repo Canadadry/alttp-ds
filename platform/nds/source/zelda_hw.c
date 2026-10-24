@@ -612,33 +612,9 @@ static int doorway_wall(int name) {
 	return 0;
 }
 
-/* Floor, and any other tile used all over the room, stays under the
- * sprites when a stair stamps the priority bit on it. The doorway wall
- * is lifted only in the cells marked around the opening. */
-static void mark_common_floor(const Ppu *ppu) {
-	static uint8 count[1024];
-	int layer, i;
-
-	memset(count, 0, sizeof count);
-	memset(common_floor, 0, sizeof common_floor);
-	for (layer = 0; layer < 2; layer++) {
-		const BgLayer *bg = &ppu->bgLayer[layer];
-		int words = map_words(bg->tilemapWider, bg->tilemapHigher);
-
-		for (i = 0; i < words; i++) {
-			uint16 entry = ppu->vram[(bg->tilemapAdr + i) & 0x7fff];
-			int name = entry & 0x3ff;
-
-			if (entry & 0x2000)
-				continue;
-			if (count[name] < 255)
-				count[name]++;
-		}
-	}
-	for (i = 0; i < 1024; i++)
-		if (count[i] >= 8)
-			common_floor[i] = 1;
-}
+/* Set once the climb masks are built during this lay_maps. The doorway
+ * bake used to scan the tilemaps again on the frame a stair loads a room. */
+static int climb_marked;
 
 static int keep_under_link(int name) {
 	if (name == 0 || name == 0x1ef || name == 0x0ac)
@@ -686,51 +662,60 @@ static void mark_cover_column(int x, int y, int vflip, int kind) {
 	}
 }
 
-static void note_arch_caps(const Ppu *ppu, const BgLayer *layer) {
-	int words = map_words(layer->tilemapWider, layer->tilemapHigher);
-	int i;
+/* Floor count and the doorway band share one read of each tilemap.
+ * A second pass over VRAM here is what hitched the room a stair enters. */
+static void mark_climb(const Ppu *ppu) {
+	static uint8 count[1024];
+	int layer, i;
 
-	for (i = 0; i < words; i++) {
-		uint16 entry = ppu->vram[(layer->tilemapAdr + i) & 0x7fff];
-		int x, y;
-
-		if (!(entry & 0x2000) || !arch_cap(entry & 0x3ff))
-			continue;
-		map_xy(i, layer->tilemapWider, layer->tilemapHigher, &x, &y);
-		if ((unsigned)x < 64 && (unsigned)y < 64)
-			stair_cap[y * 64 + x] = 1;
-	}
-}
-
-static void mark_arch_band(const Ppu *ppu, const BgLayer *layer) {
-	int words = map_words(layer->tilemapWider, layer->tilemapHigher);
-	int i;
-
-	for (i = 0; i < words; i++) {
-		uint16 entry = ppu->vram[(layer->tilemapAdr + i) & 0x7fff];
-		int x, y, vflip;
-
-		if (!(entry & 0x2000) || !arch_cap(entry & 0x3ff))
-			continue;
-		map_xy(i, layer->tilemapWider, layer->tilemapHigher, &x, &y);
-		if ((unsigned)x >= 64 || (unsigned)y >= 64)
-			continue;
-		vflip = entry & 0x8000;
-		mark_cover_column(x, y, vflip, 1);
-		if (x > 0 && !stair_cap[y * 64 + (x - 1)])
-			mark_cover_column(x - 1, y, vflip, 2);
-		if (x + 1 < 64 && !stair_cap[y * 64 + (x + 1)])
-			mark_cover_column(x + 1, y, vflip, 2);
-	}
-}
-
-static void mark_stair_cover(const Ppu *ppu) {
+	if (climb_marked)
+		return;
+	climb_marked = 1;
+	memset(count, 0, sizeof count);
+	memset(common_floor, 0, sizeof common_floor);
 	memset(stair_cover, 0, sizeof stair_cover);
 	memset(stair_cap, 0, sizeof stair_cap);
-	note_arch_caps(ppu, &ppu->bgLayer[0]);
-	note_arch_caps(ppu, &ppu->bgLayer[1]);
-	mark_arch_band(ppu, &ppu->bgLayer[0]);
-	mark_arch_band(ppu, &ppu->bgLayer[1]);
+	for (layer = 0; layer < 2; layer++) {
+		const BgLayer *bg = &ppu->bgLayer[layer];
+		int words = map_words(bg->tilemapWider, bg->tilemapHigher);
+		const uint16 *src = map_src(ppu, bg->tilemapAdr, words);
+
+		for (i = 0; i < words; i++) {
+			uint16 entry = src[i];
+			int name = entry & 0x3ff;
+			int x, y;
+
+			if (!(entry & 0x2000)) {
+				if (count[name] < 255)
+					count[name]++;
+				continue;
+			}
+			if (!arch_cap(name))
+				continue;
+			map_xy(i, bg->tilemapWider, bg->tilemapHigher, &x, &y);
+			if ((unsigned)x >= 64 || (unsigned)y >= 64)
+				continue;
+			/* 1 = north cap, 2 = south cap stored vflipped. */
+			stair_cap[y * 64 + x] = (entry & 0x8000) ? 2 : 1;
+			mark_cover_column(x, y, entry & 0x8000, 1);
+		}
+	}
+	for (i = 0; i < 1024; i++)
+		if (count[i] >= 8)
+			common_floor[i] = 1;
+	for (i = 0; i < 64 * 64; i++) {
+		int cap = stair_cap[i];
+		int x, y;
+
+		if (!cap)
+			continue;
+		x = i & 63;
+		y = i >> 6;
+		if (x > 0 && !stair_cap[i - 1])
+			mark_cover_column(x - 1, y, cap == 2, 2);
+		if (x + 1 < 64 && !stair_cap[i + 1])
+			mark_cover_column(x + 1, y, cap == 2, 2);
+	}
 }
 
 static void present_bg2(Ppu *ppu, int lift, int keep_floor) {
@@ -764,8 +749,7 @@ static void present_bg2(Ppu *ppu, int lift, int keep_floor) {
 		bake_valid = 0;
 		if (keep_floor) {
 			mark_floor_pattern();
-			mark_common_floor(ppu);
-			mark_stair_cover(ppu);
+			mark_climb(ppu);
 		} else {
 			memset(floor_pattern, 0, sizeof floor_pattern);
 			memset(common_floor, 0, sizeof common_floor);
@@ -2400,7 +2384,7 @@ static void bake_bg2_doors(Ppu *ppu, int stair) {
 			free_tile[free_n++] = i;
 	}
 	if (stair)
-		mark_stair_cover(ppu);
+		mark_climb(ppu);
 	for (i = 0; i < words; i++) {
 		uint16 above = ppu->vram[(top->tilemapAdr + i) & 0x7fff];
 		uint16 door;
@@ -2930,6 +2914,8 @@ static void classify_picture(const Ppu *ppu) {
 
 static void lay_maps(Ppu *ppu) {
 	int bake;
+
+	climb_marked = 0;
 
 	/* BG3 priority 0 and BG2 share the back background. Switching which
 	 * one owns that map has to upload it again. */
