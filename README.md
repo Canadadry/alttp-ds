@@ -42,7 +42,7 @@ Press **Select** in game to open the save menu. It has three rows: **Continue**,
 
 | Setting | Options | What it does |
 |---|---|---|
-| HUD | Top Screen / Bottom Screen | Where the status bar and touch HUD live |
+| HUD | Top Screen / Bottom Screen | Where the HUD lives (life, magic meter, etc) |
 | Low HP Indicator | On / Off | The low-health beep |
 | Spawn | Normal / Dungeon | A save made inside a dungeon loads at that dungeon's entrance |
 | Magic Mirror | Normal / Free | Removes magic mirror use restrictions |
