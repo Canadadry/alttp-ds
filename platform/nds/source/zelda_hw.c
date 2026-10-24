@@ -600,11 +600,11 @@ static int arch_cap(int name) {
 }
 
 /* The blocks of the doorway. Both columns of a north wall are here.
- * The step (0x0ac) and the open hole are not: Link walks on the step. */
+ * The step (0x0ac), the open hole, and the fill inside a straight
+ * flight (0x007, 0x016, 0x017) are not. Link walks on that fill. */
 static int doorway_wall(int name) {
 	switch (name) {
-	case 0x007: case 0x008: case 0x00d: case 0x010:
-	case 0x016: case 0x017: case 0x018: case 0x078:
+	case 0x008: case 0x00d: case 0x010: case 0x018: case 0x078:
 	case 0x050: case 0x051: case 0x060: case 0x061: case 0x070:
 	case 0x090: case 0x091: case 0x096: case 0x097: case 0x0a2: case 0x0a3:
 		return 1;
@@ -642,6 +642,8 @@ static void mark_common_floor(const Ppu *ppu) {
 
 static int keep_under_link(int name) {
 	if (name == 0 || name == 0x1ef || name == 0x0ac)
+		return 1;
+	if (name == 0x007 || name == 0x016 || name == 0x017)
 		return 1;
 	if (floor_pattern[name])
 		return 1;
