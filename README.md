@@ -38,7 +38,7 @@ When no game is running (title, file select, boot), the bottom screen shows a Tr
 
 ### Settings
 
-Press **Select** in game to open the save menu. It has three rows: **Continue**, **Save and Quit**, and **Settings**. **B** also continues. Settings are saved in your `.sav` file.
+Press **Select** in game to open the save menu. It has three rows: **Continue**, **Save and Quit**, and **Settings**. Settings are saved in your `.sav` file.
 
 | Setting | Options | What it does |
 |---|---|---|
