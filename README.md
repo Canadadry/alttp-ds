@@ -105,8 +105,6 @@ python3 build.py
 
 On Windows, `py build.py` does the same thing. Either command uses `.venv` when the default Python is missing Pillow or PyYAML. `python3 build.py -j8` compiles in parallel. When it finishes, **`lttp-ds.nds`** is in the project root. If `zelda3.sfc` is missing, the build stops and does not write that file. Double-clicking `build.py` on Windows leaves the window open so you can read the error.
 
-If make stops with `target pattern contains no '%'`, dependency files in `platform/nds/arm7/build/` were written on Windows and still contain `C:` paths. Run `python3 build.py clean` and build again. The ARM7 makefile drops those files and the objects they belonged to, then compiles the voice driver again. An ARM7 object left behind without a dependency file is rebuilt too, so a Mac link cannot keep a Windows mixer.
-
 ### 4. Run
 
 `lttp-ds.nds` is generated with the game data inside it. If that data is not from a USA ROM, the bottom screen says `Invalid assets file` and the game waits there.
