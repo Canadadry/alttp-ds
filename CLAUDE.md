@@ -22,7 +22,7 @@ Everything written in the repository is in English: code, comments, docs, commit
 - **Never make `make -C tests/rando test` or `make -C tests/rando e2e` slower**: the loop must stay fast. A slow check goes in a separate target.
 - **Never regenerate a golden to get green.** `tests/rando/oracle/gen_golden.sh` is run only when VT, its patch or the case list changes on purpose, in its own commit.
 - **Never launch the game.** No emulator, no window: an agent has neither eyes nor a gamepad. Verification is the host tests; playing the `.nds` is a human's job.
-- **Never work on or push a `claude/*` branch.** A branch is named after what it delivers, once the first commit shows it.
+- **Never work on or push a `claude/*` branch.** Always work on a branch named after what it delivers, once the first commit shows it. `tools/branch_guard.sh`, installed as a pre-push hook at every session start (`.claude/settings.json`), refuses the push; outside Claude, run `tools/branch_guard.sh --install` once.
 
 ## Build
 
