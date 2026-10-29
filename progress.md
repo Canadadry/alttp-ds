@@ -2,8 +2,9 @@
   - [ ] 1.1 Bare harness, then vt.patch, retry wrapper and gen_golden.sh, proven deterministic
     - [x] Chunk 1: bare harness
     - [x] Chunk 2: patched VT and its PRNG
-    - [ ] Chunk 3: retry wrapper, baseline golden, determinism
+    - [x] Chunk 3: retry wrapper, baseline golden, determinism
       - [x] Retry wrapper and per-case generation
+      - [x] Baseline golden
   - [ ] 1.2 Every golden committed
 - [ ] Phase 2 — C port, baseline
   - [ ] 2.1 PRNG and fy_shuffle, convergence gate claims, CI
