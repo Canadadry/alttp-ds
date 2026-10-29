@@ -1,5 +1,5 @@
 - [ ] Phase 1 — Oracle
-  - [ ] 1.1 Bare harness, then vt.patch, retry wrapper and gen_golden.sh, proven deterministic
+  - [x] 1.1 Bare harness, then vt.patch, retry wrapper and gen_golden.sh, proven deterministic
     - [x] Chunk 1: bare harness
     - [x] Chunk 2: patched VT and its PRNG
     - [x] Chunk 3: retry wrapper, baseline golden, determinism

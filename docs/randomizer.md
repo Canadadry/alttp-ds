@@ -25,7 +25,11 @@ Roadmap:
 
 - **Reference:** [`sporchia/alttp_vt_randomizer`](https://github.com/sporchia/alttp_vt_randomizer)
   ("VT", after Veetorp, its author), the PHP/Laravel generator behind alttpr.com. Pinned to
-  commit `219fcafd029dab597b8db400efafd8f56f8b4edb` (2024-02-18).
+  commit `219fcafd029dab597b8db400efafd8f56f8b4edb` (2024-02-18). Goldens are generated with PHP 8.3.6 and
+  Composer 2.8.12.
+- **bcmath:** VT's own `Seed::boot()` (Hashids) needs bcmath or gmp. Without them, `composer install`
+  runs with `--ignore-platform-req=ext-bcmath` and the wrapper pre-boots `Seed` once, tolerating
+  that exception: it only registers a database listener and draws nothing.
 - **Why VT can be made deterministic:** all of its randomness goes through one function,
   `get_random_int()` in `app/Helpers/number.php`. `fy_shuffle()` and `randomCollection()` both
   call it, and so do about 60 other call sites. Today it calls `random_int()` (a CSPRNG), so the
@@ -213,3 +217,21 @@ value instead.
 None.
 
 ## 6. Step notes
+
+### Step 1.1
+
+- Harness: `make -C tests/rando test` (empty `UNIT_TESTS`) and `e2e` (`PENDING` per case), both
+  PHP-free, milliseconds.
+- `vt.patch`: xoshiro128\*\*/splitmix32 PRNG checked against 25 known answers from a C reference;
+  every draw traced as `attempt draw# stage min max -> r`, the stage being the method called by
+  `Randomizer::randomize()` or `prepareWorld()`. `get_random_int()` takes `int` parameters, because
+  VT passes a `floor()` float (`getGanonsTowerJunkFillRange`).
+- `gen_case.php` (retry wrapper, 1000-attempt watchdog) and `gen_golden.sh [--fresh] [--out dir]
+  [case...]`. Random crystal counts are drawn ganon first, then tower, as `prepSeed` does (the PRD
+  said the reverse; VT wins).
+- Baseline (seed 1): `attempts` 0, 805 draws, 230 locations filled, 12 spheres ending on Ganon.
+  Two `--fresh` runs are byte-identical to each other and to the golden.
+- Baseline RNG consumers in draw order: `getAdvancementItems` 4, `setMedallions` 2, `fillPrizes`
+  64, `setFountains` 2, `shufflePrizePacks` 7, `prepareWorld` (its own shuffles) 153, `fill` 573.
+  `setShops`, `placeBosses` and `crystals` draw nothing in this preset. `getAdvancementItems` and
+  `prepareWorld` are consumers § 2 does not list.
