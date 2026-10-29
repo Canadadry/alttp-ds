@@ -28,7 +28,7 @@ _ARM7_ELF := -7 $(ARM7_ELF)
 #---------------------------------------------------------------------------------
 TARGET   := lttp-ds
 BUILD    := build
-SOURCES  := platform/nds/source
+SOURCES  := platform/nds/source platform/nds/calico/arm9
 INCLUDES := platform/nds/include vendor/zelda3 vendor/zelda3/src vendor/zelda3/snes
 DATA     :=
 GRAPHICS := platform/nds/bottom-screen/images
@@ -56,7 +56,7 @@ CFLAGS   := -g -Wall -O2 -ffunction-sections -fdata-sections\
             $(ARCH) $(INCLUDE) -DARM9 -DLTTP_PPU_RGB15\
             -DCAMERA_PAD_Y=16
 CXXFLAGS := $(CFLAGS) -fno-rtti -fno-exceptions
-ASFLAGS  := -g $(ARCH)
+ASFLAGS  := -g $(ARCH) -DARM9
 LDFLAGS   = -specs=ds_arm9.specs -g $(ARCH) -Wl,-Map,$(notdir $*.map) \
             -Wl,--wrap=FindIndexInMemblk,--wrap=ppu_runLine,--wrap=ZeldaReadSram,--wrap=ZeldaWriteSram
 

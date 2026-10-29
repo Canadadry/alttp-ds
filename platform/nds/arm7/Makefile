@@ -11,6 +11,8 @@ include $(DEVKITARM)/ds_rules
 TARGET   := zelda_arm7
 BUILD    := build
 SOURCES  := source
+# Only these .s files are built: source/dsp_mix.s is not linked.
+CALICO_SOURCES := ../calico/arm7
 INCLUDES := source ../include
 
 #---------------------------------------------------------------------------------
@@ -19,7 +21,7 @@ ARCH := -march=armv4t -mtune=arm7tdmi -mthumb
 CFLAGS   := -g -Wall -Os -ffunction-sections -fdata-sections\
             $(ARCH) $(INCLUDE) -DARM7
 CXXFLAGS := $(CFLAGS) -fno-rtti -fno-exceptions
-ASFLAGS  := -g $(ARCH)
+ASFLAGS  := -g $(ARCH) -DARM7
 LDFLAGS   = -specs=ds_arm7.specs -g $(ARCH) -Wl,-Map,$(notdir $*).map
 
 LIBS := -lnds7
@@ -32,9 +34,10 @@ ifneq ($(BUILD),$(notdir $(CURDIR)))
 export ARM7ELF := $(CURDIR)/$(TARGET).elf
 export DEPSDIR := $(CURDIR)/$(BUILD)
 
-export VPATH := $(foreach dir,$(SOURCES),$(CURDIR)/$(dir))
+export VPATH := $(foreach dir,$(SOURCES) $(CALICO_SOURCES),$(CURDIR)/$(dir))
 
 CFILES := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.c)))
+SFILES := $(foreach dir,$(CALICO_SOURCES),$(notdir $(wildcard $(dir)/*.s)))
 
 ifeq ($(strip $(CPPFILES)),)
   export LD := $(CC)
@@ -42,7 +45,7 @@ else
   export LD := $(CXX)
 endif
 
-export OFILES := $(CFILES:.c=.o)
+export OFILES := $(SFILES:.s=.o) $(CFILES:.c=.o)
 export INCLUDE := $(foreach dir,$(INCLUDES),-iquote $(CURDIR)/$(dir))\
                   $(foreach dir,$(LIBDIRS),-I$(dir)/include)\
                   -I$(CURDIR)/$(BUILD)
