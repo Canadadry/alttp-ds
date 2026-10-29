@@ -1,0 +1,28 @@
+- [ ] Phase 1 — Oracle
+  - [ ] 1.1 Bare harness, then vt.patch, retry wrapper and gen_golden.sh, proven deterministic
+  - [ ] 1.2 Every golden committed
+- [ ] Phase 2 — C port, baseline
+  - [ ] 2.1 PRNG and fy_shuffle, convergence gate claims, CI
+  - [ ] 2.2 World, regions and location rules for the baseline
+  - [ ] 2.3 Pre-fill RNG consumers
+  - [ ] 2.4 RandomAssumed fill, isWinnable() and the retry loop
+  - [ ] 2.5 Measure on the host
+- [ ] Phase 3 — Options
+  - [ ] 3.1 glitches: overworld_glitches
+  - [ ] 3.2 glitches: hybrid_major_glitches
+  - [ ] 3.3 glitches: major_glitches
+  - [ ] 3.4 glitches: no_logic
+  - [ ] 3.5 item_placement
+  - [ ] 3.6 dungeon_items
+  - [ ] 3.7 accessibility
+  - [ ] 3.8 goal
+  - [ ] 3.9 crystals_tower
+  - [ ] 3.10 crystals_ganon
+  - [ ] 3.11 state: standard
+  - [ ] 3.12 state: inverted
+  - [ ] 3.13 state: retro
+  - [ ] 3.14 weapons
+  - [ ] 3.15 item_pool
+  - [ ] 3.16 item_functionality
+- [ ] Phase 4 — Fits on the DS
+  - [ ] 4.1 Measure on the host
