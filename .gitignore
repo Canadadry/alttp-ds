@@ -16,3 +16,4 @@ saves/
 data/*.dat
 data/*.sfc
 data/*.smc
+tmp/
