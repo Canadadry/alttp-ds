@@ -1,5 +1,6 @@
 #!/bin/sh
-# Usage: gen_golden.sh [--fresh]
+# Usage: gen_golden.sh [--fresh] [--out <dir>] [<case>...]
+# Without --out, each case's golden is written back into tests/rando/cases/<case>/.
 # Never called by `make test` or `make e2e`: regenerating goldens is a deliberate act (CLAUDE.md).
 set -eu
 export LC_ALL=C
@@ -9,21 +10,49 @@ VT_PIN=219fcafd029dab597b8db400efafd8f56f8b4edb
 PHP_EXPECTED=8.3
 
 oracle_dir="$(cd "$(dirname "$0")" && pwd)"
+cases_dir="$(dirname "$oracle_dir")/cases"
 vt_dir="${VT_DIR:-$oracle_dir/vt}"
 
 usage() {
-	echo "usage: gen_golden.sh [--fresh]" >&2
+	echo "usage: gen_golden.sh [--fresh] [--out <dir>] [<case>...]" >&2
 	exit 2
 }
 
 fresh=0
+out=
 while [ "$#" -gt 0 ]; do
 	case "$1" in
 	--fresh) fresh=1 ;;
-	*) usage ;;
+	--out)
+		[ "$#" -ge 2 ] || usage
+		out="$2"
+		shift
+		;;
+	-*) usage ;;
+	*) break ;;
 	esac
 	shift
 done
+
+if [ "$#" -eq 0 ]; then
+	for dir in "$cases_dir"/*/; do
+		if [ -f "$dir/config.json" ]; then set -- "$@" "$(basename "$dir")"; fi
+	done
+	if [ "$#" -eq 0 ]; then
+		echo "gen_golden: no cases" >&2
+		exit 2
+	fi
+fi
+for name in "$@"; do
+	if [ ! -f "$cases_dir/$name/config.json" ]; then
+		echo "gen_golden: no such case: $name" >&2
+		exit 2
+	fi
+done
+if [ -n "$out" ]; then
+	mkdir -p "$out"
+	out="$(cd "$out" && pwd)"
+fi
 
 if [ "$fresh" -eq 1 ]; then rm -rf "$vt_dir"; fi
 if [ ! -d "$vt_dir/.git" ]; then
@@ -52,3 +81,7 @@ case "$php_version" in
 esac
 
 php "$oracle_dir/prng_check.php" "$vt_dir"
+
+for name in "$@"; do
+	php "$oracle_dir/gen_case.php" "$vt_dir" "$cases_dir/$name" "${out:-$cases_dir}/$name"
+done
