@@ -752,6 +752,7 @@ static const Layout *const layouts[RANDO_VARIANT_COUNT] = {
 	[RANDO_VARIANT_STANDARD] = &classic,
 	[RANDO_VARIANT_OPEN] = &classic,
 	[RANDO_VARIANT_INVERTED] = &inverted,
+	[RANDO_VARIANT_RETRO] = &classic,
 };
 
 static const Layout *layout(RandoVariant variant)

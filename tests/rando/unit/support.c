@@ -499,6 +499,8 @@ static int replay_row(Fixture *fx)
 		variant = RANDO_VARIANT_OPEN;
 	else if (strcmp(fx->field[ROW_VARIANT], "inverted") == 0)
 		variant = RANDO_VARIANT_INVERTED;
+	else if (strcmp(fx->field[ROW_VARIANT], "retro") == 0)
+		variant = RANDO_VARIANT_RETRO;
 	else
 		fixture_fail(fx, "unknown variant");
 	rando_config_init(&config);
@@ -566,9 +568,6 @@ int fixture_replay_rows(const char *test, const char *path, RowFilter filter, in
 			continue;
 		if (fx.nfields != ROW_FIELDS)
 			fixture_fail(&fx, "row record without its 15 fields");
-		/* TODO: replay the retro rows once the C port has the Retro world (step 3.13 chunk 2). */
-		if (strcmp(fx.field[ROW_VARIANT], "retro") == 0)
-			continue;
 		(*total)++;
 		if (!filter(fx.field[ROW_FILE], fx.field[ROW_METHOD]))
 			continue;

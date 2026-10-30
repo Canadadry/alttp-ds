@@ -91,6 +91,64 @@ static void check_inverted_init(void)
 	CHECK(rando_world_shop_price(&world, RANDO_SHOP_DARK_WORLD_LAKE_HYLIA_SHOP, 0) == 150);
 }
 
+static RandoConfig retro_config(RandoItemPool pool)
+{
+	RandoConfig config;
+	RandoWorld world;
+
+	rando_config_init(&config);
+	config.item_pool = pool;
+	rando_world_init(&world, RANDO_VARIANT_RETRO, &config);
+	return world.config;
+}
+
+/* World\Retro::__construct: four keys forced over the caller's config, then the item counts. */
+static void check_retro_init(void)
+{
+	RandoConfig config, c;
+	RandoWorld world;
+
+	rando_config_init(&config);
+	config.rom_rupee_bow = false;
+	config.rom_generic_keys = false;
+	config.region_take_anys = false;
+	config.region_wild_keys = false;
+	config.logic = RANDO_LOGIC_MAJOR_GLITCHES;
+	rando_world_init(&world, RANDO_VARIANT_RETRO, &config);
+	c = world.config;
+	CHECK(c.mode_state == RANDO_STATE_RETRO);
+	CHECK(c.rom_rupee_bow && c.rom_generic_keys && c.region_take_anys && c.region_wild_keys);
+	CHECK(!c.rom_vanilla_keys);
+	CHECK(c.rom_vanilla_big_keys);
+
+	c = retro_config(RANDO_ITEM_POOL_NORMAL);
+	CHECK(c.item_count[RANDO_ITEM_KeyD1] == 0 && c.item_count[RANDO_ITEM_KeyA2] == 0);
+	CHECK(c.item_count[RANDO_ITEM_KeyD7] == RANDO_CONFIG_NULL && c.item_count[RANDO_ITEM_KeyD2] == RANDO_CONFIG_NULL);
+	CHECK(c.item_count[RANDO_ITEM_TwentyRupees2] == 10);
+	c = retro_config(RANDO_ITEM_POOL_CROWD_CONTROL);
+	CHECK(c.item_count[RANDO_ITEM_KeyD1] == 0 && c.item_count[RANDO_ITEM_KeyD7] == RANDO_CONFIG_NULL);
+	CHECK(c.item_count[RANDO_ITEM_TwentyRupees2] == 14);
+	c = retro_config(RANDO_ITEM_POOL_HARD);
+	CHECK(c.item_count[RANDO_ITEM_KeyD1] == 0 && c.item_count[RANDO_ITEM_KeyA2] == 0);
+	CHECK(c.item_count[RANDO_ITEM_KeyD7] == 0 && c.item_count[RANDO_ITEM_KeyD2] == 0);
+	CHECK(c.item_count[RANDO_ITEM_TwentyRupees2] == 15);
+	c = retro_config(RANDO_ITEM_POOL_EXPERT);
+	CHECK(c.item_count[RANDO_ITEM_KeyD7] == 0 && c.item_count[RANDO_ITEM_KeyD2] == 0);
+	CHECK(c.item_count[RANDO_ITEM_TwentyRupees2] == 15);
+
+	CHECK(rando_layout_location_count(RANDO_VARIANT_RETRO) == 236);
+	CHECK(strcmp(rando_region_vt_class(RANDO_VARIANT_RETRO, RANDO_REGION_ESCAPE),
+		     rando_region_vt_class(RANDO_VARIANT_OPEN, RANDO_REGION_ESCAPE)) == 0);
+
+	rando_config_init(&config);
+	rando_world_init(&world, RANDO_VARIANT_OPEN, &config);
+	c = world.config;
+	CHECK(c.mode_state == RANDO_STATE_OPEN);
+	CHECK(!c.rom_rupee_bow && !c.rom_generic_keys && !c.region_take_anys && !c.region_wild_keys);
+	CHECK(c.item_count[RANDO_ITEM_KeyD1] == RANDO_CONFIG_NULL);
+	CHECK(c.item_count[RANDO_ITEM_TwentyRupees2] == RANDO_CONFIG_NULL);
+}
+
 /* World::__construct: the constructor items, VT's default bosses, the shops' default inventory. */
 static void check_init(void)
 {
@@ -689,6 +747,8 @@ static RandoVariant variant_of(const Fixture *fx, const char *name)
 		return RANDO_VARIANT_OPEN;
 	if (strcmp(name, "inverted") == 0)
 		return RANDO_VARIANT_INVERTED;
+	if (strcmp(name, "retro") == 0)
+		return RANDO_VARIANT_RETRO;
 	fixture_fail(fx, "unknown variant");
 	return RANDO_VARIANT_COUNT;
 }
@@ -802,9 +862,6 @@ static int check_world_dump(void)
 
 	fixture_open(&fx, FIXTURE_WORLD_DUMP);
 	while (fixture_next(&fx)) {
-		/* TODO: replay the retro records once the C port has the Retro world (step 3.13 chunk 2). */
-		if (fx.nfields > 1 && strcmp(fx.field[1], "retro") == 0)
-			continue;
 		if (strcmp(fx.field[0], "region") == 0) {
 			v = variant_of(&fx, fx.field[1]);
 			check_region_record(&fx, (RandoVariant)v, regions[v]++);
@@ -1150,6 +1207,7 @@ int main(int argc, char **argv)
 	check_classic_layout();
 	check_inverted_layout();
 	check_inverted_init();
+	check_retro_init();
 	check_init();
 	check_shop_kinds();
 	check_shop_active();

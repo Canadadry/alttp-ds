@@ -66,6 +66,7 @@ static const RandoRegionRules *const variants[RANDO_VARIANT_COUNT][RANDO_REGION_
 		[RANDO_REGION_MEDALLIONS] = &medallions,
 		[RANDO_REGION_FOUNTAINS] = &fountains,
 	},
+	[RANDO_VARIANT_RETRO] = {SHARED_REGIONS, [RANDO_REGION_ESCAPE] = &rando_rules_open_escape},
 };
 
 const RandoRegionRules *rando_region_rules(RandoVariant variant, RandoRegionId region)

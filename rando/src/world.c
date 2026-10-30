@@ -80,18 +80,41 @@ static const struct {
 	[RANDO_GOAL_COMPLETIONIST] = {RANDO_CONFIG_NULL, RANDO_CONFIG_NULL},
 };
 
+/* World\Retro's counts; VT skips them under difficulty custom, which the C port does not have. */
+static void derive_retro_counts(RandoConfig *c)
+{
+	int16_t *twenty = &c->item_count[RANDO_ITEM_TwentyRupees2];
+	int extra = 10;
+
+	c->item_count[RANDO_ITEM_KeyD1] = 0;
+	c->item_count[RANDO_ITEM_KeyA2] = 0;
+	if (c->item_pool == RANDO_ITEM_POOL_HARD || c->item_pool == RANDO_ITEM_POOL_EXPERT) {
+		c->item_count[RANDO_ITEM_KeyD7] = 0;
+		c->item_count[RANDO_ITEM_KeyD2] = 0;
+		extra = 15;
+	}
+	*twenty = (int16_t)((*twenty == RANDO_CONFIG_NULL ? 0 : *twenty) + extra);
+}
+
 static void derive_config(RandoConfig *c, RandoVariant variant)
 {
 	static const RandoState states[RANDO_VARIANT_COUNT] = {
 		[RANDO_VARIANT_STANDARD] = RANDO_STATE_STANDARD,
 		[RANDO_VARIANT_OPEN] = RANDO_STATE_OPEN,
 		[RANDO_VARIANT_INVERTED] = RANDO_STATE_INVERTED,
+		[RANDO_VARIANT_RETRO] = RANDO_STATE_RETRO,
 	};
 	const ItemPoolValues *pool;
 	bool glitched;
 	int i;
 
 	c->mode_state = states[variant];
+	if (variant == RANDO_VARIANT_RETRO) {
+		c->rom_rupee_bow = true;
+		c->rom_generic_keys = true;
+		c->region_take_anys = true;
+		c->region_wild_keys = true;
+	}
 	apply_logic_glitches(c);
 	switch (c->dungeon_items) {
 	case RANDO_DUNGEON_ITEMS_FULL:
@@ -142,6 +165,8 @@ static void derive_config(RandoConfig *c, RandoVariant variant)
 		c->item_goal_required = hunt_values[c->goal].goal_required;
 	if (c->item_count[RANDO_ITEM_TriforcePiece] == RANDO_CONFIG_NULL)
 		c->item_count[RANDO_ITEM_TriforcePiece] = hunt_values[c->goal].triforce_pieces;
+	if (variant == RANDO_VARIANT_RETRO)
+		derive_retro_counts(c);
 }
 
 static const struct {
