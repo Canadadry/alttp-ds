@@ -12,5 +12,6 @@ jobs:
         with:
           submodules: false
       - run: make -C tests/rando test
+      - run: make -C tests/rando logic
       - run: make -C tests/rando selftest
       - run: make -C tests/rando e2e

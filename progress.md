@@ -17,6 +17,14 @@
     - [x] Chunk 5: spoiler checks
     - [x] Chunk 6: CI
   - [ ] 2.2 World, regions and location rules for the baseline
+    - [x] Chunk 1: VT logic extractor and fixtures
+    - [ ] Chunk 2: items and bosses
+    - [ ] Chunk 3: world core
+    - [ ] Chunk 4: overworld regions and escape variants
+    - [ ] Chunk 5: Light World dungeons
+    - [ ] Chunk 6: PoD, Swamp, Skull Woods, Thieves' Town
+    - [ ] Chunk 7: Ice Palace, Misery Mire, Turtle Rock
+    - [ ] Chunk 8: Ganon's Tower and full row count
   - [ ] 2.3 Pre-fill RNG consumers
     - [ ] 2.3.1 getAdvancementItems, generator driver and trace
     - [ ] 2.3.2 setMedallions (with setShops baseline path)
