@@ -1,7 +1,7 @@
 <?php
 // Usage: php extract_logic.php <vt_dir> <out_dir>
-// Writes world_dump.txt, predicate_vectors.txt and noglitches_rows.txt into <out_dir>.
-// Exit 1, writing nothing, on an unknown tests/NoGlitches method or a row its record does not replay.
+// Writes world_dump.txt, predicate_vectors.txt and one row file per ROW_TREES entry into <out_dir>.
+// Exit 1, writing nothing, on an unknown method in a ROW_TREES tree or a row its record does not replay.
 
 use ALttP\Boss;
 use ALttP\Item;
@@ -39,6 +39,11 @@ if (!extension_loaded('bcmath') && !extension_loaded('gmp')) {
 }
 
 const TEST_CONFIG = ['difficulty' => 'test_rules', 'logic' => 'NoGlitches'];
+// VT test tree under tests/ => its row fixture.
+const ROW_TREES = [
+    'NoGlitches' => 'noglitches_rows.txt',
+    'OverworldGlitches' => 'overworld_glitches_rows.txt',
+];
 const VARIANTS = ['standard', 'open'];
 // Every key read by the ported files: Region/Standard, Region/Open, Region, Location*, Boss, ItemCollection.
 const CONFIG_KEYS = [
@@ -848,8 +853,10 @@ function replay(array $s): bool
         }
         return $flags[0];
     }
-    $world = new_world($s['variant']);
-    foreach (parse_overrides($s['config']) as $key => $value) {
+    $overrides = parse_overrides($s['config']);
+    $factory = array_key_exists('logic', $overrides) ? ['logic' => $overrides['logic']] : [];
+    $world = new_world($s['variant'], array_merge(TEST_CONFIG, $factory));
+    foreach ($overrides as $key => $value) {
         $world->testSetConfig($key, $value);
     }
     if ($s['preset'] !== '-') {
@@ -888,9 +895,9 @@ function load_test_class(string $dir, string $file): string
 }
 
 /** @return list<array{0: string, 1: string, 2: ?array<string, ?string>}> file, class, methods run (null: all) */
-function test_sources(string $vt_dir): array
+function test_sources(string $vt_dir, string $tree): array
 {
-    $dir = "$vt_dir/tests/NoGlitches";
+    $dir = "$vt_dir/tests/$tree";
     $files = [];
     $it = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS));
     foreach ($it as $file) {
@@ -901,21 +908,23 @@ function test_sources(string $vt_dir): array
     sort($files, SORT_STRING);
     $sources = [];
     foreach ($files as $file) {
-        if (array_key_exists($file, TOP_LEVEL_METHODS)) {
+        if ($tree === 'NoGlitches' && array_key_exists($file, TOP_LEVEL_METHODS)) {
             fail("tests/NoGlitches/$file has the name of a top-level test file");
         }
         $sources[] = [$file, load_test_class($dir, $file), null];
     }
-    foreach (TOP_LEVEL_METHODS as $file => $methods) {
-        $sources[] = [$file, load_test_class("$vt_dir/tests", $file), $methods];
+    if ($tree === 'NoGlitches') {
+        foreach (TOP_LEVEL_METHODS as $file => $methods) {
+            $sources[] = [$file, load_test_class("$vt_dir/tests", $file), $methods];
+        }
     }
     return $sources;
 }
 
-function dump_rows(string $vt_dir, array &$mismatches): array
+function dump_rows(string $vt_dir, string $tree, array &$mismatches): array
 {
     $lines = [];
-    foreach (test_sources($vt_dir) as [$file, $class, $only]) {
+    foreach (test_sources($vt_dir, $tree) as [$file, $class, $only]) {
         $refl = new ReflectionClass($class);
         foreach ($refl->getMethods(ReflectionMethod::IS_PUBLIC) as $m) {
             if ($m->class !== $class || !str_starts_with($m->name, 'test')) {
@@ -985,8 +994,12 @@ function dump_rows(string $vt_dir, array &$mismatches): array
 
 $world_lines = dump_world();
 $predicate_lines = dump_predicates();
+$row_lines = [];
 $mismatches = [];
-$row_lines = dump_rows($vt_dir, $mismatches);
+foreach (array_keys(ROW_TREES) as $tree) {
+    $mismatches[$tree] = [];
+    $row_lines[$tree] = dump_rows($vt_dir, $tree, $mismatches[$tree]);
+}
 $collect_lines = dump_collect();
 
 $headers = [
@@ -1034,20 +1047,37 @@ $headers = [
         '#   fill: Location::fill(b) on location a with an empty collection; collected: the memo after the step,',
         '#   World::getLocations() order then the shops\' locations (VT merges shop items into collectItems)',
     ],
+    'overworld_glitches_rows.txt' => [
+        "# VT's tests/OverworldGlitches rows run inside VT, written by extract_logic.php (run by gen_golden.sh).",
+        '# Each row was replayed by VT from its record alone; test_regions --fixtures checks the C port.',
+        '# Fields are tab-separated; views as in world_dump.txt.',
+        '# row <test file under tests/OverworldGlitches> <method> <provider or -> <index> <variant> <config overrides or -> <preset items or ->',
+        '#   <counts view> <values view> <query> <location or region> <item or -> <test expectation> <VT answer>',
+        '#   config overrides: <key>=<JSON>,... applied with World::testSetConfig on the World::factory test world',
+        '#   a logic override is also passed to World::factory with the test config, before the testSetConfig calls',
+        '#   preset items: <location>=<item>|... set with Location::setItem before the query',
+        '#   queries: access (Location::canAccess), fill (Location::fill), region_can_fill (Region::canFill),',
+        '#   enter (Region::canEnter), complete (Region::canComplete); the C port must return the VT answer',
+    ],
 ];
 $bodies = [
     'world_dump.txt' => $world_lines,
     'predicate_vectors.txt' => $predicate_lines,
-    'noglitches_rows.txt' => array_merge($row_lines, $collect_lines),
 ];
+foreach (ROW_TREES as $tree => $file) {
+    $bodies[$file] = $tree === 'NoGlitches' ? array_merge($row_lines[$tree], $collect_lines) : $row_lines[$tree];
+}
 if (!is_dir($out_dir) && !mkdir($out_dir, 0777, true)) {
     fail("cannot create $out_dir");
 }
 foreach ($bodies as $file => $body) {
     file_put_contents("$out_dir/$file", implode("\n", array_merge($headers[$file], $body)) . "\n");
 }
-foreach ($mismatches as $line) {
-    fwrite(STDERR, "extract_logic: VT disagrees with its test: $line\n");
+foreach ($mismatches as $tree => $lines) {
+    foreach ($lines as $line) {
+        fwrite(STDERR, "extract_logic: VT disagrees with its $tree test: $line\n");
+    }
 }
-printf("extract_logic: %d world records, %d predicate records, %d NoGlitches rows (%d VT answers differ from the test), %d collect records\n",
-    count($world_lines), count($predicate_lines), count($row_lines), count($mismatches), count($collect_lines));
+printf("extract_logic: %d world records, %d predicate records, %d NoGlitches rows (%d VT answers differ from the test), %d OverworldGlitches rows (%d differ), %d collect records\n",
+    count($world_lines), count($predicate_lines), count($row_lines['NoGlitches']), count($mismatches['NoGlitches']),
+    count($row_lines['OverworldGlitches']), count($mismatches['OverworldGlitches']), count($collect_lines));

@@ -96,3 +96,6 @@
   - [x] Chunk 3: owed VT tests, measure, note
   - [x] Owed VT tests: fixture rows
   - [x] Owed VT tests: replay
+- [ ] Step 3.1 chunks
+  - [x] Chunk 1: OverworldGlitches fixture
+  - [ ] Chunk 2: C replay and derivation case
