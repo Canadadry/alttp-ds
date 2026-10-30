@@ -391,3 +391,21 @@ None.
   `-vanilla`, `dungeon_items-mc`, `-mcs`, `-full`), `goal-pedestal` and `goal-triforce-hunt` at
   `shufflePrizePacks` (surplus pool items). 19 pass, 25 pending; e2e ~0.17 s; `make test` ~62 ms.
 - Phase 2 step 3 is done.
+
+### Step 2.4
+
+- World queries (ordered pre-collected list, bare win condition, `collectOtherItems`,
+  `isWinnable`, `World::copy`), `rando_filler.h` (`RandomAssumed` line by line, false at VT's two
+  exceptions), the fill and `isWinnable` stages, the retry loop, host-only `RANDO_FAULTS`.
+  `rando_gen` takes an optional stage argument; the gate passes it for stage claims.
+- Host-only spoiler completion: `Equipped`, `meta`, a port of `getPlayThrough`. Baseline's
+  spoiler, trace and `attempts` are byte-identical to the golden, also through the retry identity
+  (seed 0, attempt 0 failed mid-fill or at `isWinnable`, reproduces baseline at attempt 1).
+- Survey at `all` over the 42 supported cases: 40 byte-identical. `dungeon_items-mcs` differs only
+  in the playthrough: VT's nested rules (`$this->locations[...]`) read the shadow world while
+  pruning; matching it needs rules that take two worlds (~240 rule functions) — its Phase 3 row.
+  `glitches-no_logic` diverges at a fill draw (map/compass fillable count) — its Phase 3 row.
+- Budget: e2e generator built at -O2 (`build/o2/`). Claims: 18 at `all`, `dungeon_items-mcs` at
+  `prepareWorld`; 19 pass, 25 pending; e2e ~0.29 s; `make test` ~80 ms (up from ~60: noisy host,
+  but trending up). Cross-attempt state where `World::copy` keeps the collect cache is caught only
+  by `make test`; the identity test guards a world not reinitialized per attempt.

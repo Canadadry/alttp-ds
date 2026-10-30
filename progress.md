@@ -53,7 +53,7 @@
       - [x] Chunk 3: generate_until and the Boots edit
       - [x] Chunk 4: prepareWorld pools stage
       - [x] Chunk 5: pool.txt, check line and claims
-  - [ ] 2.4 RandomAssumed fill, isWinnable() and the retry loop
+  - [x] 2.4 RandomAssumed fill, isWinnable() and the retry loop
     - [x] Chunk 1: world queries
     - [x] Chunk 2: filler
     - [x] Chunk 3: stage argument
