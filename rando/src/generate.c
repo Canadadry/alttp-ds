@@ -1,4 +1,5 @@
 #include "rando.h"
+#include "rando_prepare.h"
 
 #include <assert.h>
 #include <stdbool.h>
@@ -66,6 +67,12 @@ static bool run_attempt(RandoGen *gen, RandoStatus *status)
 
 	gen->stage = RANDO_STAGE_GET_ADVANCEMENT_ITEMS;
 	rando_pool_build(&gen->world, &gen->prng, &gen->pools);
+
+	/* Neither stage may call collectItems: VT caches the collectable shop items on the first call. */
+	gen->stage = RANDO_STAGE_SET_SHOPS;
+	rando_set_shops(&gen->world);
+	gen->stage = RANDO_STAGE_SET_MEDALLIONS;
+	rando_set_medallions(&gen->world, &gen->prng);
 	gen->stage = RANDO_STAGE_NONE;
 
 	*status = RANDO_INCOMPLETE;

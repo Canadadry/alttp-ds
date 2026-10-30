@@ -56,10 +56,11 @@ static void check_trace(const char *what, const Trace *trace, const char *expect
 		test_fail(TEST, "%s: trace\n%s\nexpected\n%s", what, trace->text, expected);
 }
 
-/* tests/rando/cases/baseline/trace.txt, then setMedallions: not ported yet. */
+/* tests/rando/cases/baseline/trace.txt, then placeBosses: not ported yet. */
 static void check_baseline(void)
 {
 	Trace trace;
+	int i;
 
 	CHECK(generate(NULL, NULL, 1, &trace) == RANDO_INCOMPLETE);
 	CHECK(gen.attempt == 0);
@@ -67,7 +68,30 @@ static void check_baseline(void)
 		    "0 1 getAdvancementItems 0 6 -> 3\n"
 		    "0 2 getAdvancementItems 0 6 -> 4\n"
 		    "0 3 getAdvancementItems 0 6 -> 6\n"
-		    "0 4 getAdvancementItems 0 6 -> 1\n");
+		    "0 4 getAdvancementItems 0 6 -> 1\n"
+		    "0 5 setMedallions 0 2 -> 0\n"
+		    "0 6 setMedallions 0 2 -> 0\n");
+	CHECK(rando_world_item(&gen.world, RANDO_LOC_TURTLE_ROCK_MEDALLION) == RANDO_ITEM_Ether);
+	CHECK(rando_world_item(&gen.world, RANDO_LOC_MISERY_MIRE_MEDALLION) == RANDO_ITEM_Ether);
+	for (i = 0; i < RANDO_SHOP_COUNT; i++)
+		CHECK(rando_world_shop_active(&gen.world, (RandoShopId)i) ==
+		      (rando_shop_info((RandoShopId)i)->kind != RANDO_SHOP_KIND_TAKE_ANY));
+}
+
+/* tests/rando/cases/crystals_ganon-random/trace.txt. */
+static void check_random_ganon(void)
+{
+	Trace trace;
+
+	CHECK(generate("crystals_ganon", "random", 1, &trace) == RANDO_INCOMPLETE);
+	check_trace("crystals_ganon-random", &trace,
+		    "0 1 crystals 0 7 -> 5\n"
+		    "0 2 getAdvancementItems 0 6 -> 4\n"
+		    "0 3 getAdvancementItems 0 6 -> 6\n"
+		    "0 4 getAdvancementItems 0 6 -> 1\n"
+		    "0 5 getAdvancementItems 0 6 -> 1\n"
+		    "0 6 setMedallions 0 2 -> 0\n"
+		    "0 7 setMedallions 0 2 -> 2\n");
 }
 
 /* tests/rando/cases/crystals_tower-random/trace.txt. */
@@ -81,7 +105,9 @@ static void check_random_crystals(void)
 		    "0 2 getAdvancementItems 0 6 -> 4\n"
 		    "0 3 getAdvancementItems 0 6 -> 6\n"
 		    "0 4 getAdvancementItems 0 6 -> 1\n"
-		    "0 5 getAdvancementItems 0 6 -> 1\n");
+		    "0 5 getAdvancementItems 0 6 -> 1\n"
+		    "0 6 setMedallions 0 2 -> 0\n"
+		    "0 7 setMedallions 0 2 -> 2\n");
 	CHECK(gen.world.config.crystals_tower == 5);
 	CHECK(gen.world.config.crystals_ganon == 7);
 }
@@ -97,7 +123,7 @@ static void check_crystals_order(void)
 	CHECK(rando_options_set(&options, "crystals_tower", "random"));
 	memset(&trace, 0, sizeof trace);
 	CHECK(rando_generate(&gen, &options, 1, 1, record, &trace) == RANDO_INCOMPLETE);
-	CHECK(trace.lines == 6);
+	CHECK(trace.lines == 8);
 	CHECK(strncmp(trace.text, "0 1 crystals 0 7 -> 5\n0 2 crystals 0 7 -> ", 42) == 0);
 	CHECK(gen.world.config.crystals_ganon == 5);
 	CHECK(gen.world.config.crystals_tower == trace.text[42] - '0');
@@ -115,7 +141,7 @@ static void check_states(void)
 	CHECK(generate("state", "standard", 1, &trace) == RANDO_INCOMPLETE);
 	CHECK(gen.world.variant == RANDO_VARIANT_STANDARD);
 	CHECK(gen.world.config.mode_state == RANDO_STATE_STANDARD);
-	CHECK(trace.lines == 4);
+	CHECK(trace.lines == 6);
 	CHECK(generate(NULL, NULL, 1, &trace) == RANDO_INCOMPLETE);
 	CHECK(gen.world.variant == RANDO_VARIANT_OPEN);
 }
@@ -141,13 +167,13 @@ static void check_reseed(uint32_t seed)
 	prng.observe_ctx = &expected;
 	rando_random_int(&prng, 0, 6);
 	CHECK(generate(NULL, NULL, seed, &trace) == RANDO_INCOMPLETE);
-	CHECK(trace.lines == 4);
+	CHECK(trace.lines == 6);
 	CHECK(trace.text[strlen("0 1 getAdvancementItems 0 6 -> ")] - '0' == expected);
 
 	rando_options_init(&options);
 	CHECK(rando_generate(&gen, &options, seed, 0, NULL, NULL) == RANDO_INCOMPLETE);
 	CHECK(gen.attempt == 0);
-	CHECK(gen.draw == 4);
+	CHECK(gen.draw == 6);
 }
 
 /* The gate labels claims with stages.txt's names: a renamed or reordered stage fails here. */
@@ -270,7 +296,7 @@ static int check_pool_lists(void)
 		if (skip < 0) {
 			memset(&trace, 0, sizeof trace);
 			if (rando_generate(&gen, &options, (uint32_t)seed, 1, record, &trace) != RANDO_INCOMPLETE)
-				fixture_fail(&fx, "generation did not stop incomplete after getAdvancementItems");
+				fixture_fail(&fx, "generation did not stop incomplete after setMedallions");
 			check_golden_prefix(name, &trace);
 			cases++;
 		} else {
@@ -296,6 +322,7 @@ int main(int argc, char **argv)
 	int fixtures = test_fixtures_mode(TEST, argc, argv);
 
 	check_baseline();
+	check_random_ganon();
 	check_random_crystals();
 	check_crystals_order();
 	check_states();
