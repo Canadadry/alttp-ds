@@ -12,3 +12,4 @@
   - [x] 2.3 A relaunch loads it
 - [ ] Phase 3 — Docs
   - [ ] 3.1 README
+    - [x] README: saves, how to run, calico row
