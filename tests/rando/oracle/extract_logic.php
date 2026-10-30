@@ -48,7 +48,7 @@ const ROW_TREES = [
     'InvertedOverworldGlitches' => 'inverted_overworld_glitches_rows.txt',
     'InvertedMajorGlitches' => 'inverted_major_glitches_rows.txt',
 ];
-const VARIANTS = ['standard', 'open', 'inverted'];
+const VARIANTS = ['standard', 'open', 'inverted', 'retro'];
 // Every key read by the ported files: Region/Standard, Region/Open, Region/Inverted, Region, Location*, Boss,
 // ItemCollection.
 const CONFIG_KEYS = [
@@ -84,6 +84,7 @@ function vector_configs(): array
             'itemPlacement' => 'basic', 'mode.weapons' => 'swordless', 'item.functionality' => 'expert',
         ])],
         'inverted' => ['inverted', TEST_CONFIG],
+        'retro' => ['retro', TEST_CONFIG],
     ];
 }
 
@@ -761,6 +762,7 @@ const SKIPPED_METHODS = ['testDungeonItemWrite'];
 const TOP_LEVEL_METHODS = [
     'RegionTest.php' => ['testRegionLockedItems' => 'Region'],
     'WorldTest.php' => ['testSetVanillaDungeonItems' => null],
+    'RetroBowTest.php' => ['testLocation' => null],
 ];
 const VANILLA_KEYS = ['rom.vanillaKeys', 'rom.vanillaBigKeys', 'rom.vanillaCompasses', 'rom.vanillaMaps'];
 const WILD_KEYS = ['region.wildKeys', 'region.wildBigKeys', 'region.wildCompasses', 'region.wildMaps'];
@@ -1069,6 +1071,7 @@ $headers = [
         '#   test: the NoGlitches tests\' Standard world; baseline: the baseline case; basic_swordless: baseline',
         '#   with itemPlacement basic, mode.weapons swordless and item.functionality expert',
         '#   inverted: the test config on an Inverted world',
+        '#   retro: the test config on a Retro world',
         '# columns <predicate>|...: the order of the values of every pred line; (w) passes the config\'s world',
         '# multiset <index> <label> <counts view> <values view>: built with VT operations (views as in world_dump.txt)',
         '# pred <index> <config> <values, space-separated>: 1/0 for booleans, integers otherwise (heartCount in quarter hearts)',
@@ -1084,6 +1087,7 @@ $headers = [
         '#   queries: access (Location::canAccess), fill (Location::fill), region_can_fill (Region::canFill),',
         '#   enter (Region::canEnter), complete (Region::canComplete); the C port must return the VT answer',
         '#   RegionTest.php and WorldTest.php are under tests/, not tests/NoGlitches; region Region is a bare Region',
+        '#   RetroBowTest.php is under tests/ too; its rows are on a Retro world (variant retro)',
         '#   vanilla_dungeon_items: World::factory with the config overrides added to the test config; the answer is',
         '#   the value all four rom.vanilla* keys share',
         '# collect_scenario <id> <variant> <placements or -> <pre-collected counts> <pre-collected values>',

@@ -113,3 +113,8 @@
   - [x] Chunk 7: Ganon's Tower, every row replayed
   - [x] Chunk 8: generator claim at all
   - [x] Step note
+- [ ] Step 3.13 chunks
+  - [x] Chunk 1: Retro oracle fixtures
+  - [ ] Chunk 2: Retro world
+  - [ ] Chunk 3: setShops random path and generator
+  - [ ] Chunk 4: generic-key naming and claim at all

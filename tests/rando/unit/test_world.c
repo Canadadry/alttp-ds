@@ -802,6 +802,9 @@ static int check_world_dump(void)
 
 	fixture_open(&fx, FIXTURE_WORLD_DUMP);
 	while (fixture_next(&fx)) {
+		/* TODO: replay the retro records once the C port has the Retro world (step 3.13 chunk 2). */
+		if (fx.nfields > 1 && strcmp(fx.field[1], "retro") == 0)
+			continue;
 		if (strcmp(fx.field[0], "region") == 0) {
 			v = variant_of(&fx, fx.field[1]);
 			check_region_record(&fx, (RandoVariant)v, regions[v]++);
