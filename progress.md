@@ -7,7 +7,7 @@
 - [ ] Phase 2 — Save through the EEPROM only
   - [ ] 2.1 Rewrite zelda_save.c for the EEPROM
     - [x] the file goes
-    - [ ] the EEPROM arrives
+    - [x] the EEPROM arrives
   - [ ] 2.2 A save reaches the emulator's .sav
   - [ ] 2.3 A relaunch loads it
 - [ ] Phase 3 — Docs

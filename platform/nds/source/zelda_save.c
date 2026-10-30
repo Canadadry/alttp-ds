@@ -1,5 +1,9 @@
 /*
- * No backing store yet: Mount and Flush report off and write nothing.
+ * The save is the cartridge's 8 KB EEPROM (64 kbit, 2-byte address, 32-byte
+ * pages). ZeldaWriteSram only marks g_zenv.sram dirty; Flush writes the pages
+ * that changed after the frame.
+ * Trap: a page's last data byte goes with chip-select hold cleared, or
+ * released melonDS never commits the page.
  */
 #include <nds.h>
 
@@ -17,8 +21,19 @@
 #include "select_file.h"
 #include "zelda_save.h"
 
+enum {
+	kEepSize = 8192,
+	kEepPage = 32,
+	kEepAddrType = 2,
+	kSpiSpins = 100000,
+	kWipPolls = 100000
+};
+
 static const char *g_status = "off";
 static int g_dirty;
+static int g_tries;
+static int g_eeprom;
+static uint8 g_shadow[kEepSize];
 
 const char *ZeldaSaveStatus(void)
 {
@@ -458,24 +473,146 @@ int ZeldaSpawnPrepare(int slot)
 	return entrance;
 }
 
+/* 0 when the controller is still busy after kSpiSpins. */
+static int spi_send(uint8 v)
+{
+	int i;
+
+	REG_AUXSPIDATA = v;
+	for (i = 0; i < kSpiSpins; i++) {
+		if (!(REG_AUXSPICNT & CARD_SPI_BUSY))
+			return 1;
+	}
+	return 0;
+}
+
+/* An emulated absent chip reads 00, a floating bus FF: neither toggles bit 1.
+ * Leaves the write-enable latch cleared. */
+static int eeprom_present(void)
+{
+	uint8 wren, wrdi;
+
+	cardEepromCommand(SPI_EEPROM_WREN);
+	wren = cardEepromCommand(SPI_EEPROM_RDSR);
+	cardEepromCommand(SPI_EEPROM_WRDI);
+	wrdi = cardEepromCommand(SPI_EEPROM_RDSR);
+	return (wren & 2) && !(wrdi & 2);
+}
+
+/* 1 when every byte went out and the chip ended its write in time. */
+static int eeprom_write_page(int addr, const uint8 *data)
+{
+	int i;
+
+	REG_AUXSPICNT = CARD_ENABLE | CARD_SPI_ENABLE | CARD_SPI_HOLD;
+	if (!spi_send(SPI_EEPROM_WREN))
+		goto fail;
+	REG_AUXSPICNT = CARD_SPI_HOLD;
+
+	REG_AUXSPICNT = CARD_ENABLE | CARD_SPI_ENABLE | CARD_SPI_HOLD;
+	if (!spi_send(SPI_EEPROM_PP) || !spi_send((uint8)(addr >> 8)) ||
+	    !spi_send((uint8)addr))
+		goto fail;
+	for (i = 0; i < kEepPage - 1; i++) {
+		if (!spi_send(data[i]))
+			goto fail;
+	}
+	REG_AUXSPICNT = CARD_ENABLE | CARD_SPI_ENABLE;
+	if (!spi_send(data[kEepPage - 1]))
+		goto fail;
+	REG_AUXSPICNT = CARD_SPI_HOLD;
+
+	for (i = 0; i < kWipPolls; i++) {
+		if (!(cardEepromCommand(SPI_EEPROM_RDSR) & 1))
+			return 1;
+	}
+	return 0;
+fail:
+	REG_AUXSPICNT = CARD_SPI_HOLD;
+	return 0;
+}
+
+/* A page that fails keeps its old shadow, so the next Flush retries it. */
+static int eeprom_write_changed(void)
+{
+	uint8 back[kEepPage];
+	int addr, ok = 1;
+
+	for (addr = 0; addr < kEepSize; addr += kEepPage) {
+		const uint8 *page = g_zenv.sram + addr;
+
+		if (!memcmp(page, g_shadow + addr, kEepPage))
+			continue;
+		if (eeprom_write_page(addr, page)) {
+			cardReadEeprom(addr, back, kEepPage, kEepAddrType);
+			if (!memcmp(back, page, kEepPage)) {
+				memcpy(g_shadow + addr, page, kEepPage);
+				continue;
+			}
+		}
+		ok = 0;
+	}
+	return ok;
+}
+
 void ZeldaSaveFlush(void)
 {
+	int ok;
+
 	if (!g_dirty)
 		return;
+	if (!g_zenv.sram || !g_eeprom) {
+		g_dirty = 0;
+		g_status = "off";
+		return;
+	}
+	/* Heal a slot whose existence mark or checksum was clobbered in
+	 * the same frame as the save, before those bytes reach the chip. */
+	Sram_RepairSlots(g_zenv.sram);
+	sysSetCardOwner(BUS_OWNER_ARM9);
+	ok = eeprom_write_changed();
+	sysSetCardOwner(BUS_OWNER_ARM7);
+	if (!ok) {
+		if (++g_tries >= 2) {
+			g_dirty = 0;
+			g_status = "fail";
+		}
+		return;
+	}
+	g_tries = 0;
 	g_dirty = 0;
-	g_status = "off";
+	g_status = "saved";
 }
 
 void __wrap_ZeldaWriteSram(void)
 {
 	g_dirty = 1;
+	g_tries = 0;
 }
 
 void ZeldaSaveMount(void)
 {
+	int i;
+
 	map_reset();
 	g_status = "off";
+	g_eeprom = 0;
 	if (!g_zenv.sram)
 		return;
+	sysSetCardOwner(BUS_OWNER_ARM9);
+	g_eeprom = eeprom_present();
+	if (g_eeprom)
+		cardReadEeprom(0, g_shadow, kEepSize, kEepAddrType);
+	sysSetCardOwner(BUS_OWNER_ARM7);
+	if (g_eeprom) {
+		g_status = "new";
+		for (i = 0; i < kEepSize; i++) {
+			if (g_shadow[i] != 0xFF) {
+				memcpy(g_zenv.sram, g_shadow, kEepSize);
+				g_status = "loaded";
+				break;
+			}
+		}
+	}
 	settings_load();
 }
