@@ -85,7 +85,73 @@ static void add_at_default_price(RandoWorld *world, RandoShopId shop, int slot, 
 	rando_world_shop_add(world, shop, slot, item, rando_shop_info(shop)->default_prices[slot]);
 }
 
-void rando_set_shops(RandoWorld *world)
+static void set_take_anys(RandoWorld *world, RandoPrng *prng)
+{
+	uint8_t ids[RANDO_SHOP_COUNT], chosen[4];
+	int i, n = 0, k;
+	RandoShopId old_man;
+	bool sword = world->config.mode_weapons != RANDO_WEAPONS_SWORDLESS
+		&& world->config.mode_weapons != RANDO_WEAPONS_VANILLA;
+
+	for (i = 0; i < RANDO_SHOP_COUNT; i++)
+		if (rando_shop_info((RandoShopId)i)->kind == RANDO_SHOP_KIND_TAKE_ANY)
+			ids[n++] = (uint8_t)i;
+	k = rando_random_collection(prng, ids, n, 4, chosen);
+	for (i = 0; i < k; i++) {
+		rando_world_shop_set_active(world, (RandoShopId)chosen[i], true);
+		rando_world_shop_add(world, (RandoShopId)chosen[i], 0, RANDO_ITEM_BluePotion, 0);
+		rando_world_shop_add(world, (RandoShopId)chosen[i], 1, RANDO_ITEM_BossHeartContainer, 0);
+	}
+	for (i = 0, n = 0; i < RANDO_SHOP_COUNT; i++)
+		if (rando_shop_info((RandoShopId)i)->kind == RANDO_SHOP_KIND_TAKE_ANY
+		    && !rando_world_shop_active(world, (RandoShopId)i))
+			ids[n++] = (uint8_t)i;
+	assert(n > 0);
+	old_man = (RandoShopId)ids[rando_random_int(prng, 0, n - 1)];
+	rando_world_shop_set_active(world, old_man, true);
+	rando_world_shop_add(world, old_man, 0, sword ? RANDO_ITEM_ProgressiveSword : RANDO_ITEM_ThreeHundredRupees, 0);
+}
+
+static void set_retro_sellers(RandoWorld *world, RandoPrng *prng)
+{
+	const RandoConfig *c = &world->config;
+	uint8_t ids[RANDO_SHOP_COUNT], chosen[5];
+	int i, n = 0, k;
+
+	for (i = 0; i < RANDO_SHOP_COUNT; i++)
+		if (rando_shop_info((RandoShopId)i)->kind == RANDO_SHOP_KIND_SHOP
+		    && (world->variant != RANDO_VARIANT_INVERTED || i != RANDO_SHOP_DARK_WORLD_LAKE_HYLIA_SHOP))
+			ids[n++] = (uint8_t)i;
+	k = rando_random_collection(prng, ids, n, 5, chosen);
+	for (i = 0; i < k; i++) {
+		RandoShopId shop = (RandoShopId)chosen[i];
+
+		rando_world_shop_set_active(world, shop, true);
+		if (c->rom_rupee_bow)
+			rando_world_shop_add(world, shop, 0, RANDO_ITEM_ShopArrow, 80);
+		if (c->rom_generic_keys)
+			rando_world_shop_add(world, shop, 1, RANDO_ITEM_ShopKey, 100);
+		rando_world_shop_add(world, shop, 2, RANDO_ITEM_TenBombs, 50);
+	}
+}
+
+static void set_rupee_bow_shops(RandoWorld *world)
+{
+	int s;
+
+	rando_world_shop_set_active(world, RANDO_SHOP_DARK_WORLD_FOREST_SHOP, true);
+	for (s = 0; s < RANDO_SHOP_SLOTS; s++) {
+		RandoItemId item = rando_world_shop_item(world, RANDO_SHOP_DARK_WORLD_FOREST_SHOP, s);
+
+		if (item != RANDO_ITEM_NONE && rando_item_info(item)->item_class == RANDO_ITEM_CLASS_ARROW)
+			rando_world_shop_add(world, RANDO_SHOP_DARK_WORLD_FOREST_SHOP, s, RANDO_ITEM_ShopArrow, 80);
+	}
+	rando_world_shop_clear(world, RANDO_SHOP_CAPACITY_UPGRADE);
+	if (!world->config.shops_hard_mode)
+		rando_world_shop_add(world, RANDO_SHOP_CAPACITY_UPGRADE, 0, RANDO_ITEM_BombUpgrade5, 100);
+}
+
+void rando_set_shops(RandoWorld *world, RandoPrng *prng)
 {
 	const RandoConfig *c = &world->config;
 	RandoItemId shield = c->item_overflow_replacement_shield;
@@ -105,8 +171,14 @@ void rando_set_shops(RandoWorld *world)
 		for (j = 0; j < sizeof shield_shops / sizeof shield_shops[0]; j++)
 			add_at_default_price(world, shield_shops[j], 1, shield);
 
-	assert(!c->rom_generic_keys && !c->rom_rupee_bow &&
-	       "setShops: the retro shops' random path (generic keys, rupee bow, take-anys) is not ported");
+	if (!c->rom_generic_keys && !c->rom_rupee_bow && !c->region_take_anys)
+		return;
+	assert(prng && "setShops' random path draws");
+	if (c->region_take_anys)
+		set_take_anys(world, prng);
+	set_retro_sellers(world, prng);
+	if (c->rom_rupee_bow)
+		set_rupee_bow_shops(world);
 }
 
 void rando_set_medallions(RandoWorld *world, RandoPrng *prng)

@@ -18,9 +18,9 @@ void rando_prepare_goal(RandoWorld *world);
  * appended to the item pool). */
 void rando_prepare_pre_collect(RandoWorld *world, RandoPools *pools);
 
-/* Randomizer::setShops on the draw-free path. Asserts when generic keys or the rupee bow are on:
- * that path draws and is not ported. */
-void rando_set_shops(RandoWorld *world);
+/* Randomizer::setShops. prng may be NULL when none of generic keys, rupee bow and take-anys is on:
+ * that path draws nothing. Otherwise 5 draws, plus 5 under take-anys. */
+void rando_set_shops(RandoWorld *world, RandoPrng *prng);
 
 /* One draw per Medallions location that holds no item yet; a filled one is skipped without a draw. */
 void rando_set_medallions(RandoWorld *world, RandoPrng *prng);

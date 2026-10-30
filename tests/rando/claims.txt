@@ -45,3 +45,4 @@ goal-fast_ganon all
 goal-ganonhunt all
 glitches-no_logic all
 state-inverted all
+state-retro shufflePrizePacks

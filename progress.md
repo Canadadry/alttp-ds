@@ -116,5 +116,5 @@
 - [ ] Step 3.13 chunks
   - [x] Chunk 1: Retro oracle fixtures
   - [x] Chunk 2: Retro world
-  - [ ] Chunk 3: setShops random path and generator
+  - [x] Chunk 3: setShops random path and generator
   - [ ] Chunk 4: generic-key naming and claim at all

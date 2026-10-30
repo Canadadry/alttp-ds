@@ -44,7 +44,7 @@ static void check_shops_baseline(void)
 
 	open_world(&world, RANDO_ITEM_POOL_NORMAL);
 	fresh = world;
-	rando_set_shops(&world);
+	rando_set_shops(&world, NULL);
 	for (i = 0; i < RANDO_SHOP_COUNT; i++) {
 		RandoShopId shop = (RandoShopId)i;
 
@@ -63,7 +63,7 @@ static void check_shops_hard(void)
 
 	open_world(&world, RANDO_ITEM_POOL_HARD);
 	fresh = world;
-	rando_set_shops(&world);
+	rando_set_shops(&world, NULL);
 	CHECK(rando_world_shop_active(&world, RANDO_SHOP_CAPACITY_UPGRADE));
 	for (s = 0; s < RANDO_SHOP_SLOTS; s++)
 		CHECK(rando_world_shop_item(&world, RANDO_SHOP_CAPACITY_UPGRADE, s) == RANDO_ITEM_NONE);
@@ -85,7 +85,7 @@ static void check_shops_expert(void)
 
 	open_world(&world, RANDO_ITEM_POOL_EXPERT);
 	fresh = world;
-	rando_set_shops(&world);
+	rando_set_shops(&world, NULL);
 	for (s = 0; s < RANDO_SHOP_SLOTS; s++)
 		CHECK(rando_world_shop_item(&world, RANDO_SHOP_CAPACITY_UPGRADE, s) == RANDO_ITEM_NONE);
 	check_slot(&world, RANDO_SHOP_DARK_WORLD_FOREST_SHOP, 0, RANDO_ITEM_TwentyRupees2, 500);
@@ -113,7 +113,7 @@ static void check_shops_crowd_control(RandoItemId replacement)
 	config.item_overflow_replacement_shield = replacement;
 	rando_world_init(&world, RANDO_VARIANT_OPEN, &config);
 	fresh = world;
-	rando_set_shops(&world);
+	rando_set_shops(&world, NULL);
 	check_same_inventory(&world, &fresh, RANDO_SHOP_CAPACITY_UPGRADE);
 	check_slot(&world, RANDO_SHOP_DARK_WORLD_FOREST_SHOP, 0, replacement, 500);
 	for (i = 0; i < sizeof below_one_shops / sizeof below_one_shops[0]; i++) {
@@ -130,6 +130,184 @@ static void seeded(RandoPrng *prng, uint32_t seed, int skip)
 		rando_random_int(prng, 0, 0);
 }
 
+static void count_draw(void *ctx, int64_t min, int64_t max, int64_t r)
+{
+	(void)min;
+	(void)max;
+	(void)r;
+	++*(int *)ctx;
+}
+
+static void retro_world(RandoWorld *world, RandoItemPool pool, RandoWeapons weapons)
+{
+	RandoConfig config;
+
+	rando_config_init(&config);
+	config.item_pool = pool;
+	config.mode_weapons = weapons;
+	rando_world_init(world, RANDO_VARIANT_RETRO, &config);
+}
+
+static int set_shops_draws(RandoWorld *world, uint32_t seed)
+{
+	RandoPrng prng;
+	int draws = 0;
+
+	seeded(&prng, seed, 0);
+	prng.observe = count_draw;
+	prng.observe_ctx = &draws;
+	rando_set_shops(world, &prng);
+	return draws;
+}
+
+static int holds(const RandoWorld *world, RandoShopId shop, int slot, RandoItemId item, int price)
+{
+	return rando_world_shop_item(world, shop, slot) == item && rando_world_shop_price(world, shop, slot) == price;
+}
+
+/* Randomizer::setShops' random path: 4 + 1 take-any draws, then 5 shops for the arrow, key and bombs. */
+static void check_shops_retro(void)
+{
+	uint32_t seed;
+
+	for (seed = 0; seed < 8; seed++) {
+		RandoWorld world;
+		int i, take_anys = 0, potions = 0, swords = 0, sellers = 0;
+
+		retro_world(&world, RANDO_ITEM_POOL_NORMAL, RANDO_WEAPONS_RANDOMIZED);
+		CHECK(set_shops_draws(&world, seed) == 10);
+		for (i = 0; i < RANDO_SHOP_COUNT; i++) {
+			RandoShopId shop = (RandoShopId)i;
+			RandoShopKind kind = rando_shop_info(shop)->kind;
+
+			if (kind == RANDO_SHOP_KIND_TAKE_ANY && rando_world_shop_active(&world, shop)) {
+				take_anys++;
+				if (holds(&world, shop, 0, RANDO_ITEM_BluePotion, 0)
+				    && holds(&world, shop, 1, RANDO_ITEM_BossHeartContainer, 0))
+					potions++;
+				else if (holds(&world, shop, 0, RANDO_ITEM_ProgressiveSword, 0)
+					 && rando_world_shop_item(&world, shop, 1) == RANDO_ITEM_NONE)
+					swords++;
+			}
+			if (rando_world_shop_item(&world, shop, 1) == RANDO_ITEM_ShopKey) {
+				CHECK(kind == RANDO_SHOP_KIND_SHOP);
+				CHECK(holds(&world, shop, 0, RANDO_ITEM_ShopArrow, 80));
+				CHECK(holds(&world, shop, 1, RANDO_ITEM_ShopKey, 100));
+				CHECK(holds(&world, shop, 2, RANDO_ITEM_TenBombs, 50));
+				sellers++;
+			}
+		}
+		CHECK(take_anys == 5 && potions == 4 && swords == 1);
+		CHECK(sellers == 5);
+		CHECK(holds(&world, RANDO_SHOP_CAPACITY_UPGRADE, 0, RANDO_ITEM_BombUpgrade5, 100));
+		CHECK(rando_world_shop_item(&world, RANDO_SHOP_CAPACITY_UPGRADE, 1) == RANDO_ITEM_NONE);
+		CHECK(rando_world_shop_item(&world, RANDO_SHOP_CAPACITY_UPGRADE, 2) == RANDO_ITEM_NONE);
+	}
+}
+
+static RandoShopId old_man(const RandoWorld *world)
+{
+	int i;
+
+	for (i = 0; i < RANDO_SHOP_COUNT; i++)
+		if (rando_shop_info((RandoShopId)i)->kind == RANDO_SHOP_KIND_TAKE_ANY
+		    && rando_world_shop_active(world, (RandoShopId)i)
+		    && rando_world_shop_item(world, (RandoShopId)i, 1) == RANDO_ITEM_NONE)
+			return (RandoShopId)i;
+	return RANDO_SHOP_COUNT;
+}
+
+/* swordless and vanilla weapons: the old man gives ThreeHundredRupees, no sword. */
+static void check_shops_retro_old_man(RandoWeapons weapons)
+{
+	RandoWorld world;
+	RandoShopId shop;
+
+	retro_world(&world, RANDO_ITEM_POOL_NORMAL, weapons);
+	CHECK(set_shops_draws(&world, 3) == 10);
+	shop = old_man(&world);
+	CHECK(shop != RANDO_SHOP_COUNT);
+	CHECK(holds(&world, shop, 0, RANDO_ITEM_ThreeHundredRupees, 0));
+}
+
+/* Seed 0 does not pick the Forest Shop: only its TenArrows slot becomes ShopArrow at 80. */
+static void check_shops_retro_forest(void)
+{
+	RandoWorld world;
+
+	retro_world(&world, RANDO_ITEM_POOL_NORMAL, RANDO_WEAPONS_RANDOMIZED);
+	set_shops_draws(&world, 0);
+	CHECK(rando_world_shop_active(&world, RANDO_SHOP_DARK_WORLD_FOREST_SHOP));
+	CHECK(holds(&world, RANDO_SHOP_DARK_WORLD_FOREST_SHOP, 0, RANDO_ITEM_RedShield, 500));
+	CHECK(holds(&world, RANDO_SHOP_DARK_WORLD_FOREST_SHOP, 1, RANDO_ITEM_Bee, 10));
+	CHECK(holds(&world, RANDO_SHOP_DARK_WORLD_FOREST_SHOP, 2, RANDO_ITEM_ShopArrow, 80));
+}
+
+/* shops.HardMode: the Capacity Upgrade stays empty under the rupee bow. */
+static void check_shops_retro_hard(void)
+{
+	RandoWorld world;
+	int s;
+
+	retro_world(&world, RANDO_ITEM_POOL_HARD, RANDO_WEAPONS_RANDOMIZED);
+	CHECK(set_shops_draws(&world, 1) == 10);
+	CHECK(rando_world_shop_active(&world, RANDO_SHOP_CAPACITY_UPGRADE));
+	for (s = 0; s < RANDO_SHOP_SLOTS; s++)
+		CHECK(rando_world_shop_item(&world, RANDO_SHOP_CAPACITY_UPGRADE, s) == RANDO_ITEM_NONE);
+}
+
+static void flagged_world(RandoWorld *world, RandoVariant variant, bool generic_keys, bool rupee_bow, bool take_anys)
+{
+	RandoConfig config;
+
+	rando_config_init(&config);
+	config.rom_generic_keys = generic_keys;
+	config.rom_rupee_bow = rupee_bow;
+	config.region_take_anys = take_anys;
+	rando_world_init(world, variant, &config);
+}
+
+/* VT skips the Dark World Lake Hylia Shop in a World\Inverted only. */
+static void check_shops_retro_inverted(void)
+{
+	int open_hits = 0;
+	uint32_t seed;
+
+	for (seed = 0; seed < 16; seed++) {
+		RandoWorld world;
+
+		flagged_world(&world, RANDO_VARIANT_INVERTED, true, true, true);
+		CHECK(set_shops_draws(&world, seed) == 10);
+		CHECK(rando_world_shop_item(&world, RANDO_SHOP_DARK_WORLD_LAKE_HYLIA_SHOP, 0) != RANDO_ITEM_ShopArrow);
+		flagged_world(&world, RANDO_VARIANT_OPEN, true, true, true);
+		set_shops_draws(&world, seed);
+		open_hits += rando_world_shop_item(&world, RANDO_SHOP_DARK_WORLD_LAKE_HYLIA_SHOP, 0) == RANDO_ITEM_ShopArrow;
+	}
+	CHECK(open_hits > 0);
+}
+
+/* The rupee bow alone: no take-any draw, the 5 sellers get the arrow and bombs but no key. */
+static void check_shops_rupee_bow_alone(void)
+{
+	RandoWorld world;
+	int i, sellers = 0;
+
+	flagged_world(&world, RANDO_VARIANT_OPEN, false, true, false);
+	CHECK(set_shops_draws(&world, 2) == 5);
+	for (i = 0; i < RANDO_SHOP_COUNT; i++) {
+		CHECK(rando_world_shop_item(&world, (RandoShopId)i, 1) != RANDO_ITEM_ShopKey);
+		if (rando_shop_info((RandoShopId)i)->kind == RANDO_SHOP_KIND_TAKE_ANY)
+			CHECK(!rando_world_shop_active(&world, (RandoShopId)i));
+		sellers += rando_world_shop_item(&world, (RandoShopId)i, 0) == RANDO_ITEM_ShopArrow
+			&& holds(&world, (RandoShopId)i, 2, RANDO_ITEM_TenBombs, 50);
+	}
+	CHECK(sellers == 5);
+	CHECK(holds(&world, RANDO_SHOP_CAPACITY_UPGRADE, 0, RANDO_ITEM_BombUpgrade5, 100));
+
+	open_world(&world, RANDO_ITEM_POOL_NORMAL);
+	CHECK(set_shops_draws(&world, 2) == 0);
+}
+
 /* cases/crystals_ganon-random seed 1, attempt 0: draws 6 and 7 are 0 then 2; Turtle Rock comes first. */
 static void check_medallions_golden(void)
 {
@@ -141,14 +319,6 @@ static void check_medallions_golden(void)
 	rando_set_medallions(&world, &prng);
 	CHECK(rando_world_item(&world, RANDO_LOC_TURTLE_ROCK_MEDALLION) == RANDO_ITEM_Ether);
 	CHECK(rando_world_item(&world, RANDO_LOC_MISERY_MIRE_MEDALLION) == RANDO_ITEM_Quake);
-}
-
-static void count_draw(void *ctx, int64_t min, int64_t max, int64_t r)
-{
-	(void)min;
-	(void)max;
-	(void)r;
-	++*(int *)ctx;
 }
 
 /* VT's $medallions, indexed by get_random_int(0, 2). */
@@ -702,7 +872,7 @@ static void prize_world(RandoWorld *world, RandoPrng *prng, const RandoItemId *z
 	rando_prepare_start_equipment(world);
 	rando_prepare_goal(world);
 	rando_prepare_pre_collect(world, &pools);
-	rando_set_shops(world);
+	rando_set_shops(world, NULL);
 	seeded(prng, 1, 0);
 	rando_set_medallions(world, prng);
 	rando_place_bosses(world);
@@ -1295,6 +1465,13 @@ int main(int argc, char **argv)
 	check_shops_expert();
 	check_shops_crowd_control(RANDO_ITEM_TwentyRupees2);
 	check_shops_crowd_control(RANDO_ITEM_Arrow);
+	check_shops_retro();
+	check_shops_retro_old_man(RANDO_WEAPONS_SWORDLESS);
+	check_shops_retro_old_man(RANDO_WEAPONS_VANILLA);
+	check_shops_retro_forest();
+	check_shops_retro_hard();
+	check_shops_retro_inverted();
+	check_shops_rupee_bow_alone();
 	check_medallions_golden();
 	check_medallion_index();
 	check_medallion_preset();

@@ -90,8 +90,8 @@ static bool run_attempt(RandoGen *gen, RandoStatus *status)
 		variant = RANDO_VARIANT_INVERTED;
 		break;
 	case RANDO_OPTION_STATE_RETRO:
-		*status = RANDO_UNSUPPORTED;
-		return true;
+		variant = RANDO_VARIANT_RETRO;
+		break;
 	case RANDO_OPTION_STATE_OPEN:
 	default:
 		variant = RANDO_VARIANT_OPEN;
@@ -110,7 +110,7 @@ static bool run_attempt(RandoGen *gen, RandoStatus *status)
 
 	/* None of these stages may call collectItems: VT caches the collectable shop items on the first call. */
 	gen->stage = RANDO_STAGE_SET_SHOPS;
-	rando_set_shops(&gen->world);
+	rando_set_shops(&gen->world, &gen->prng);
 	if (end_stage(gen, status))
 		return true;
 	gen->stage = RANDO_STAGE_SET_MEDALLIONS;
