@@ -109,6 +109,9 @@ bool rando_options_set(RandoOptions *options, const char *key, const char *value
 RandoOptionKey rando_option_key_find(const char *key);
 /* Asserts key < RANDO_OPTION_KEY_COUNT. */
 const char *rando_option_key_name(RandoOptionKey key);
+/* The VT string of the key's enum value, e.g. (RANDO_OPTION_CRYSTALS_GANON, RANDO_CRYSTALS_RANDOM)
+ * gives "random". Asserts both are in range. */
+const char *rando_option_value_name(RandoOptionKey key, int value);
 
 /* The oracle wrapper's World::factory arguments on top of rando_config_init: no World constructor
  * derivation. crystals_ganon and crystals_tower are the resolved counts, asserted in 0..7. */

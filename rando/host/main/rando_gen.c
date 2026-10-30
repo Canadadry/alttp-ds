@@ -1,6 +1,7 @@
 #include "rando.h"
 #include "rando_case.h"
 #include "rando_out.h"
+#include "rando_playthrough.h"
 #include "rando_spoiler.h"
 
 #include <errno.h>
@@ -19,12 +20,14 @@ enum {
 #define ORACLE_WATCHDOG 1000u
 
 static RandoGen gen;
+static RandoPlaythrough playthrough;
+static bool complete;
 
 typedef bool (*Writer)(FILE *out);
 
 static bool spoiler_json(FILE *out)
 {
-	return rando_spoiler_write_json(out, &gen.world);
+	return rando_spoiler_write_json(out, &gen.world, &gen.options, complete ? &playthrough : NULL);
 }
 
 static bool pool_txt(FILE *out)
@@ -93,6 +96,9 @@ int main(int argc, char **argv)
 		fprintf(stderr, "rando_gen: %s\n", out_error);
 		return EXIT_INPUT;
 	}
+	complete = status == RANDO_COMPLETE;
+	if (complete)
+		rando_playthrough(&gen.world, &playthrough);
 	if ((status == RANDO_COMPLETE || status == RANDO_INCOMPLETE)
 	    && !write_file(argv[2], "spoiler.json", spoiler_json))
 		return EXIT_INPUT;

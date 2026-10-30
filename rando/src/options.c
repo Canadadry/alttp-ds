@@ -126,6 +126,17 @@ const char *rando_option_key_name(RandoOptionKey key)
 	return keys[key].name;
 }
 
+const char *rando_option_value_name(RandoOptionKey key, int value)
+{
+	int v;
+
+	assert(key < RANDO_OPTION_KEY_COUNT && value >= 0);
+	for (v = 0; v < value; v++)
+		assert(keys[key].values[v] != NULL && "option value out of range");
+	assert(keys[key].values[value] != NULL && "option value out of range");
+	return keys[key].values[value];
+}
+
 bool rando_options_set(RandoOptions *o, const char *key, const char *value)
 {
 	RandoOptionKey k = rando_option_key_find(key);

@@ -42,7 +42,7 @@ static void write_case(const char *case_dir)
 	      RANDO_INCOMPLETE);
 	f = tmpfile();
 	CHECK(f != NULL);
-	CHECK(rando_spoiler_write_json(f, &gen.world));
+	CHECK(rando_spoiler_write_json(f, &gen.world, &gen.options, NULL));
 	rewind(f);
 	read_stream(f, case_dir, spoiler);
 	fclose(f);
@@ -216,10 +216,12 @@ static void check_file_layout(void)
 
 static void write_world(const RandoWorld *world)
 {
+	RandoOptions options;
 	FILE *f = tmpfile();
 
+	rando_options_init(&options);
 	CHECK(f != NULL);
-	CHECK(rando_spoiler_write_json(f, world));
+	CHECK(rando_spoiler_write_json(f, world, &options, NULL));
 	rewind(f);
 	read_stream(f, "world", spoiler);
 	fclose(f);
@@ -265,6 +267,46 @@ static void check_no_active_shop(void)
 			      "    ],\n") != NULL);
 }
 
+/* Equipped and meta are decided before the fill: both equal the golden's. */
+static void check_equipped_and_meta(const char *case_dir)
+{
+	write_case(case_dir);
+	read_golden(case_dir);
+	check_section(case_dir, "Equipped");
+	check_section(case_dir, "meta");
+	CHECK(strstr(spoiler, "\"playthrough\"") == NULL);
+}
+
+/* VT's getSpoiler skips Upgrade\Arrow, Upgrade\Bomb and Event, numbers the rest from 1 in insertion
+ * order and writes getTarget()->getName(). */
+static void check_equipped_order(void)
+{
+	static RandoWorld world;
+	RandoConfig config;
+
+	rando_config_init(&config);
+	rando_world_init(&world, RANDO_VARIANT_OPEN, &config);
+	rando_world_add_pre_collected(&world, RANDO_ITEM_ArrowUpgrade10);
+	rando_world_add_pre_collected(&world, RANDO_ITEM_BombUpgrade10);
+	write_world(&world);
+	CHECK(strstr(spoiler, "\"Equipped\"") == NULL);
+
+	rando_world_add_pre_collected(&world, RANDO_ITEM_BossHeartContainer);
+	rando_world_add_pre_collected(&world, RANDO_ITEM_BossHeartContainer);
+	rando_world_add_pre_collected(&world, RANDO_ITEM_BossHeartContainer);
+	rando_world_add_pre_collected(&world, RANDO_ITEM_RescueZelda);
+	rando_world_add_pre_collected(&world, RANDO_ITEM_PegasusBoots);
+	rando_world_add_pre_collected(&world, RANDO_ITEM_UncleSword);
+	write_world(&world);
+	CHECK(strstr(spoiler, "    \"Equipped\": {\n"
+			      "        \"Equipment Slot 1\": \"BossHeartContainer:1\",\n"
+			      "        \"Equipment Slot 2\": \"BossHeartContainer:1\",\n"
+			      "        \"Equipment Slot 3\": \"BossHeartContainer:1\",\n"
+			      "        \"Equipment Slot 4\": \"PegasusBoots:1\",\n"
+			      "        \"Equipment Slot 5\": \"ProgressiveSword:1\"\n"
+			      "    },\n") != NULL);
+}
+
 static void write_pool(const RandoPools *pools)
 {
 	FILE *f = tmpfile();
@@ -307,6 +349,12 @@ int main(void)
 	check_alias_names();
 	check_no_active_shop();
 	check_pool();
+	check_equipped_and_meta("cases/baseline");
+	check_equipped_and_meta("cases/crystals_ganon-random");
+	check_equipped_and_meta("cases/item_pool-crowd_control");
+	check_equipped_and_meta("cases/weapons-assured");
+	check_equipped_and_meta("cases/goal-completionist");
+	check_equipped_order();
 	printf(TEST ": hand-written cases passed\n");
 	return 0;
 }

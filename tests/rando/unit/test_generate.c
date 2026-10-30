@@ -1,4 +1,7 @@
 #include "rando.h"
+#include "rando_out.h"
+#include "rando_playthrough.h"
+#include "rando_spoiler.h"
 #include "support.h"
 
 #include <inttypes.h>
@@ -38,6 +41,49 @@ static void record(void *ctx, uint32_t attempt, uint32_t draw, const char *stage
 }
 
 static RandoGen gen;
+static RandoPlaythrough playthrough;
+
+#define SPOILER_MAX (128 * 1024)
+
+/* Reads at most SPOILER_MAX - 1 bytes of f into text, NUL-terminated. */
+static void read_all(FILE *f, const char *what, char text[SPOILER_MAX])
+{
+	size_t n;
+
+	if (!f)
+		test_fail(TEST, "%s: cannot open", what);
+	n = fread(text, 1, SPOILER_MAX, f);
+	if (ferror(f) || n == SPOILER_MAX)
+		test_fail(TEST, "%s: read error or longer than %d bytes", what, SPOILER_MAX - 1);
+	text[n] = '\0';
+	fclose(f);
+}
+
+#define BUILD_DIR "build"
+
+/* rando_gen's outputs on a complete run: the full spoiler.json equals the golden case's, and the
+ * attempts file holds attempts. */
+static void check_complete_outputs(const char *case_dir, const char *what, const char *attempts)
+{
+	static char golden[SPOILER_MAX], spoiler[SPOILER_MAX];
+	char path[256], error[RANDO_OUT_ERROR_MAX];
+	FILE *f = tmpfile();
+
+	CHECK(f != NULL);
+	rando_playthrough(&gen.world, &playthrough);
+	CHECK(rando_spoiler_write_json(f, &gen.world, &gen.options, &playthrough));
+	rewind(f);
+	read_all(f, "spoiler", spoiler);
+	snprintf(path, sizeof path, "%s/spoiler.json", case_dir);
+	read_all(fopen(path, "rb"), path, golden);
+	if (strcmp(spoiler, golden) != 0)
+		test_fail(TEST, "%s: spoiler.json differs from %s", what, path);
+	if (!rando_attempts_write(BUILD_DIR, gen.attempt, error))
+		test_fail(TEST, "%s", error);
+	read_all(fopen(BUILD_DIR "/attempts", "rb"), BUILD_DIR "/attempts", spoiler);
+	if (strcmp(spoiler, attempts) != 0)
+		test_fail(TEST, "%s: attempts %s", what, spoiler);
+}
 
 static RandoStatus generate(const char *key, const char *value, uint32_t seed, Trace *trace)
 {
@@ -253,6 +299,7 @@ static void check_baseline_complete(void)
 	CHECK(gen.attempt == 0);
 	CHECK(trace.lines == 805);
 	check_golden_stop("baseline", &trace, GOLDEN_END);
+	check_complete_outputs("cases/baseline", "baseline", "0\n");
 }
 
 /* Attempt k of seed s is attempt 0 of seed s + k: seed 0 with attempt 0 failed at point must replay
@@ -295,6 +342,8 @@ static void check_retry_identity(RandoFault point)
 	while (line > trace.text && line[-1] != '\n')
 		line--;
 	CHECK(strstr(line, " fill ") != NULL && strstr(line, " fill ") < retry);
+	check_complete_outputs("cases/baseline", point == RANDO_FAULT_MID_FILL ? "mid-fill retry" : "isWinnable retry",
+			       "1\n");
 }
 
 static int count_item(RandoPoolList list, RandoItemId item)
