@@ -133,6 +133,25 @@ void rando_world_init(RandoWorld *world, RandoVariant variant, const RandoConfig
 	rando_items_clear(&world->pre_collected);
 }
 
+void rando_world_add_pre_collected(RandoWorld *world, RandoItemId item)
+{
+	assert(item < RANDO_ITEM_COUNT);
+	assert(world->npre_collected < RANDO_PRE_COLLECTED_MAX && "raise RANDO_PRE_COLLECTED_MAX");
+	world->pre_collected_order[world->npre_collected++] = (uint8_t)item;
+	rando_items_add(&world->pre_collected, item);
+}
+
+int rando_world_pre_collected_count(const RandoWorld *world)
+{
+	return world->npre_collected;
+}
+
+RandoItemId rando_world_pre_collected_item(const RandoWorld *world, int i)
+{
+	assert(i >= 0 && i < world->npre_collected);
+	return (RandoItemId)world->pre_collected_order[i];
+}
+
 RandoItemId rando_world_item(const RandoWorld *world, RandoLocationId location)
 {
 	assert(location < RANDO_LOCATION_COUNT);
@@ -358,7 +377,7 @@ static void compute_collectable(RandoWorld *world)
 	world->collectable_computed = true;
 }
 
-static bool can_access_shop(const RandoWorld *world, RandoShopId shop, const RandoItems *items)
+bool rando_world_can_access_shop(const RandoWorld *world, RandoShopId shop, const RandoItems *items)
 {
 	RandoRegionId region = rando_shop_info(shop)->region;
 	const RandoRegionRules *rules = rando_region_rules(world->variant, region);
@@ -367,18 +386,13 @@ static bool can_access_shop(const RandoWorld *world, RandoShopId shop, const Ran
 	return rando_world_region_can_enter(world, region, items) && (!requirement || requirement(world, items));
 }
 
-void rando_world_collect_items(RandoWorld *world, const RandoItems *start, RandoItems *out)
+/* found_total may be NULL. */
+static void search(RandoWorld *world, RandoItems *my_items, RandoItems *found_total)
 {
 	bool available[RANDO_LOCATION_COUNT];
 	RandoItems found;
 	int i, s, nfound;
 
-	assert(out != start);
-	if (start)
-		*out = *start;
-	else
-		rando_items_clear(out);
-	rando_items_merge(out, out, &world->pre_collected);
 	if (!world->collectable_computed)
 		compute_collectable(world);
 	for (i = 0; i < RANDO_LOCATION_COUNT; i++)
@@ -387,7 +401,8 @@ void rando_world_collect_items(RandoWorld *world, const RandoItems *start, Rando
 		rando_items_clear(&found);
 		nfound = 0;
 		for (i = 0; i < RANDO_LOCATION_COUNT; i++) {
-			if (!available[i] || world->collected[i] || !rando_world_can_access(world, (RandoLocationId)i, out))
+			if (!available[i] || world->collected[i]
+			    || !rando_world_can_access(world, (RandoLocationId)i, my_items))
 				continue;
 			world->collected[i] = true;
 			available[i] = false;
@@ -397,15 +412,45 @@ void rando_world_collect_items(RandoWorld *world, const RandoItems *start, Rando
 		for (i = 0; i < RANDO_SHOP_COUNT; i++) {
 			for (s = 0; s < RANDO_SHOP_SLOTS; s++) {
 				if (world->collectable_shop_items[i][s] == RANDO_ITEM_NONE || world->shop_collected[i][s]
-				    || !can_access_shop(world, (RandoShopId)i, out))
+				    || !rando_world_can_access_shop(world, (RandoShopId)i, my_items))
 					continue;
 				world->shop_collected[i][s] = true;
 				rando_items_add(&found, (RandoItemId)world->collectable_shop_items[i][s]);
 				nfound++;
 			}
 		}
-		rando_items_merge(out, out, &found);
+		rando_items_merge(my_items, my_items, &found);
+		if (found_total)
+			rando_items_merge(found_total, found_total, &found);
 	} while (nfound > 0);
+}
+
+void rando_world_collect_items(RandoWorld *world, const RandoItems *start, RandoItems *out)
+{
+	assert(out != start);
+	if (start)
+		*out = *start;
+	else
+		rando_items_clear(out);
+	rando_items_merge(out, out, &world->pre_collected);
+	search(world, out, NULL);
+}
+
+void rando_world_collect_other_items(RandoWorld *world, const RandoItems *collected, RandoItems *found)
+{
+	RandoItems my_items = *collected;
+
+	assert(found != collected);
+	rando_items_clear(found);
+	search(world, &my_items, found);
+}
+
+bool rando_world_win_condition(const RandoWorld *world, const RandoItems *items)
+{
+	return rando_items_has(items, RANDO_ITEM_Triforce)
+		|| (rando_world_region_can_enter(world, RANDO_REGION_NORTH_EAST_LIGHT_WORLD, items)
+		    && world->config.goal == RANDO_GOAL_TRIFORCE_HUNT
+		    && rando_items_has_n(items, RANDO_ITEM_TriforcePiece, world->config.item_goal_required));
 }
 
 bool rando_world_check_win_condition(RandoWorld *world, const RandoItems *collected)
@@ -413,10 +458,7 @@ bool rando_world_check_win_condition(RandoWorld *world, const RandoItems *collec
 	RandoItems items;
 
 	rando_world_collect_items(world, collected, &items);
-	return rando_items_has(&items, RANDO_ITEM_Triforce)
-		|| (rando_world_region_can_enter(world, RANDO_REGION_NORTH_EAST_LIGHT_WORLD, &items)
-		    && world->config.goal == RANDO_GOAL_TRIFORCE_HUNT
-		    && rando_items_has_n(&items, RANDO_ITEM_TriforcePiece, world->config.item_goal_required));
+	return rando_world_win_condition(world, &items);
 }
 
 void rando_world_reset_collected(RandoWorld *world)
@@ -435,4 +477,43 @@ bool rando_world_shop_collected(const RandoWorld *world, RandoShopId shop, int s
 {
 	assert(shop < RANDO_SHOP_COUNT && slot >= 0 && slot < RANDO_SHOP_SLOTS);
 	return world->shop_collected[shop][slot];
+}
+
+int rando_world_collected_count(const RandoWorld *world)
+{
+	int n = 0, i, s;
+
+	for (i = 0; i < RANDO_LOCATION_COUNT; i++)
+		n += world->collected[i];
+	for (i = 0; i < RANDO_SHOP_COUNT; i++)
+		for (s = 0; s < RANDO_SHOP_SLOTS; s++)
+			n += world->shop_collected[i][s];
+	return n;
+}
+
+bool rando_world_is_winnable(RandoWorld *world)
+{
+	RandoItems assumed = world->pre_collected, found;
+	int found_locations = 0, current;
+
+	rando_world_reset_collected(world);
+	for (;;) {
+		rando_world_collect_other_items(world, &assumed, &found);
+		rando_items_merge(&assumed, &assumed, &found);
+		current = rando_world_collected_count(world);
+		if (current == found_locations)
+			break;
+		found_locations = current;
+	}
+	return rando_world_win_condition(world, &assumed);
+}
+
+void rando_world_copy(RandoWorld *dst, const RandoWorld *src)
+{
+	assert(dst != src);
+	*dst = *src;
+	rando_world_reset_collected(dst);
+	dst->collectable_computed = false;
+	memset(dst->collectable, 0, sizeof dst->collectable);
+	memset(dst->collectable_shop_items, 0, sizeof dst->collectable_shop_items);
 }

@@ -410,6 +410,8 @@ typedef enum RandoPrizePack {
 
 #define RANDO_PRIZE_PACK_SLOTS 8
 
+#define RANDO_PRE_COLLECTED_MAX 16
+
 typedef struct RandoLocationInfo {
 	const char *name;
 	RandoRegionId region;
@@ -458,6 +460,8 @@ typedef struct RandoWorld {
 	uint8_t bosses[RANDO_REGION_COUNT][RANDO_BOSS_SLOT_COUNT];
 	uint8_t prize_pack_drops[RANDO_PRIZE_PACK_COUNT][RANDO_PRIZE_PACK_SLOTS];
 	RandoItems pre_collected;
+	uint8_t pre_collected_order[RANDO_PRE_COLLECTED_MAX];
+	uint8_t npre_collected;
 	bool collected[RANDO_LOCATION_COUNT];
 	bool shop_collected[RANDO_SHOP_COUNT][RANDO_SHOP_SLOTS];
 	/* VT computes the collectable set once and never again, even after reset_collected. */
@@ -487,6 +491,15 @@ bool rando_location_is_a(RandoLocationClass location_class, RandoLocationClass b
 /* World::factory(variant, config) with an empty pre-collected collection. */
 void rando_world_init(RandoWorld *world, RandoVariant variant, const RandoConfig *config);
 
+/* World::copy: everything by value, with no collected state and the collectable cache reset. */
+void rando_world_copy(RandoWorld *dst, const RandoWorld *src);
+
+/* World::addPreCollectedItem: appends to the multiset and to the insertion order. */
+void rando_world_add_pre_collected(RandoWorld *world, RandoItemId item);
+int rando_world_pre_collected_count(const RandoWorld *world);
+/* Asserts i is below the count. */
+RandoItemId rando_world_pre_collected_item(const RandoWorld *world, int i);
+
 RandoItemId rando_world_item(const RandoWorld *world, RandoLocationId location);
 RandoBossId rando_world_boss(const RandoWorld *world, RandoRegionId region, RandoBossSlot slot);
 /* Ignores nboss_slots, which describes the constructor defaults only. */
@@ -511,6 +524,8 @@ bool rando_world_set_item(RandoWorld *world, RandoLocationId location, RandoItem
 bool rando_world_has_item(const RandoWorld *world, RandoLocationId location, RandoItemId item);
 
 bool rando_world_can_access(const RandoWorld *world, RandoLocationId location, const RandoItems *items);
+/* Any slot of the shop: its region's canEnter and the shop's own requirement. */
+bool rando_world_can_access_shop(const RandoWorld *world, RandoShopId shop, const RandoItems *items);
 /* Asserts the location's class accepts the item; the location's item is unchanged on return. */
 bool rando_world_can_fill(RandoWorld *world, RandoLocationId location, RandoItemId item,
 			  const RandoItems *items, bool check_access);
@@ -523,11 +538,21 @@ bool rando_world_region_can_fill(const RandoWorld *world, RandoRegionId region, 
 
 /* World::collectItems: start may be NULL; out may not alias start. */
 void rando_world_collect_items(RandoWorld *world, const RandoItems *start, RandoItems *out);
+/* World's win_condition closure on items as given, with no collection. */
+bool rando_world_win_condition(const RandoWorld *world, const RandoItems *items);
+/* World::collectOtherItems: found (which may not alias collected) gets only the items found; the
+ * pre-collected items are not merged. The fill and is_winnable must use this one: collect_items
+ * would count the pre-collected items, already in their assumed items, twice. */
+void rando_world_collect_other_items(RandoWorld *world, const RandoItems *collected, RandoItems *found);
 /* World::checkWinCondition: collects from collected (may be NULL) without resetting the locations
  * already collected, so a location collected before adds nothing. */
 bool rando_world_check_win_condition(RandoWorld *world, const RandoItems *collected);
 void rando_world_reset_collected(RandoWorld *world);
 bool rando_world_collected(const RandoWorld *world, RandoLocationId location);
 bool rando_world_shop_collected(const RandoWorld *world, RandoShopId shop, int slot);
+/* getCollectedLocationsCount: collected locations plus collected shop slots. */
+int rando_world_collected_count(const RandoWorld *world);
+/* WorldCollection::isWinnable for this world alone; changes the collected state only. */
+bool rando_world_is_winnable(RandoWorld *world);
 
 #endif

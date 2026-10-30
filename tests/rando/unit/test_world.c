@@ -323,7 +323,7 @@ static void check_collect_items(void)
 
 	rando_config_init(&config);
 	rando_world_init(&world, RANDO_VARIANT_OPEN, &config);
-	rando_items_add(&world.pre_collected, RANDO_ITEM_BugCatchingNet);
+	rando_world_add_pre_collected(&world, RANDO_ITEM_BugCatchingNet);
 	CHECK(rando_world_set_item(&world, RANDO_LOC_TURTLE_ROCK_MEDALLION, RANDO_ITEM_Quake));
 
 	rando_world_collect_items(&world, NULL, &first);
@@ -356,6 +356,183 @@ static void check_collect_items(void)
 	CHECK(out.values[RANDO_ITEM_MoonPearl] == out.counts[RANDO_ITEM_MoonPearl] + 1);
 	CHECK(out.values[RANDO_ITEM_Hookshot] + 1 == out.counts[RANDO_ITEM_Hookshot]);
 	CHECK(rando_items_count(&out) == 2 + collected_count(&world));
+}
+
+/* ItemCollection iterates cached_values in insertion order: Equipped numbers its slots that way. */
+static void check_pre_collected_order(void)
+{
+	static const RandoItemId order[] = {
+		RANDO_ITEM_BossHeartContainer, RANDO_ITEM_BossHeartContainer, RANDO_ITEM_BossHeartContainer,
+		RANDO_ITEM_BombUpgrade10, RANDO_ITEM_PegasusBoots, RANDO_ITEM_UncleSword,
+	};
+	RandoWorld world;
+	RandoItems multiset;
+	int i;
+
+	standard_world(&world);
+	CHECK(rando_world_pre_collected_count(&world) == 0);
+	rando_items_clear(&multiset);
+	for (i = 0; i < 6; i++) {
+		rando_world_add_pre_collected(&world, order[i]);
+		rando_items_add(&multiset, order[i]);
+	}
+	CHECK(rando_world_pre_collected_count(&world) == 6);
+	for (i = 0; i < 6; i++)
+		CHECK(rando_world_pre_collected_item(&world, i) == order[i]);
+	CHECK(same_items(&world.pre_collected, &multiset));
+
+	standard_world(&world);
+	CHECK(rando_world_pre_collected_count(&world) == 0);
+}
+
+static void every_item_but_health(RandoItems *items, int hearts)
+{
+	int i;
+
+	rando_items_clear(items);
+	for (i = 0; i < RANDO_ITEM_COUNT; i++)
+		if (rando_item_info((RandoItemId)i)->item_class != RANDO_ITEM_CLASS_HEALTH && i != RANDO_ITEM_Triforce)
+			rando_items_add(items, (RandoItemId)i);
+	for (i = 0; i < hearts; i++)
+		rando_items_add(items, RANDO_ITEM_BossHeartContainer);
+}
+
+/* World::collectOtherItems: unlike collectItems, no pre-collected merge, so the three pre-collected
+ * hearts already in collected count once. Basic placement enters Palace of Darkness at 7 hearts. */
+static void check_collect_other_items(void)
+{
+	RandoWorld world;
+	RandoConfig config;
+	RandoItems collected, found, merged, out;
+	int i;
+
+	rando_config_init(&config);
+	config.item_placement = RANDO_PLACEMENT_BASIC;
+	rando_world_init(&world, RANDO_VARIANT_OPEN, &config);
+	for (i = 0; i < 3; i++)
+		rando_world_add_pre_collected(&world, RANDO_ITEM_BossHeartContainer);
+	CHECK(rando_world_set_item(&world, RANDO_LOC_PALACE_OF_DARKNESS_SHOOTER_ROOM, RANDO_ITEM_Hookshot));
+
+	every_item_but_health(&collected, 4);
+	rando_world_collect_other_items(&world, &collected, &found);
+	CHECK(!rando_world_collected(&world, RANDO_LOC_PALACE_OF_DARKNESS_SHOOTER_ROOM));
+	CHECK(found.counts[RANDO_ITEM_BossHeartContainer] == 0);
+	CHECK(rando_items_count(&found) == collected_count(&world));
+	CHECK(rando_items_count(&found) > 0);
+
+	rando_world_reset_collected(&world);
+	rando_world_collect_items(&world, &collected, &out);
+	CHECK(rando_world_collected(&world, RANDO_LOC_PALACE_OF_DARKNESS_SHOOTER_ROOM));
+
+	rando_world_reset_collected(&world);
+	every_item_but_health(&collected, 7);
+	rando_world_collect_other_items(&world, &collected, &found);
+	CHECK(rando_world_collected(&world, RANDO_LOC_PALACE_OF_DARKNESS_SHOOTER_ROOM));
+	CHECK(found.counts[RANDO_ITEM_Hookshot] == 1);
+	CHECK(rando_items_count(&found) == collected_count(&world));
+	rando_items_merge(&merged, &collected, &world.pre_collected);
+	rando_items_merge(&merged, &merged, &found);
+	rando_world_reset_collected(&world);
+	rando_world_collect_items(&world, &collected, &out);
+	CHECK(same_items(&out, &merged));
+
+	rando_world_collect_other_items(&world, &collected, &found);
+	CHECK(rando_items_count(&found) == 0);
+}
+
+/* getCollectedLocationsCount counts the collected_locations keys, shop slots included. */
+static void check_collected_count(void)
+{
+	RandoWorld world;
+	RandoConfig config;
+	RandoItems out;
+	int i, slot, shops = 0;
+
+	rando_config_init(&config);
+	rando_world_init(&world, RANDO_VARIANT_OPEN, &config);
+	CHECK(rando_world_collected_count(&world) == 0);
+	rando_world_collect_items(&world, NULL, &out);
+	for (i = 0; i < RANDO_SHOP_COUNT; i++)
+		for (slot = 0; slot < RANDO_SHOP_SLOTS; slot++)
+			shops += rando_world_shop_collected(&world, (RandoShopId)i, slot);
+	CHECK(shops > 0);
+	CHECK(rando_world_collected_count(&world) == collected_count(&world));
+	rando_world_reset_collected(&world);
+	CHECK(rando_world_collected_count(&world) == 0);
+}
+
+/* WorldCollection::isWinnable for one world: reset, collectOtherItems from the pre-collected items
+ * until the collected count is stable, then the win condition. */
+static void check_is_winnable(void)
+{
+	RandoWorld world;
+	RandoConfig config;
+	RandoItems out;
+
+	rando_config_init(&config);
+	rando_world_init(&world, RANDO_VARIANT_OPEN, &config);
+	CHECK(rando_world_set_item(&world, RANDO_LOC_GANON, RANDO_ITEM_Triforce));
+	CHECK(!rando_world_is_winnable(&world));
+	CHECK(rando_world_collected_count(&world) > 0);
+
+	CHECK(rando_world_set_item(&world, RANDO_LOC_KAKARIKO_TAVERN, RANDO_ITEM_Triforce));
+	CHECK(rando_world_is_winnable(&world));
+	CHECK(rando_world_collected(&world, RANDO_LOC_KAKARIKO_TAVERN));
+
+	rando_world_init(&world, RANDO_VARIANT_OPEN, &config);
+	CHECK(rando_world_set_item(&world, RANDO_LOC_GANON, RANDO_ITEM_Triforce));
+	rando_items_all(&world.pre_collected);
+	rando_items_unset(&world.pre_collected, RANDO_ITEM_Triforce);
+	rando_world_collect_items(&world, NULL, &out);
+	CHECK(rando_world_collected(&world, RANDO_LOC_GANON));
+	CHECK(rando_world_is_winnable(&world));
+}
+
+/* World::copy: a new world from the config, the same location items, shops, bosses and an ordered
+ * copy of the pre-collected items, with no collected state and no collectable cache. */
+static void check_copy(void)
+{
+	static RandoWorld world, before, copy;
+	RandoConfig config;
+	RandoItems out;
+	int i, shop = -1, slot = 0, s2;
+
+	rando_config_init(&config);
+	rando_world_init(&world, RANDO_VARIANT_OPEN, &config);
+	CHECK(rando_world_set_item(&world, RANDO_LOC_KAKARIKO_TAVERN, RANDO_ITEM_Hookshot));
+	rando_world_set_boss(&world, RANDO_REGION_GANONS_TOWER, RANDO_BOSS_SLOT_TOP, RANDO_BOSS_MOLDORM);
+	rando_world_add_pre_collected(&world, RANDO_ITEM_PegasusBoots);
+	rando_world_add_pre_collected(&world, RANDO_ITEM_BossHeartContainer);
+	rando_world_collect_items(&world, NULL, &out);
+	for (i = 0; i < RANDO_SHOP_COUNT && shop < 0; i++)
+		for (s2 = 0; s2 < RANDO_SHOP_SLOTS && shop < 0; s2++)
+			if (rando_world_shop_collected(&world, (RandoShopId)i, s2)) {
+				shop = i;
+				slot = s2;
+			}
+	CHECK(shop >= 0);
+	rando_world_shop_add(&world, (RandoShopId)shop, slot, RANDO_ITEM_Triforce, 10);
+	before = world;
+
+	rando_world_copy(&copy, &world);
+	CHECK(memcmp(&world, &before, sizeof world) == 0);
+	CHECK(rando_world_item(&copy, RANDO_LOC_KAKARIKO_TAVERN) == RANDO_ITEM_Hookshot);
+	CHECK(memcmp(copy.location_items, world.location_items, sizeof world.location_items) == 0);
+	CHECK(rando_world_boss(&copy, RANDO_REGION_GANONS_TOWER, RANDO_BOSS_SLOT_TOP) == RANDO_BOSS_MOLDORM);
+	CHECK(memcmp(copy.bosses, world.bosses, sizeof world.bosses) == 0);
+	CHECK(rando_world_shop_item(&copy, (RandoShopId)shop, slot) == RANDO_ITEM_Triforce);
+	CHECK(memcmp(copy.shop_items, world.shop_items, sizeof world.shop_items) == 0);
+	CHECK(memcmp(copy.shop_prices, world.shop_prices, sizeof world.shop_prices) == 0);
+	CHECK(memcmp(copy.shop_active, world.shop_active, sizeof world.shop_active) == 0);
+	CHECK(rando_world_pre_collected_count(&copy) == 2);
+	CHECK(rando_world_pre_collected_item(&copy, 0) == RANDO_ITEM_PegasusBoots);
+	CHECK(rando_world_pre_collected_item(&copy, 1) == RANDO_ITEM_BossHeartContainer);
+	CHECK(same_items(&copy.pre_collected, &world.pre_collected));
+	CHECK(rando_world_collected_count(&copy) == 0);
+
+	/* The source's cache still holds the shop slot's old item; the copy's sees the Triforce. */
+	CHECK(!rando_world_is_winnable(&world));
+	CHECK(rando_world_is_winnable(&copy));
 }
 
 static const char *const location_class_names[RANDO_LOCATION_CLASS_COUNT] = {
@@ -733,6 +910,37 @@ static void check_win_condition(void)
 	CHECK(!rando_world_check_win_condition(&world, &items));
 }
 
+/* The win_condition closure alone, on the given items: nothing is collected. */
+static void check_bare_win_condition(void)
+{
+	RandoWorld world;
+	RandoConfig config;
+	RandoItems items;
+
+	rando_config_init(&config);
+	rando_world_init(&world, RANDO_VARIANT_OPEN, &config);
+	rando_items_clear(&items);
+	CHECK(!rando_world_win_condition(&world, &items));
+	rando_items_add(&items, RANDO_ITEM_Triforce);
+	CHECK(rando_world_win_condition(&world, &items));
+	CHECK(collected_count(&world) == 0);
+	hunt_pieces(&items, 20);
+	rando_items_add(&items, RANDO_ITEM_RescueZelda);
+	CHECK(!rando_world_win_condition(&world, &items));
+
+	config.goal = RANDO_GOAL_TRIFORCE_HUNT;
+	config.item_goal_required = 20;
+	rando_world_init(&world, RANDO_VARIANT_OPEN, &config);
+	CHECK(rando_world_win_condition(&world, &items));
+	hunt_pieces(&items, 19);
+	rando_items_add(&items, RANDO_ITEM_RescueZelda);
+	CHECK(!rando_world_win_condition(&world, &items));
+	hunt_pieces(&items, 20);
+	CHECK(!rando_world_region_can_enter(&world, RANDO_REGION_NORTH_EAST_LIGHT_WORLD, &items));
+	CHECK(!rando_world_win_condition(&world, &items));
+	CHECK(collected_count(&world) == 0);
+}
+
 /* checkWinCondition calls collectItems, which skips locations already collected: fillPrizes
  * depends on the check not resetting them. */
 static void check_win_keeps_collected(void)
@@ -773,11 +981,17 @@ int main(int argc, char **argv)
 	check_region_can_fill();
 	check_can_fill_and_fill();
 	check_collect_items();
+	check_pre_collected_order();
+	check_collect_other_items();
+	check_collected_count();
+	check_is_winnable();
+	check_copy();
 	check_set_boss();
 	check_prize_packs_empty();
 	check_set_drop();
 	check_win_condition();
 	check_win_keeps_collected();
+	check_bare_win_condition();
 	printf(TEST ": hand-written cases passed\n");
 	if (!fixtures)
 		return 0;

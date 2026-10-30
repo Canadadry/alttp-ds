@@ -54,6 +54,12 @@
       - [x] Chunk 4: prepareWorld pools stage
       - [x] Chunk 5: pool.txt, check line and claims
   - [ ] 2.4 RandomAssumed fill, isWinnable() and the retry loop
+    - [x] Chunk 1: world queries
+    - [ ] Chunk 2: filler
+    - [ ] Chunk 3: stage argument
+    - [ ] Chunk 4: fill stage, isWinnable and retry
+    - [ ] Chunk 5: spoiler completion
+    - [ ] Chunk 6: budget, then claims
   - [ ] 2.5 Measure on the host
 - [ ] Phase 3 — Options
   - [ ] 3.1 glitches: overworld_glitches

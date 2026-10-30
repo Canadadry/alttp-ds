@@ -491,6 +491,10 @@ static void check_start_equipment(void)
 	CHECK(world.pre_collected.counts[RANDO_ITEM_BombUpgrade10] == 1);
 	CHECK(world.pre_collected.counts[RANDO_ITEM_ArrowUpgrade10] == 3);
 	CHECK(rando_items_has_health(&world.pre_collected, 3));
+	CHECK(rando_world_pre_collected_count(&world) == 7);
+	CHECK(rando_world_pre_collected_item(&world, 2) == RANDO_ITEM_BossHeartContainer);
+	CHECK(rando_world_pre_collected_item(&world, 3) == RANDO_ITEM_BombUpgrade10);
+	CHECK(rando_world_pre_collected_item(&world, 6) == RANDO_ITEM_ArrowUpgrade10);
 
 	open_world(&world, RANDO_ITEM_POOL_NORMAL);
 	rando_items_add(&world.pre_collected, RANDO_ITEM_PegasusBoots);
@@ -607,6 +611,8 @@ static void check_pre_collect(void)
 	CHECK(rando_items_has(&world.pre_collected, RANDO_ITEM_RescueZelda));
 	CHECK(!rando_items_has(&world.pre_collected, RANDO_ITEM_PegasusBoots));
 	CHECK(rando_items_count(&world.pre_collected) == 1);
+	CHECK(rando_world_pre_collected_count(&world) == 1);
+	CHECK(rando_world_pre_collected_item(&world, 0) == RANDO_ITEM_RescueZelda);
 	CHECK(same_list(&pools, RANDO_POOL_ADVANCEMENT, advancement, 5));
 	CHECK(same_list(&pools, RANDO_POOL_ITEMS, arrow, 1));
 
@@ -621,6 +627,8 @@ static void check_pre_collect(void)
 		rando_prepare_pre_collect(&world, &pools);
 		CHECK(rando_items_has(&world.pre_collected, RANDO_ITEM_PegasusBoots));
 		CHECK(rando_items_count(&world.pre_collected) == 1);
+		CHECK(rando_world_pre_collected_count(&world) == 1);
+		CHECK(rando_world_pre_collected_item(&world, 0) == RANDO_ITEM_PegasusBoots);
 		CHECK(same_list(&pools, RANDO_POOL_ADVANCEMENT, edited, 4));
 		CHECK(same_list(&pools, RANDO_POOL_ITEMS, arrow_rupees, 2));
 
@@ -961,6 +969,8 @@ static void check_pools_assured(void)
 	SET_LIST(&expected, RANDO_POOL_ITEMS, items);
 	check_prepared(&world, &pools, &expected, __LINE__);
 	CHECK(rando_items_has(&world.pre_collected, RANDO_ITEM_UncleSword));
+	CHECK(rando_world_pre_collected_count(&world) == 1);
+	CHECK(rando_world_pre_collected_item(&world, 0) == RANDO_ITEM_UncleSword);
 }
 
 /* Vanilla pre-fills from the end of the sword list and merges none back; with the Triforce on the

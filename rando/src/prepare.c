@@ -25,7 +25,7 @@ void rando_prepare_start_equipment(RandoWorld *world)
 	if (rando_items_count(&world->pre_collected) != 0)
 		return;
 	for (i = 0; i < sizeof equipment / sizeof equipment[0]; i++)
-		rando_items_add(&world->pre_collected, equipment[i]);
+		rando_world_add_pre_collected(world, equipment[i]);
 }
 
 void rando_prepare_goal(RandoWorld *world)
@@ -73,12 +73,12 @@ void rando_prepare_pre_collect(RandoWorld *world, RandoPools *pools)
 
 	if (logic == RANDO_LOGIC_MAJOR_GLITCHES || logic == RANDO_LOGIC_HYBRID_MAJOR_GLITCHES
 	    || logic == RANDO_LOGIC_OVERWORLD_GLITCHES || logic == RANDO_LOGIC_NO_LOGIC) {
-		rando_items_add(&world->pre_collected, RANDO_ITEM_PegasusBoots);
+		rando_world_add_pre_collected(world, RANDO_ITEM_PegasusBoots);
 		drop_first_boots(pools);
 	}
 
 	if (world->config.mode_state != RANDO_STATE_STANDARD)
-		rando_items_add(&world->pre_collected, RANDO_ITEM_RescueZelda);
+		rando_world_add_pre_collected(world, RANDO_ITEM_RescueZelda);
 }
 
 static const RandoShopId shield_shops[] = {
@@ -301,7 +301,7 @@ static void place_weapons(RandoWorld *world, RandoPools *pools, SideList *swords
 		RandoItemId uncle = pop_uncle_sword(swords);
 
 		if (c->mode_weapons == RANDO_WEAPONS_ASSURED) {
-			rando_items_add(&world->pre_collected, uncle);
+			rando_world_add_pre_collected(world, uncle);
 			push_pool(pools, RANDO_POOL_ITEMS, RANDO_ITEM_FiftyRupees);
 		} else {
 			push_pool(pools, RANDO_POOL_ADVANCEMENT, uncle);
