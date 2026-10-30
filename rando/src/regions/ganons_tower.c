@@ -289,7 +289,6 @@ const RandoRegionRules rando_rules_ganons_tower = {
 	"Region\\Standard\\GanonsTower", enter, complete, locations, NULL,
 };
 
-/* TODO: Region\Inverted\GanonsTower's location overrides and completion (step 3.12, chunk 7). */
 static bool inverted_enter(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
 	const RandoConfig *c = &world->config;
@@ -308,6 +307,76 @@ static bool inverted_enter(const RandoWorld *world, const RandoWorld *locations,
 		&& can_enter(world, locations, RANDO_REGION_NORTH_EAST_LIGHT_WORLD, items);
 }
 
+static bool not_bunny(const RandoWorld *world, const RandoItems *items)
+{
+	const RandoConfig *c = &world->config;
+
+	return has(items, RANDO_ITEM_MoonPearl) || c->can_dungeon_revive
+		|| ((c->can_one_frame_clip_ow || (c->can_boots_clip && has(items, RANDO_ITEM_PegasusBoots)))
+		    && ((c->can_bunny_revive && rando_items_can_bunny_revive(items, c))
+			|| (c->can_owyba && rando_items_has_a_bottle(items))));
+}
+
+#define INVERTED(rule) \
+	static bool inverted_##rule(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items) \
+	{ \
+		return rule(world, locations, items) && not_bunny(world, items); \
+	}
+
+INVERTED(dms_room)
+INVERTED(randomizer_room_top_left)
+INVERTED(randomizer_room_top_right)
+INVERTED(randomizer_room_bottom_left)
+INVERTED(randomizer_room_bottom_right)
+INVERTED(firesnake_room)
+INVERTED(map_chest)
+INVERTED(big_chest)
+INVERTED(tile_room)
+INVERTED(compass_room_top_left)
+INVERTED(compass_room_top_right)
+INVERTED(compass_room_bottom_left)
+INVERTED(compass_room_bottom_right)
+INVERTED(big_key_room)
+INVERTED(middle_floor)
+INVERTED(moldorm_chest)
+
+/* VT's Inverted Bob's Chest drops Standard's "basic" Fire Rod or Ether clause. */
+static bool inverted_bobs_chest(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
+{
+	(void)locations;
+	return (hammer_and_hookshot(items) || fire_rod_and_somaria(items)) && has_n(items, RANDO_ITEM_KeyA2, 3)
+		&& not_bunny(world, items);
+}
+
+static const RandoLocationRules inverted_locations[NLOCATIONS] = {
+	[RANDO_LOC_GANONS_TOWER_BOBS_TORCH - FIRST] = {bobs_torch, NULL, NULL},
+	[RANDO_LOC_GANONS_TOWER_DMS_ROOM_TOP_LEFT - FIRST] = {inverted_dms_room, NULL, NULL},
+	[RANDO_LOC_GANONS_TOWER_DMS_ROOM_TOP_RIGHT - FIRST] = {inverted_dms_room, NULL, NULL},
+	[RANDO_LOC_GANONS_TOWER_DMS_ROOM_BOTTOM_LEFT - FIRST] = {inverted_dms_room, NULL, NULL},
+	[RANDO_LOC_GANONS_TOWER_DMS_ROOM_BOTTOM_RIGHT - FIRST] = {inverted_dms_room, NULL, NULL},
+	[RANDO_LOC_GANONS_TOWER_RANDOMIZER_ROOM_TOP_LEFT - FIRST] = {inverted_randomizer_room_top_left, NULL, NULL},
+	[RANDO_LOC_GANONS_TOWER_RANDOMIZER_ROOM_TOP_RIGHT - FIRST] = {inverted_randomizer_room_top_right, NULL, NULL},
+	[RANDO_LOC_GANONS_TOWER_RANDOMIZER_ROOM_BOTTOM_LEFT - FIRST] = {inverted_randomizer_room_bottom_left, NULL, NULL},
+	[RANDO_LOC_GANONS_TOWER_RANDOMIZER_ROOM_BOTTOM_RIGHT - FIRST] = {inverted_randomizer_room_bottom_right, NULL, NULL},
+	[RANDO_LOC_GANONS_TOWER_FIRESNAKE_ROOM - FIRST] = {inverted_firesnake_room, NULL, NULL},
+	[RANDO_LOC_GANONS_TOWER_MAP_CHEST - FIRST] = {inverted_map_chest, map_chest_fill, map_chest_always_allow},
+	[RANDO_LOC_GANONS_TOWER_BIG_CHEST - FIRST] = {inverted_big_chest, not_big_key_fill, NULL},
+	[RANDO_LOC_GANONS_TOWER_BOBS_CHEST - FIRST] = {inverted_bobs_chest, NULL, NULL},
+	[RANDO_LOC_GANONS_TOWER_TILE_ROOM - FIRST] = {inverted_tile_room, NULL, NULL},
+	[RANDO_LOC_GANONS_TOWER_COMPASS_ROOM_TOP_LEFT - FIRST] = {inverted_compass_room_top_left, NULL, NULL},
+	[RANDO_LOC_GANONS_TOWER_COMPASS_ROOM_TOP_RIGHT - FIRST] = {inverted_compass_room_top_right, NULL, NULL},
+	[RANDO_LOC_GANONS_TOWER_COMPASS_ROOM_BOTTOM_LEFT - FIRST] = {inverted_compass_room_bottom_left, NULL, NULL},
+	[RANDO_LOC_GANONS_TOWER_COMPASS_ROOM_BOTTOM_RIGHT - FIRST] = {inverted_compass_room_bottom_right, NULL, NULL},
+	[RANDO_LOC_GANONS_TOWER_BIG_KEY_CHEST - FIRST] = {inverted_big_key_room, NULL, NULL},
+	[RANDO_LOC_GANONS_TOWER_BIG_KEY_ROOM_LEFT - FIRST] = {inverted_big_key_room, NULL, NULL},
+	[RANDO_LOC_GANONS_TOWER_BIG_KEY_ROOM_RIGHT - FIRST] = {inverted_big_key_room, NULL, NULL},
+	[RANDO_LOC_GANONS_TOWER_MINI_HELMASAUR_ROOM_LEFT - FIRST] = {inverted_middle_floor, not_big_key_fill, NULL},
+	[RANDO_LOC_GANONS_TOWER_MINI_HELMASAUR_ROOM_RIGHT - FIRST] = {inverted_middle_floor, not_big_key_fill, NULL},
+	[RANDO_LOC_GANONS_TOWER_PRE_MOLDORM_CHEST - FIRST] = {inverted_middle_floor, not_big_key_fill, NULL},
+	[RANDO_LOC_GANONS_TOWER_MOLDORM_CHEST - FIRST] = {inverted_moldorm_chest, moldorm_chest_fill, NULL},
+	[RANDO_LOC_AGAHNIM_2 - FIRST] = {complete, NULL, NULL},
+};
+
 const RandoRegionRules rando_rules_inverted_ganons_tower = {
-	"Region\\Inverted\\GanonsTower", inverted_enter, complete, locations, NULL,
+	"Region\\Inverted\\GanonsTower", inverted_enter, complete, inverted_locations, NULL,
 };

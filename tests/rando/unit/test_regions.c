@@ -2,7 +2,6 @@
 #include "support.h"
 
 #include <stdio.h>
-#include <string.h>
 
 #define TEST "test_regions"
 
@@ -81,6 +80,31 @@ static void check_inverted_skull_woods_bridge_room_needs_only_fire_rod(void)
 	rando_items_clear(&items);
 	rando_items_add(&items, RANDO_ITEM_FireRod);
 	CHECK(rando_world_can_access(&world, RANDO_LOC_SKULL_WOODS_BRIDGE_ROOM, &items));
+}
+
+/* Inverted Ganon's Tower: a super bunny enters, but every chest but Bob's Torch wants the Moon Pearl;
+ * Bob's Chest drops Standard's "basic" Fire Rod or Ether clause. */
+static void check_inverted_ganons_tower_chests_need_moon_pearl(void)
+{
+	static const RandoItemId no_pearl[] = {RANDO_ITEM_MoonPearl, RANDO_ITEM_FireRod, RANDO_ITEM_Ether};
+	RandoConfig config;
+	RandoWorld world;
+	RandoItems items;
+
+	rando_config_init(&config);
+	config.item_placement = RANDO_PLACEMENT_BASIC;
+	config.can_super_bunny = true;
+	rando_world_init(&world, RANDO_VARIANT_INVERTED, &config);
+	all_items_except(&items, no_pearl, 3);
+	for (int i = 0; i < 12; i++)
+		rando_items_add(&items, RANDO_ITEM_BossHeartContainer);
+	CHECK(rando_world_region_can_enter(&world, RANDO_REGION_GANONS_TOWER, &items));
+	CHECK(rando_world_can_access(&world, RANDO_LOC_GANONS_TOWER_BOBS_TORCH, &items));
+	CHECK(!rando_world_can_access(&world, RANDO_LOC_GANONS_TOWER_DMS_ROOM_TOP_LEFT, &items));
+	CHECK(!rando_world_can_access(&world, RANDO_LOC_GANONS_TOWER_BOBS_CHEST, &items));
+	rando_items_add(&items, RANDO_ITEM_MoonPearl);
+	CHECK(rando_world_can_access(&world, RANDO_LOC_GANONS_TOWER_DMS_ROOM_TOP_LEFT, &items));
+	CHECK(rando_world_can_access(&world, RANDO_LOC_GANONS_TOWER_BOBS_CHEST, &items));
 }
 
 /* Inverted TurtleRockTest::testLocation's Chain Chomps row entering from the top with two keys. */
@@ -725,43 +749,6 @@ static void replay_every_row(const char *path)
 	printf(TEST ": all %d rows of %s replayed\n", rows, path);
 }
 
-/* TODO: the Inverted files whose rows are replayed whole, in all three trees; step 3.12's chunk 7
- * removes both lists. */
-static const char *const inverted_enabled_files[] = {
-	"LightWorldTest.php", "HyruleCastleEscapeTest.php",
-	"DeathMountain/EastTest.php", "DeathMountain/WestTest.php",
-	"DarkWorld/NorthEastTest.php", "DarkWorld/NorthWestTest.php", "DarkWorld/SouthTest.php", "DarkWorld/MireTest.php",
-	"DarkWorld/DeathMountain/EastTest.php", "DarkWorld/DeathMountain/WestTest.php",
-	"HyruleCastleTowerTest.php", "PalaceOfDarknessTest.php", "ThievesTownTest.php", "IcePalaceTest.php",
-	"MiseryMireTest.php", "EasternPalaceTest.php", "DesertPalaceTest.php", "TowerOfHeraTest.php",
-	"SwampPalaceTest.php", "SkullWoodsTest.php", "TurtleRockTest.php", NULL,
-};
-
-static const char *const inverted_enabled_methods[] = {"testEntry", "testCanEnterWithEverything", NULL};
-
-static int listed(const char *const *list, const char *name)
-{
-	for (; *list; list++)
-		if (strcmp(*list, name) == 0)
-			return 1;
-	return 0;
-}
-
-static int inverted_enabled(const char *file, const char *method)
-{
-	return listed(inverted_enabled_files, file) || listed(inverted_enabled_methods, method);
-}
-
-static void replay_inverted_rows(const char *path)
-{
-	int total, rows = fixture_replay_rows(TEST, path, inverted_enabled, &total);
-
-	if (rows == 0)
-		test_fail(TEST, "%s: no row replayed", path);
-	printf(TEST ": %d of %d rows of %s replayed, %d left to step 3.12's chunk 7\n", rows, total, path,
-	       total - rows);
-}
-
 int main(int argc, char **argv)
 {
 	int fixtures = test_fixtures_mode(TEST, argc, argv);
@@ -771,6 +758,7 @@ int main(int argc, char **argv)
 	check_can_enter_inverted_tower_of_hera_with_everything();
 	check_inverted_skull_woods_bridge_room_needs_only_fire_rod();
 	check_inverted_turtle_rock_chain_chomps_from_the_top();
+	check_inverted_ganons_tower_chests_need_moon_pearl();
 	check_cape_or_upgraded_sword_required_to_enter_castle_tower();
 	check_sword_required_to_complete_castle_tower();
 	check_boss_normal_location_decides_dungeon_items_on_bosses();
@@ -801,8 +789,8 @@ int main(int argc, char **argv)
 	replay_every_row(FIXTURE_NOGLITCHES_ROWS);
 	replay_every_row(FIXTURE_OVERWORLD_GLITCHES_ROWS);
 	replay_every_row(FIXTURE_MAJOR_GLITCHES_ROWS);
-	replay_inverted_rows(FIXTURE_INVERTED_ROWS);
-	replay_inverted_rows(FIXTURE_INVERTED_OVERWORLD_GLITCHES_ROWS);
-	replay_inverted_rows(FIXTURE_INVERTED_MAJOR_GLITCHES_ROWS);
+	replay_every_row(FIXTURE_INVERTED_ROWS);
+	replay_every_row(FIXTURE_INVERTED_OVERWORLD_GLITCHES_ROWS);
+	replay_every_row(FIXTURE_INVERTED_MAJOR_GLITCHES_ROWS);
 	return 0;
 }

@@ -71,8 +71,6 @@ static const RandoRegionRules *const variants[RANDO_VARIANT_COUNT][RANDO_REGION_
 const RandoRegionRules *rando_region_rules(RandoVariant variant, RandoRegionId region)
 {
 	assert(variant < RANDO_VARIANT_COUNT && region < RANDO_REGION_COUNT);
-	/* TODO: goes once every Inverted region has all its rules (step 3.12, chunk 7). */
-	assert(variants[variant][region] && "this Inverted region is not ported yet: no fallback to Standard");
 	return variants[variant][region];
 }
 
