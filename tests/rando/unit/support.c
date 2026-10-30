@@ -1,5 +1,7 @@
 #include "support.h"
 
+#include "rando.h"
+
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -482,6 +484,52 @@ enum {
 	ROW_VALUES, ROW_QUERY, ROW_TARGET, ROW_ITEM, ROW_EXPECTED, ROW_ANSWER, ROW_FIELDS
 };
 
+/* VT's accessibility "full" is a legacy value VT reads as "items". */
+static void set_prepared_option(const Fixture *fx, RandoOptions *options, const char *key, const char *json)
+{
+	static const char *const keys[][2] = {
+		{"mode.weapons", "weapons"}, {"goal", "goal"}, {"accessibility", "accessibility"},
+	};
+	char value[FIXTURE_LINE_MAX];
+	size_t i, len = strlen(json);
+
+	if (len < 2 || json[0] != '"' || json[len - 1] != '"')
+		fixture_fail(fx, "config value is not a JSON string");
+	memcpy(value, json + 1, len - 2);
+	value[len - 2] = '\0';
+	if (strcmp(key, "accessibility") == 0 && strcmp(value, "full") == 0)
+		strcpy(value, "items");
+	for (i = 0; i < sizeof keys / sizeof keys[0]; i++)
+		if (strcmp(key, keys[i][0]) == 0) {
+			if (!rando_options_set(options, keys[i][1], value))
+				fixture_fail(fx, "unknown option value");
+			return;
+		}
+	fixture_fail(fx, "config key without a generator option");
+}
+
+static RandoGen prepared_gen;
+
+static int prepared_item(const Fixture *fx, char **overrides, int n)
+{
+	RandoOptions options;
+	int i;
+
+	if (strcmp(fx->field[ROW_VARIANT], "standard") != 0)
+		fixture_fail(fx, "prepared_item on a variant other than standard");
+	rando_options_init(&options);
+	options.state = RANDO_OPTION_STATE_STANDARD;
+	for (i = 0; i < n; i++) {
+		char *json = value_of(fx, overrides[i]);
+
+		set_prepared_option(fx, &options, overrides[i], json);
+	}
+	if (rando_generate_until(&prepared_gen, &options, 1, 0, NULL, NULL, RANDO_STAGE_PREPARE_WORLD) != RANDO_INCOMPLETE)
+		fixture_fail(fx, "the generator did not stop after prepareWorld");
+	return rando_world_item(&prepared_gen.world, location_named(fx, fx->field[ROW_TARGET]))
+	       == item_named(fx, fx->field[ROW_ITEM]);
+}
+
 static int replay_row(Fixture *fx)
 {
 	char *parts[32];
@@ -506,6 +554,8 @@ static int replay_row(Fixture *fx)
 	rando_config_init(&config);
 	strcpy(config_field, fx->field[ROW_CONFIG]);
 	n = split(fx, config_field, ',', parts, 32);
+	if (strcmp(query, "prepared_item") == 0)
+		return prepared_item(fx, parts, n);
 	if (strcmp(query, "vanilla_dungeon_items") == 0) {
 		apply_overrides(fx, &config, parts, n);
 		rando_world_init(&world, variant, &config);

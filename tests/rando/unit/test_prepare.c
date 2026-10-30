@@ -1457,9 +1457,17 @@ static void check_pools_baseline_anchors(void)
 	CHECK(rando_world_item(&gen.world, RANDO_LOC_PYRAMID_FAIRY_BOW) == RANDO_ITEM_BowAndArrows);
 }
 
+static int vanilla_swords(const char *file, const char *method)
+{
+	return strcmp(file, "RandomizerTest.php") == 0
+	       && (strcmp(method, "testVanillaSwordsSet") == 0 || strcmp(method, "testVanillaSwordsSetWithPedestalGoal") == 0);
+}
+
 int main(int argc, char **argv)
 {
-	test_fixtures_mode(TEST, argc, argv);
+	int fixtures = test_fixtures_mode(TEST, argc, argv);
+	int rows, total;
+
 	check_shops_baseline();
 	check_shops_hard();
 	check_shops_expert();
@@ -1510,5 +1518,11 @@ int main(int argc, char **argv)
 	check_pools_baseline_draws();
 	check_pools_baseline_anchors();
 	printf(TEST ": hand-written cases passed\n");
+	if (!fixtures)
+		return 0;
+	rows = fixture_replay_rows(TEST, FIXTURE_NOGLITCHES_ROWS, vanilla_swords, &total);
+	if (rows != 8)
+		test_fail(TEST, "%d RandomizerTest rows replayed, testVanillaSwordsSet and its pedestal variant have 8", rows);
+	printf(TEST ": %d of %d rows replayed (RandomizerTest)\n", rows, total);
 	return 0;
 }

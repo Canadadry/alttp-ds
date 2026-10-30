@@ -6,6 +6,7 @@
 use ALttP\Boss;
 use ALttP\Item;
 use ALttP\Location;
+use ALttP\Randomizer;
 use ALttP\Region;
 use ALttP\Support\ItemCollection;
 use ALttP\World;
@@ -302,6 +303,14 @@ abstract class TestCase
     public string $collection_source = 'collected';
     public $last_built = null;
     public array $captures = [];
+    public $standard_world;
+    public $open_world;
+    public $inverted_world;
+    public $retro_world;
+    public $standard_randomizer;
+    public $open_randomizer;
+    public $inverted_randomizer;
+    public $retro_randomizer;
 
     // VT's setUp, without the Laravel application PHPUnit's TestCase would create.
     public function setUp(): void
@@ -330,10 +339,10 @@ abstract class TestCase
         return $this->last_built = all_items_except($this->world, $remove_items);
     }
 
-    // RegionTest has a region but no world.
+    // RegionTest has a region but no world; RandomizerTest has neither.
     public function worldUnderTest(): World
     {
-        return $this->world ?? $this->region->getWorld();
+        return $this->world ?? ($this->region ? $this->region->getWorld() : $this->standard_world);
     }
 
     public function assertEquals($expected, $actual, string $message = ''): void
@@ -755,6 +764,8 @@ const METHOD_KINDS = [
     'testSwordRequiredToComplete' => ['complete', 'built', null, null],
     'testComplete' => ['complete', 'collected', null, null],
     'testSetVanillaDungeonItems' => ['vanilla_dungeon_items', 'collected', null, null],
+    'testVanillaSwordsSet' => ['prepared_item', 'collected', null, null],
+    'testVanillaSwordsSetWithPedestalGoal' => ['prepared_item', 'collected', null, null],
 ];
 const SKIPPED_METHODS = ['testDungeonItemWrite'];
 // Test file under tests/ => the only methods run => region, for a region-scoped query whose region the source
@@ -763,14 +774,22 @@ const TOP_LEVEL_METHODS = [
     'RegionTest.php' => ['testRegionLockedItems' => 'Region'],
     'WorldTest.php' => ['testSetVanillaDungeonItems' => null],
     'RetroBowTest.php' => ['testLocation' => null],
+    'RandomizerTest.php' => ['testVanillaSwordsSet' => null, 'testVanillaSwordsSetWithPedestalGoal' => null],
 ];
+const PREPARED_SEED = 1;
+const PREPARED_KEYS = ['accessibility', 'mode.weapons', 'goal'];
 const VANILLA_KEYS = ['rom.vanillaKeys', 'rom.vanillaBigKeys', 'rom.vanillaCompasses', 'rom.vanillaMaps'];
 const WILD_KEYS = ['region.wildKeys', 'region.wildBigKeys', 'region.wildCompasses', 'region.wildMaps'];
 
-function method_region(ReflectionMethod $m): string
+function method_source(ReflectionMethod $m): string
 {
     $lines = file($m->getFileName());
-    $source = implode('', array_slice($lines, $m->getStartLine() - 1, $m->getEndLine() - $m->getStartLine() + 1));
+    return implode('', array_slice($lines, $m->getStartLine() - 1, $m->getEndLine() - $m->getStartLine() + 1));
+}
+
+function method_region(ReflectionMethod $m): string
+{
+    $source = method_source($m);
     preg_match_all("/getRegion\\('([^']+)'\\)/", $source, $matches);
     $regions = array_unique($matches[1]);
     if (count($regions) !== 1) {
@@ -867,6 +886,48 @@ function vanilla_scenario(array $named): array
     ];
 }
 
+/** @return list<string> the getLocation("...") names of the method source, in order */
+function method_locations(ReflectionMethod $m): array
+{
+    preg_match_all('/getLocation\("([^"]+)"\)/', method_source($m), $matches);
+    return $matches[1];
+}
+
+function prepared_scenario(array $c, string $location, string $item): array
+{
+    if ($c['variant'] !== 'standard') {
+        fail("prepared_item on a {$c['variant']} world");
+    }
+    $ref = reference_world('standard');
+    $overrides = [];
+    foreach ($c['config'] as $key => $value) {
+        if ($ref->config($key) === $value) {
+            continue;
+        }
+        if (!in_array($key, PREPARED_KEYS, true)) {
+            fail("prepared_item override the C replay cannot map: $key");
+        }
+        $overrides[$key] = check_name($key) . '=' . config_value_string($value);
+    }
+    ksort($overrides, SORT_STRING);
+    return [
+        'variant' => 'standard',
+        'config' => $overrides ? implode(',', $overrides) : '-',
+        'preset' => '-',
+        'counts' => 'E',
+        'values' => 'E',
+        'query' => 'prepared_item',
+        'arg1' => check_name($location),
+        'arg2' => check_name($item),
+    ];
+}
+
+function prepared_seed(): void
+{
+    prng_seed(PREPARED_SEED);
+    prng_trace_start(0);
+}
+
 function parse_config_value(string $s)
 {
     return json_decode($s, false, 512, JSON_THROW_ON_ERROR);
@@ -894,6 +955,13 @@ function replay(array $s): bool
             fail('the four rom.vanilla* keys differ or are not booleans: ' . json_encode($flags));
         }
         return $flags[0];
+    }
+    if ($s['query'] === 'prepared_item') {
+        $world = World::factory($s['variant'], array_merge(TEST_CONFIG, parse_overrides($s['config'])));
+        prepared_seed();
+        (new Randomizer([$world]))->prepareWorld($world);
+        $item = $world->getLocation($s['arg1'])->getItem();
+        return $item !== null && $item->getRawName() === $s['arg2'];
     }
     $overrides = parse_overrides($s['config']);
     $factory = array_key_exists('logic', $overrides) ? ['logic' => $overrides['logic']] : [];
@@ -968,6 +1036,40 @@ function test_sources(string $vt_dir, string $tree): array
     return $sources;
 }
 
+function row_line(array $where, array $s, bool $expected, bool $answer): string
+{
+    return implode("\t", array_merge(['row'], $where, [
+        $s['variant'], $s['config'], $s['preset'], $s['counts'], $s['values'], $s['query'], $s['arg1'], $s['arg2'],
+        bit($expected), bit($answer),
+    ]));
+}
+
+function prepared_rows(string $file, ReflectionMethod $m, int $index, array $c, array &$mismatches): array
+{
+    $what = "{$m->class}::{$m->name} row $index";
+    $locations = method_locations($m);
+    if (!is_array($c['expected']) || !is_array($c['actual']) || count($c['expected']) !== count($locations)
+        || count($c['actual']) !== count($locations)) {
+        fail("$what: " . count($locations) . ' locations for the assertion\'s item lists');
+    }
+    $lines = [];
+    foreach ($locations as $i => $location) {
+        $want = $c['expected'][$i]->getRawName();
+        $have = $c['actual'][$i];
+        $answer = $have !== null && $have->getRawName() === $want;
+        $s = prepared_scenario($c, $location, $want);
+        if (replay($s) !== $answer) {
+            fail("$what location $i: the recorded scenario does not replay VT's answer");
+        }
+        $line = row_line([$file, $m->name, '-', $i], $s, true, $answer);
+        if (!$answer) {
+            $mismatches[] = $line;
+        }
+        $lines[] = $line;
+    }
+    return $lines;
+}
+
 function dump_rows(string $vt_dir, string $tree, array &$mismatches): array
 {
     $lines = [];
@@ -995,6 +1097,9 @@ function dump_rows(string $vt_dir, string $tree, array &$mismatches): array
                 $test = new $class;
                 $test->collection_source = $source ?? 'collected';
                 $test->setUp();
+                if ($query === 'prepared_item') {
+                    prepared_seed();
+                }
                 $test->{$m->name}(...$row);
                 $assertions = $query === 'vanilla_dungeon_items' ? count(VANILLA_KEYS) : 1;
                 if (count($test->captures) !== $assertions) {
@@ -1010,6 +1115,10 @@ function dump_rows(string $vt_dir, string $tree, array &$mismatches): array
                 foreach ($params as $i => $p) {
                     $named[$p] = array_key_exists($i, $row) ? $row[$i] : null;
                 }
+                if ($query === 'prepared_item') {
+                    array_push($lines, ...prepared_rows($file, $m, $index, $c, $mismatches));
+                    continue;
+                }
                 if (!is_bool($c['actual']) || !is_bool($c['expected'])) {
                     fail("$class::{$m->name} row $index: non-boolean assertion");
                 }
@@ -1024,11 +1133,7 @@ function dump_rows(string $vt_dir, string $tree, array &$mismatches): array
                 if (replay($s) !== $c['actual']) {
                     fail("$class::{$m->name} row $index: the recorded scenario does not replay VT's answer");
                 }
-                $where = implode("\t", ['row', $file, $m->name, $provider ?? '-', $index]);
-                $line = $where . "\t" . implode("\t", [
-                    $s['variant'], $s['config'], $s['preset'], $s['counts'], $s['values'], $s['query'], $s['arg1'],
-                    $s['arg2'], bit($c['expected']), bit($c['actual']),
-                ]);
+                $line = row_line([$file, $m->name, $provider ?? '-', $index], $s, $c['expected'], $c['actual']);
                 if ($c['expected'] !== $c['actual']) {
                     $mismatches[] = $line;
                 }
@@ -1090,6 +1195,11 @@ $headers = [
         '#   RetroBowTest.php is under tests/ too; its rows are on a Retro world (variant retro)',
         '#   vanilla_dungeon_items: World::factory with the config overrides added to the test config; the answer is',
         '#   the value all four rom.vanilla* keys share',
+        '#   RandomizerTest.php is under tests/ too; only testVanillaSwordsSet and testVanillaSwordsSetWithPedestalGoal run,',
+        '#   one row per asserted location, the index being its position in the assertion',
+        '#   prepared_item: World::factory with the config overrides added to the test config, prng_seed(' . PREPARED_SEED . '),',
+        '#   Randomizer::prepareWorld; the answer is whether the location holds the item (raw name)',
+        '#   accessibility "full" is VT\'s legacy value, which VT reads as "items": a replay uses items',
         '# collect_scenario <id> <variant> <placements or -> <pre-collected counts> <pre-collected values>',
         '# collect_step <id> <n> <op> <a> <b> <answer or -> <counts or -> <values or -> <collected locations or ->',
         '#   collect: collectItems(start), a/b the start views or - for none, counts/values its result',

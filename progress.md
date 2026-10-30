@@ -119,3 +119,6 @@
   - [x] Chunk 3: setShops random path and generator
   - [x] Chunk 4: generic-key naming and claim at all
   - [x] Step note
+- [ ] Step 3.14 chunks
+  - [x] Chunk 1: RandomizerTest sword rows
+  - [ ] Step note
