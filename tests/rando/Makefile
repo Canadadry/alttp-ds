@@ -19,6 +19,8 @@ INCLUDES := -I$(RANDO)/include -I$(RANDO)/host
 SUPPORT_OBJ := $(BUILD)/support.o
 UNIT_BINS := $(addprefix $(BUILD)/,$(UNIT_TESTS))
 GEN := $(BUILD)/rando_gen
+GEN_DIR := $(BUILD)/o2
+GEN_OBJ := $(patsubst $(RANDO)/src/%.c,$(GEN_DIR)/obj/%.o,$(RANDO_SRC)) $(patsubst $(RANDO)/host/%.c,$(GEN_DIR)/host/%.o,$(HOST_SRC))
 LOGIC_BINS := $(addprefix $(BUILD)/,$(LOGIC_TESTS))
 
 .PHONY: test logic selftest e2e clean
@@ -61,8 +63,16 @@ $(SUPPORT_OBJ): unit/support.c unit/support.h $(RANDO_HDR) | $(BUILD)
 $(BUILD)/test_%: unit/test_%.c unit/support.h $(SUPPORT_OBJ) $(HOST_LIB) $(RANDO_LIB) $(RANDO_HDR) $(HOST_HDR) | $(BUILD)
 	$(CC) $(CFLAGS) $(INCLUDES) -o $@ $< $(SUPPORT_OBJ) $(HOST_LIB) $(RANDO_LIB)
 
-$(GEN): $(RANDO)/host/main/rando_gen.c $(HOST_LIB) $(RANDO_LIB) $(RANDO_HDR) $(HOST_HDR) | $(BUILD)
-	$(CC) $(CFLAGS) $(INCLUDES) -o $@ $< $(HOST_LIB) $(RANDO_LIB)
+$(GEN_DIR)/obj/%.o: $(RANDO)/src/%.c $(RANDO_HDR)
+	@mkdir -p $(@D)
+	$(CC) $(CFLAGS) -O2 -I$(RANDO)/include -c -o $@ $<
+
+$(GEN_DIR)/host/%.o: $(RANDO)/host/%.c $(HOST_HDR) $(RANDO_HDR)
+	@mkdir -p $(@D)
+	$(CC) $(CFLAGS) -O2 $(INCLUDES) -c -o $@ $<
+
+$(GEN): $(RANDO)/host/main/rando_gen.c $(GEN_OBJ) $(RANDO_HDR) $(HOST_HDR) | $(BUILD)
+	$(CC) $(CFLAGS) -O2 $(INCLUDES) -o $@ $< $(GEN_OBJ)
 
 $(BUILD):
 	mkdir -p $@

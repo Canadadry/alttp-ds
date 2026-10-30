@@ -60,6 +60,7 @@
     - [x] Chunk 4: fill stage, isWinnable and retry
     - [x] Chunk 5: spoiler completion
     - [ ] Chunk 6: budget, then claims
+      - [x] -O2 e2e generator
   - [ ] 2.5 Measure on the host
 - [ ] Phase 3 — Options
   - [ ] 3.1 glitches: overworld_glitches
