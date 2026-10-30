@@ -496,6 +496,12 @@ None.
   claims); `Unit/Http/…`, `tests/Browser`, `tests/js` (web front end).
 - Nine rows closed below with no PRD. The duplications refactor (chunk 4) follows, with
   `make measure`'s figure.
+- Refactor (own commit, outputs byte-identical): one dungeon-item-confined check, one public
+  `rando_random_collection`, one `rando_world_collect_until_stable`, pool append/find/remove
+  helpers, `derive_config` value tables, shop prices from the table, bottle bound from its table.
+  `make measure` after: ARM code+rodata 79.9 KB, stack peak 6 280 B, max case
+  (`item_placement-basic`) ~20 ms — +8 % from code placement, not logic (equal with aligned
+  loops); `make test` ~85 ms.
 
 ### Step 3.2
 

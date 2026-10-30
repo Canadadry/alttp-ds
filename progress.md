@@ -67,7 +67,7 @@
     - [x] Chunk 2: run-time driver
     - [x] Chunk 3: step note
 - [ ] Phase 3 — Options
-  - [ ] 3.0 Claim what is green, refactor duplications
+  - [x] 3.0 Claim what is green, refactor duplications
     - [x] Chunk 1: parallel e2e gate
     - [x] Chunk 2: claims
     - [x] Chunk 3: owed list and closed rows
