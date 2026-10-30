@@ -352,6 +352,21 @@ gate "attempts lack their newline" "two all$nl" 1 \
 cp "$g/cases/two/attempts" "$g/out/two/"
 gate "all pass after stage checks" "two all$nl" 0 "PASS two (all)${nl}e2e: 1 pass, 0 divergent, 0 pending"
 
+cat >"$g/gen-args" <<'EOF2'
+#!/bin/sh
+printf '%s %s %s\n' "$#" "$(basename "$1")" "${3-}" >"$FAKE_ARGS"
+exec "$(dirname "$0")/gen" "$@"
+EOF2
+chmod +x "$g/gen-args"
+export FAKE_ARGS="$tmp/args"
+gen_override="$g/gen-args"
+gate "all claim, generator arguments" "two all$nl" 0 "PASS two (all)${nl}e2e: 1 pass, 0 divergent, 0 pending"
+expect "all claim passes no stage" "$(cat "$FAKE_ARGS")" "2 two "
+fake trace.txt "$(golden_lines 3)$nl"
+gate "stage claim, generator arguments" "two beta$nl" 0 "PASS two (beta)${nl}e2e: 1 pass, 0 divergent, 0 pending"
+expect "stage claim passes its stage" "$(cat "$FAKE_ARGS")" "3 two beta"
+gen_override=
+
 printf 'stage alpha\nstage beta\nstage gamma\ncheck gamma pool\ncheck gamma keys Zora:1\n' >"$s"
 fake trace.txt "$(golden_lines 4)$nl"
 partial '    "Light World": {

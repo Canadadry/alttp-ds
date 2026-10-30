@@ -52,6 +52,17 @@ static bool write_file(const char *out_dir, const char *name, Writer writer)
 	return ok;
 }
 
+/* RANDO_STAGE_COUNT when name is no stage. */
+static RandoStage stage_named(const char *name)
+{
+	RandoStage stage;
+
+	for (stage = 0; stage < RANDO_STAGE_COUNT; stage++)
+		if (strcmp(rando_stage_name(stage), name) == 0)
+			break;
+	return stage;
+}
+
 int main(int argc, char **argv)
 {
 	RandoCase c;
@@ -59,9 +70,12 @@ int main(int argc, char **argv)
 	RandoStatus status;
 	char case_error[RANDO_CASE_ERROR_MAX], out_error[RANDO_OUT_ERROR_MAX];
 	uint32_t cap;
+	RandoStage last = RANDO_STAGE_NONE;
 
-	if (argc != 3) {
-		fprintf(stderr, "usage: rando_gen <case_dir> <out_dir>\n");
+	if (argc == 4)
+		last = stage_named(argv[3]);
+	if ((argc != 3 && argc != 4) || (argc == 4 && last == RANDO_STAGE_COUNT)) {
+		fprintf(stderr, "usage: rando_gen <case_dir> <out_dir> [<stage>]\n");
 		return EXIT_USAGE;
 	}
 	if (!rando_case_read(argv[1], &c, case_error)) {
@@ -74,7 +88,7 @@ int main(int argc, char **argv)
 		fprintf(stderr, "rando_gen: %s\n", out_error);
 		return EXIT_INPUT;
 	}
-	status = rando_generate(&gen, &c.options, c.seed, cap, rando_trace_write, &trace);
+	status = rando_generate_until(&gen, &c.options, c.seed, cap, rando_trace_write, &trace, last);
 	if (!rando_trace_close(&trace, out_error)) {
 		fprintf(stderr, "rando_gen: %s\n", out_error);
 		return EXIT_INPUT;
