@@ -157,3 +157,13 @@ This plan follows the boot fix already on branch `melonds-0.9.5-boot`, commits `
 - Run A (blank chip, poke `0x1F3E`): `new` → `saved`; 256 well-formed page writes `0x0000..0x1FE0`, each read back; one `SaveManager: Written`; 8192-byte `.sav` identical to the RAM image and the rebuilt chip.
 - Run B (run A's `.sav` + a pattern at `0x1F80`, pokes across a page boundary and one more page): `loaded` → `saved`; exactly 3 page writes (`0x1F20`, `0x1F40`, `0x1FA0`), none at boot; the `.sav` differs from the seed in exactly the 5 poked bytes, the pattern intact.
 - Deviation: `ZeldaSaveStatus` has no caller and is dropped by the linker, so `g_status` was read from `ZeldaSaveFlush`'s literal pool.
+
+### Step 2.3
+- No ROM change: five runs on headless melonDS 0.9.5 passed on 7b722c6, observed from RAM (settings variables by `nm`/literal-pool address), the SPI log and the files.
+- Mount's SPI traffic is the same in every run with a chip: WREN, RDSR `02`, WRDI, RDSR `00`, one 8 KB read returning the seed exactly; no page write; the slot goes back to the ARM7.
+- L1, seeded valid version-8 settings: `loaded`, HUD on top, beep off, swapped A/B map applied; RAM image equals the seed, `.sav` unchanged.
+- L1x, same seed with a broken checksum: `loaded`, every setting at its default.
+- L2, step 2.2's `.sav`: `loaded`, RAM image equals the file byte for byte.
+- N, all `FF`: `new`, image zeroed, defaults, nothing written.
+- X, no save memory plus a triggered save: `off`; before the trigger only the four status commands (all `00`), after it no SPI byte and no slot change; dirty cleared, the ROM kept ticking (1000 ticks), no `.sav`.
+- Phase 2 end: warn-review flagged the settings hub in `zelda_save.h`, settings codec repetitions and inline constants (all older than this plan), no direct test of the EEPROM driver, and no build guard against the removed FAT symbols. plan-review proposed nothing: the locked API and layout put them out of scope.

@@ -4,11 +4,11 @@
   - [x] 1.2 The ARM9 reaches the EEPROM (probe)
     - [x] probe, chip present
     - [x] no chip, notes, probe removed
-- [ ] Phase 2 — Save through the EEPROM only
+- [x] Phase 2 — Save through the EEPROM only
   - [x] 2.1 Rewrite zelda_save.c for the EEPROM
     - [x] the file goes
     - [x] the EEPROM arrives
   - [x] 2.2 A save reaches the emulator's .sav
-  - [ ] 2.3 A relaunch loads it
+  - [x] 2.3 A relaunch loads it
 - [ ] Phase 3 — Docs
   - [ ] 3.1 README
