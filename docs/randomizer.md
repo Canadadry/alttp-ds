@@ -578,3 +578,14 @@ None.
   MajorGlitches turns on VT's `rom.vanilla*` substitution, so the item given in game is not always
   the item placed.
 - `make test` ~70–89 ms, `logic` ~0.22 s, e2e ~0.18 s; library unchanged.
+
+### Step 3.4
+
+- Cause (proven against VT with a patched fill print): VT's `World::__construct` calls
+  `$region->initalize()` only when logic is not NoLogic, so no rule is installed; C applied them
+  all, so at fill draw 457 Link's Uncle and Secret Passage refused `MapH2`. A world-module helper
+  now returns an empty rule set under NoLogic; `Region::canFill`'s confinement stays.
+- `glitches-no_logic` claimed at `all`: all 42 supported cases at `all`, 42 pass, 2 pending
+  (inverted, retro). Owes no VT test.
+- `make measure`: ARM 80.6 KB, stack peak 6 328 B, `glitches-no_logic` 0.9 ms, max case 22 ms
+  (`item_placement-basic`, still over A-3); `make test` ~90 ms, e2e ~0.22 s.
