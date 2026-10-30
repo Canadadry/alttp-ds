@@ -26,7 +26,7 @@
     - [x] Chunk 7: Ice Palace, Misery Mire, Turtle Rock
     - [x] Chunk 8: Ganon's Tower and full row count
   - [ ] 2.3 Pre-fill RNG consumers
-    - [ ] 2.3.1 getAdvancementItems, generator driver and trace
+    - [x] 2.3.1 getAdvancementItems, generator driver and trace
       - [x] Chunk 1: oracle pool fixture
       - [x] Chunk 2: options, derivations and case reader
       - [x] Chunk 3: item pools

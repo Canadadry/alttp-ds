@@ -299,3 +299,20 @@ None.
   `heartCount` counts a Piece of Heart as a full heart; Open's escape skips its parent's
   `initalize`. Turtle Rock's middle/lower paths need glitch flags (untested until Phase 3); two
   Ganon's Tower boss slots are only distinguishable once `placeBosses` exists (2.3.3).
+
+### Step 2.3.1
+
+- Oracle: `oracle_case.php` shares case loading and per-attempt setup between `gen_case.php`
+  and `dump_pools.php`, which writes VT's four `getAdvancementItems` lists per case
+  (`pool_lists.txt`). A `--fresh --out` run of every case and fixture is byte-identical.
+- C: `rando_options.h` and `rando_config_from_options` (no derivation; world init now derives
+  VT's `item.pool`, `item.functionality` and hunt-goal branches), `rando_pool.h` (four lists,
+  overrides, 216 cap, `getBottle`), `rando.h`/`generate.c` (attempt loop, reseeding, crystals,
+  per-stage draw counting, trace hook; `RandoGen` 3.5 KB on the host). Host-only
+  `rando/host/` (strict case reader, trace writer, `main/rando_gen.c`).
+- `test_generate --fixtures` replays the four lists for 42 cases; `state-inverted` and
+  `state-retro` return unsupported before world init and are skipped by name until Phase 3.
+- Claims: `baseline`, both `crystals_*-random`, both `item_functionality-*` at
+  `getAdvancementItems`; e2e is 5 pass, 39 pending, ~0.1 s (it now runs the generator).
+- Not covered: the ganon-before-tower crystal order (no case has both counts random; taken
+  from VT's code) and the retry path (no stage fails yet, step 2.4).
