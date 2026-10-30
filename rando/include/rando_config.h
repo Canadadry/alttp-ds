@@ -104,10 +104,12 @@ typedef struct RandoConfig {
 	int item_goal_required;
 	int item_require_lamp;
 	int item_overflow_count_shield;
+	RandoItemId item_overflow_replacement_shield;
 	int rom_bottle_fill_magic;
 	/* item.count.<raw name>; RANDO_CONFIG_NULL is absent, and 0 is an override (VT's `?? default`). */
 	int16_t item_count[RANDO_ITEM_COUNT];
 	bool ignore_can_kill_escape_things;
+	bool shops_hard_mode;
 	bool region_wild_keys;
 	bool region_wild_big_keys;
 	bool region_wild_maps;

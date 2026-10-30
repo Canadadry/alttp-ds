@@ -41,6 +41,82 @@ static void check_init(void)
 	CHECK(rando_items_count(&world.pre_collected) == 0);
 }
 
+/* VT's 41 Standard shops: Shop, Shop\Upgrade, Shop\TakeAny. */
+static void check_shop_kinds(void)
+{
+	int i, n[3] = {0, 0, 0};
+
+	for (i = 0; i < RANDO_SHOP_COUNT; i++) {
+		RandoShopKind kind = rando_shop_info((RandoShopId)i)->kind;
+
+		CHECK(kind == RANDO_SHOP_KIND_SHOP || kind == RANDO_SHOP_KIND_UPGRADE
+		      || kind == RANDO_SHOP_KIND_TAKE_ANY);
+		n[kind == RANDO_SHOP_KIND_SHOP ? 0 : kind == RANDO_SHOP_KIND_UPGRADE ? 1 : 2]++;
+	}
+	CHECK(n[0] == 9 && n[1] == 1 && n[2] == 31);
+	CHECK(rando_shop_info(RANDO_SHOP_CAPACITY_UPGRADE)->kind == RANDO_SHOP_KIND_UPGRADE);
+	CHECK(rando_shop_info(RANDO_SHOP_DARK_WORLD_FOREST_SHOP)->kind == RANDO_SHOP_KIND_SHOP);
+	CHECK(rando_shop_info(RANDO_SHOP_BOMB_HUT)->kind == RANDO_SHOP_KIND_TAKE_ANY);
+}
+
+/* Shop::__construct leaves $active false; setActive sets it either way. */
+static void check_shop_active(void)
+{
+	RandoWorld world;
+	int i;
+
+	standard_world(&world);
+	for (i = 0; i < RANDO_SHOP_COUNT; i++)
+		CHECK(!rando_world_shop_active(&world, (RandoShopId)i));
+	rando_world_shop_set_active(&world, RANDO_SHOP_CAPACITY_UPGRADE, true);
+	CHECK(rando_world_shop_active(&world, RANDO_SHOP_CAPACITY_UPGRADE));
+	CHECK(!rando_world_shop_active(&world, RANDO_SHOP_LIGHT_WORLD_LAKE_HYLIA_SHOP));
+	rando_world_shop_set_active(&world, RANDO_SHOP_CAPACITY_UPGRADE, false);
+	CHECK(!rando_world_shop_active(&world, RANDO_SHOP_CAPACITY_UPGRADE));
+}
+
+/* The regions' initalize(): addInventory(slot, item, price) for the ten shops with an inventory. */
+static void check_shop_prices(void)
+{
+	RandoWorld world;
+
+	standard_world(&world);
+	CHECK(rando_world_shop_item(&world, RANDO_SHOP_DARK_WORLD_FOREST_SHOP, 0) == RANDO_ITEM_RedShield);
+	CHECK(rando_world_shop_price(&world, RANDO_SHOP_DARK_WORLD_FOREST_SHOP, 0) == 500);
+	CHECK(rando_world_shop_price(&world, RANDO_SHOP_DARK_WORLD_FOREST_SHOP, 2) == 30);
+	CHECK(rando_world_shop_item(&world, RANDO_SHOP_CAPACITY_UPGRADE, 1) == RANDO_ITEM_ArrowUpgrade5);
+	CHECK(rando_world_shop_price(&world, RANDO_SHOP_CAPACITY_UPGRADE, 1) == 100);
+	CHECK(rando_world_shop_price(&world, RANDO_SHOP_LIGHT_WORLD_KAKARIKO_SHOP, 0) == 150);
+	CHECK(rando_world_shop_price(&world, RANDO_SHOP_DARK_WORLD_POTION_SHOP, 1) == 50);
+}
+
+/* Shop::clearInventory empties every slot; addInventory's keyed write replaces the slot. */
+static void check_shop_inventory(void)
+{
+	RandoWorld world;
+	int i, s;
+
+	standard_world(&world);
+	rando_world_shop_clear(&world, RANDO_SHOP_CAPACITY_UPGRADE);
+	for (s = 0; s < RANDO_SHOP_SLOTS; s++)
+		CHECK(rando_world_shop_item(&world, RANDO_SHOP_CAPACITY_UPGRADE, s) == RANDO_ITEM_NONE);
+	CHECK(rando_world_shop_item(&world, RANDO_SHOP_LIGHT_WORLD_LAKE_HYLIA_SHOP, 0) == RANDO_ITEM_RedPotion);
+
+	rando_world_shop_add(&world, RANDO_SHOP_DARK_WORLD_FOREST_SHOP, 0, RANDO_ITEM_TwentyRupees2, 250);
+	CHECK(rando_world_shop_item(&world, RANDO_SHOP_DARK_WORLD_FOREST_SHOP, 0) == RANDO_ITEM_TwentyRupees2);
+	CHECK(rando_world_shop_price(&world, RANDO_SHOP_DARK_WORLD_FOREST_SHOP, 0) == 250);
+	CHECK(rando_world_shop_item(&world, RANDO_SHOP_DARK_WORLD_FOREST_SHOP, 1) == RANDO_ITEM_Bee);
+	CHECK(rando_world_shop_price(&world, RANDO_SHOP_DARK_WORLD_FOREST_SHOP, 1) == 10);
+
+	rando_world_shop_add(&world, RANDO_SHOP_CAPACITY_UPGRADE, 2, RANDO_ITEM_Arrow, 1);
+	CHECK(rando_world_shop_item(&world, RANDO_SHOP_CAPACITY_UPGRADE, 2) == RANDO_ITEM_Arrow);
+	CHECK(rando_world_shop_price(&world, RANDO_SHOP_CAPACITY_UPGRADE, 2) == 1);
+	CHECK(rando_world_shop_item(&world, RANDO_SHOP_CAPACITY_UPGRADE, 0) == RANDO_ITEM_NONE);
+
+	for (i = 0; i < RANDO_SHOP_COUNT; i++)
+		CHECK(!rando_world_shop_active(&world, (RandoShopId)i));
+}
+
 static RandoConfig derived(RandoItemPool pool, RandoItemFunctionality functionality, RandoGoal goal)
 {
 	RandoConfig config;
@@ -72,6 +148,8 @@ static void check_derivations(void)
 	c = derived(RANDO_ITEM_POOL_NORMAL, RANDO_ITEM_FUNCTIONALITY_NORMAL, RANDO_GOAL_GANON);
 	CHECK(c.rom_catchable_fairies && c.rom_bottle_fill_magic == 0x80);
 	CHECK(c.item_overflow_count_shield == 3);
+	CHECK(!c.shops_hard_mode);
+	CHECK(c.item_overflow_replacement_shield == RANDO_ITEM_TwentyRupees2);
 	CHECK(overrides(&c) == 0);
 
 	c = derived(RANDO_ITEM_POOL_NORMAL, RANDO_ITEM_FUNCTIONALITY_HARD, RANDO_GOAL_GANON);
@@ -82,11 +160,15 @@ static void check_derivations(void)
 
 	c = derived(RANDO_ITEM_POOL_HARD, RANDO_ITEM_FUNCTIONALITY_NORMAL, RANDO_GOAL_GANON);
 	CHECK(c.item_overflow_count_shield == 2 && overrides(&c) == 0);
+	CHECK(c.shops_hard_mode);
 	CHECK(c.rom_catchable_fairies);
 	c = derived(RANDO_ITEM_POOL_EXPERT, RANDO_ITEM_FUNCTIONALITY_NORMAL, RANDO_GOAL_GANON);
 	CHECK(c.item_overflow_count_shield == 1 && overrides(&c) == 0);
+	CHECK(c.shops_hard_mode);
 	c = derived(RANDO_ITEM_POOL_CROWD_CONTROL, RANDO_ITEM_FUNCTIONALITY_NORMAL, RANDO_GOAL_GANON);
 	CHECK(c.item_overflow_count_shield == 0);
+	CHECK(!c.shops_hard_mode);
+	CHECK(c.item_overflow_replacement_shield == RANDO_ITEM_TwentyRupees2);
 	CHECK(c.item_count[RANDO_ITEM_BugCatchingNet] == 0);
 	CHECK(c.item_count[RANDO_ITEM_HalfMagic] == 0);
 	CHECK(c.item_count[RANDO_ITEM_CaneOfByrna] == 0);
@@ -106,6 +188,11 @@ static void check_derivations(void)
 	input.item_count[RANDO_ITEM_TriforcePiece] = 0;
 	rando_world_init(&world, RANDO_VARIANT_OPEN, &input);
 	CHECK(world.config.item_count[RANDO_ITEM_TriforcePiece] == 0);
+
+	rando_config_init(&input);
+	input.item_overflow_replacement_shield = RANDO_ITEM_FiftyRupees;
+	rando_world_init(&world, RANDO_VARIANT_OPEN, &input);
+	CHECK(world.config.item_overflow_replacement_shield == RANDO_ITEM_FiftyRupees);
 }
 
 /* User story 14's irregular cases of VT's location class tree. */
@@ -569,6 +656,10 @@ int main(int argc, char **argv)
 	int rows, total;
 
 	check_init();
+	check_shop_kinds();
+	check_shop_active();
+	check_shop_prices();
+	check_shop_inventory();
 	check_derivations();
 	check_location_classes();
 	check_set_item();

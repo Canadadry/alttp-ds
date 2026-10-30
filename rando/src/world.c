@@ -60,13 +60,15 @@ static void derive_config(RandoConfig *c, RandoVariant variant)
 	c->rom_vanilla_big_keys = c->rom_vanilla_big_keys || (!c->region_wild_big_keys && glitched);
 	c->rom_vanilla_compasses = c->rom_vanilla_compasses || (!c->region_wild_compasses && glitched);
 	c->rom_vanilla_maps = c->rom_vanilla_maps || (!c->region_wild_maps && glitched);
-	/* TODO: item.pool's overflow counts other than Shield, and shops.HardMode. */
+	/* TODO: item.pool's overflow counts other than Shield. */
 	switch (c->item_pool) {
 	case RANDO_ITEM_POOL_HARD:
 		c->item_overflow_count_shield = 2;
+		c->shops_hard_mode = true;
 		break;
 	case RANDO_ITEM_POOL_EXPERT:
 		c->item_overflow_count_shield = 1;
+		c->shops_hard_mode = true;
 		break;
 	case RANDO_ITEM_POOL_CROWD_CONTROL:
 		c->item_overflow_count_shield = 0;
@@ -121,8 +123,10 @@ void rando_world_init(RandoWorld *world, RandoVariant variant, const RandoConfig
 	for (i = 0; i < RANDO_LOCATION_COUNT; i++)
 		world->location_items[i] = (uint8_t)rando_location_info((RandoLocationId)i)->constructor_item;
 	for (i = 0; i < RANDO_SHOP_COUNT; i++)
-		for (s = 0; s < RANDO_SHOP_SLOTS; s++)
+		for (s = 0; s < RANDO_SHOP_SLOTS; s++) {
 			world->shop_items[i][s] = (uint8_t)rando_shop_info((RandoShopId)i)->default_items[s];
+			world->shop_prices[i][s] = rando_shop_info((RandoShopId)i)->default_prices[s];
+		}
 	for (i = 0; i < RANDO_REGION_COUNT; i++)
 		for (s = 0; s < RANDO_BOSS_SLOT_COUNT; s++)
 			world->bosses[i][s] = (uint8_t)rando_region_info((RandoRegionId)i)->default_bosses[s];
@@ -145,6 +149,44 @@ RandoItemId rando_world_shop_item(const RandoWorld *world, RandoShopId shop, int
 {
 	assert(shop < RANDO_SHOP_COUNT && slot >= 0 && slot < RANDO_SHOP_SLOTS);
 	return (RandoItemId)world->shop_items[shop][slot];
+}
+
+bool rando_world_shop_active(const RandoWorld *world, RandoShopId shop)
+{
+	assert(shop < RANDO_SHOP_COUNT);
+	return world->shop_active[shop];
+}
+
+void rando_world_shop_set_active(RandoWorld *world, RandoShopId shop, bool active)
+{
+	assert(shop < RANDO_SHOP_COUNT);
+	world->shop_active[shop] = active;
+}
+
+int rando_world_shop_price(const RandoWorld *world, RandoShopId shop, int slot)
+{
+	assert(shop < RANDO_SHOP_COUNT && slot >= 0 && slot < RANDO_SHOP_SLOTS);
+	assert(world->shop_items[shop][slot] != RANDO_ITEM_NONE && "an empty shop slot has no price");
+	return world->shop_prices[shop][slot];
+}
+
+void rando_world_shop_clear(RandoWorld *world, RandoShopId shop)
+{
+	int s;
+
+	assert(shop < RANDO_SHOP_COUNT);
+	for (s = 0; s < RANDO_SHOP_SLOTS; s++) {
+		world->shop_items[shop][s] = RANDO_ITEM_NONE;
+		world->shop_prices[shop][s] = 0;
+	}
+}
+
+void rando_world_shop_add(RandoWorld *world, RandoShopId shop, int slot, RandoItemId item, int price)
+{
+	assert(shop < RANDO_SHOP_COUNT && slot >= 0 && slot < RANDO_SHOP_SLOTS);
+	assert(item < RANDO_ITEM_COUNT && price >= 0 && price <= UINT16_MAX);
+	world->shop_items[shop][slot] = (uint8_t)item;
+	world->shop_prices[shop][slot] = (uint16_t)price;
 }
 
 static bool accepts(RandoLocationClass location_class, RandoItemId item)

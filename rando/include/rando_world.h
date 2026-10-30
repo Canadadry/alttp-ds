@@ -395,11 +395,19 @@ typedef struct RandoRegionInfo {
 	RandoBossId default_bosses[RANDO_BOSS_SLOT_COUNT];
 } RandoRegionInfo;
 
+typedef enum RandoShopKind {
+	RANDO_SHOP_KIND_SHOP,
+	RANDO_SHOP_KIND_TAKE_ANY,
+	RANDO_SHOP_KIND_UPGRADE,
+} RandoShopKind;
+
 typedef struct RandoShopInfo {
 	const char *name;
 	RandoRegionId region;
 	uint8_t nslots;
 	RandoItemId default_items[RANDO_SHOP_SLOTS];
+	RandoShopKind kind;
+	uint16_t default_prices[RANDO_SHOP_SLOTS];
 } RandoShopInfo;
 
 /* Ids, never pointers: reinitialized by value with rando_world_init. Item and boss ids are stored
@@ -409,6 +417,8 @@ typedef struct RandoWorld {
 	RandoVariant variant;
 	uint8_t location_items[RANDO_LOCATION_COUNT];
 	uint8_t shop_items[RANDO_SHOP_COUNT][RANDO_SHOP_SLOTS];
+	bool shop_active[RANDO_SHOP_COUNT];
+	uint16_t shop_prices[RANDO_SHOP_COUNT][RANDO_SHOP_SLOTS];
 	uint8_t bosses[RANDO_REGION_COUNT][RANDO_BOSS_SLOT_COUNT];
 	RandoItems pre_collected;
 	bool collected[RANDO_LOCATION_COUNT];
@@ -440,6 +450,13 @@ void rando_world_init(RandoWorld *world, RandoVariant variant, const RandoConfig
 RandoItemId rando_world_item(const RandoWorld *world, RandoLocationId location);
 RandoBossId rando_world_boss(const RandoWorld *world, RandoRegionId region, RandoBossSlot slot);
 RandoItemId rando_world_shop_item(const RandoWorld *world, RandoShopId shop, int slot);
+bool rando_world_shop_active(const RandoWorld *world, RandoShopId shop);
+void rando_world_shop_set_active(RandoWorld *world, RandoShopId shop, bool active);
+/* Asserts the slot holds an item. */
+int rando_world_shop_price(const RandoWorld *world, RandoShopId shop, int slot);
+void rando_world_shop_clear(RandoWorld *world, RandoShopId shop);
+/* Replaces what the slot held; the item may not be RANDO_ITEM_NONE. */
+void rando_world_shop_add(RandoWorld *world, RandoShopId shop, int slot, RandoItemId item, int price);
 
 /* False where VT's setItem throws (a refused item class); the location is then unchanged, and the
  * caller fails the attempt as VT's retry loop does. RANDO_ITEM_NONE empties the location. */
