@@ -3,7 +3,7 @@ CFLAGS := -std=c99 -Wall -Wextra -Werror
 RANDO := ../../rando
 BUILD := build
 
-UNIT_TESTS := test_prng test_items test_bosses test_world test_regions test_options test_case_reader test_pool
+UNIT_TESTS := test_prng test_items test_bosses test_world test_regions test_options test_case_reader test_pool test_generate
 # No fixture mode: test_prng already replays its vectors in `test`, the others have no fixture.
 LOGIC_TESTS := $(filter-out test_prng test_options test_case_reader test_pool,$(UNIT_TESTS))
 

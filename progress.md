@@ -30,7 +30,7 @@
       - [x] Chunk 1: oracle pool fixture
       - [x] Chunk 2: options, derivations and case reader
       - [x] Chunk 3: item pools
-      - [ ] Chunk 4: generator
+      - [x] Chunk 4: generator
       - [ ] Chunk 5: driver and claims
     - [ ] 2.3.2 setMedallions (with setShops baseline path)
     - [ ] 2.3.3 fillPrizes (with placeBosses baseline path)

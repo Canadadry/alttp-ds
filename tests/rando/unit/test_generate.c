@@ -1,0 +1,311 @@
+#include "rando.h"
+#include "support.h"
+
+#include <inttypes.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#define TEST "test_generate"
+
+#define CHECK(cond) \
+	do { \
+		if (!(cond)) \
+			test_fail(TEST, "%s:%d: %s", __FILE__, __LINE__, #cond); \
+	} while (0)
+
+#define TRACE_MAX 4096
+#define STAGE_TABLE "stages.txt"
+
+/* The hook's draws in trace.txt's format. */
+typedef struct Trace {
+	char text[TRACE_MAX];
+	size_t len;
+	int lines;
+} Trace;
+
+static void record(void *ctx, uint32_t attempt, uint32_t draw, const char *stage, int64_t min, int64_t max,
+		   int64_t r)
+{
+	Trace *t = ctx;
+	int n = snprintf(t->text + t->len, TRACE_MAX - t->len, "%" PRIu32 " %" PRIu32 " %s %" PRId64 " %" PRId64
+			 " -> %" PRId64 "\n", attempt, draw, stage, min, max, r);
+
+	if (n < 0 || (size_t)n >= TRACE_MAX - t->len)
+		test_fail(TEST, "trace longer than %d bytes", TRACE_MAX);
+	t->len += (size_t)n;
+	t->lines++;
+}
+
+static RandoGen gen;
+
+static RandoStatus generate(const char *key, const char *value, uint32_t seed, Trace *trace)
+{
+	RandoOptions options;
+
+	rando_options_init(&options);
+	if (key)
+		CHECK(rando_options_set(&options, key, value));
+	memset(trace, 0, sizeof *trace);
+	return rando_generate(&gen, &options, seed, 1, record, trace);
+}
+
+static void check_trace(const char *what, const Trace *trace, const char *expected)
+{
+	if (strcmp(trace->text, expected) != 0)
+		test_fail(TEST, "%s: trace\n%s\nexpected\n%s", what, trace->text, expected);
+}
+
+/* tests/rando/cases/baseline/trace.txt, then setMedallions: not ported yet. */
+static void check_baseline(void)
+{
+	Trace trace;
+
+	CHECK(generate(NULL, NULL, 1, &trace) == RANDO_INCOMPLETE);
+	CHECK(gen.attempt == 0);
+	check_trace("baseline", &trace,
+		    "0 1 getAdvancementItems 0 6 -> 3\n"
+		    "0 2 getAdvancementItems 0 6 -> 4\n"
+		    "0 3 getAdvancementItems 0 6 -> 6\n"
+		    "0 4 getAdvancementItems 0 6 -> 1\n");
+}
+
+/* tests/rando/cases/crystals_tower-random/trace.txt. */
+static void check_random_crystals(void)
+{
+	Trace trace;
+
+	CHECK(generate("crystals_tower", "random", 1, &trace) == RANDO_INCOMPLETE);
+	check_trace("crystals_tower-random", &trace,
+		    "0 1 crystals 0 7 -> 5\n"
+		    "0 2 getAdvancementItems 0 6 -> 4\n"
+		    "0 3 getAdvancementItems 0 6 -> 6\n"
+		    "0 4 getAdvancementItems 0 6 -> 1\n"
+		    "0 5 getAdvancementItems 0 6 -> 1\n");
+	CHECK(gen.world.config.crystals_tower == 5);
+	CHECK(gen.world.config.crystals_ganon == 7);
+}
+
+/* The oracle wrapper draws ganon's count before tower's. */
+static void check_crystals_order(void)
+{
+	RandoOptions options;
+	Trace trace;
+
+	rando_options_init(&options);
+	CHECK(rando_options_set(&options, "crystals_ganon", "random"));
+	CHECK(rando_options_set(&options, "crystals_tower", "random"));
+	memset(&trace, 0, sizeof trace);
+	CHECK(rando_generate(&gen, &options, 1, 1, record, &trace) == RANDO_INCOMPLETE);
+	CHECK(trace.lines == 6);
+	CHECK(strncmp(trace.text, "0 1 crystals 0 7 -> 5\n0 2 crystals 0 7 -> ", 42) == 0);
+	CHECK(gen.world.config.crystals_ganon == 5);
+	CHECK(gen.world.config.crystals_tower == trace.text[42] - '0');
+}
+
+/* Step 2.2 ports the Open and Standard worlds only. */
+static void check_states(void)
+{
+	Trace trace;
+
+	CHECK(generate("state", "inverted", 1, &trace) == RANDO_UNSUPPORTED);
+	CHECK(trace.lines == 0);
+	CHECK(generate("state", "retro", 1, &trace) == RANDO_UNSUPPORTED);
+	CHECK(trace.lines == 0);
+	CHECK(generate("state", "standard", 1, &trace) == RANDO_INCOMPLETE);
+	CHECK(gen.world.variant == RANDO_VARIANT_STANDARD);
+	CHECK(gen.world.config.mode_state == RANDO_STATE_STANDARD);
+	CHECK(trace.lines == 4);
+	CHECK(generate(NULL, NULL, 1, &trace) == RANDO_INCOMPLETE);
+	CHECK(gen.world.variant == RANDO_VARIANT_OPEN);
+}
+
+static void observe(void *ctx, int64_t min, int64_t max, int64_t r)
+{
+	(void)min;
+	(void)max;
+	*(int64_t *)ctx = r;
+}
+
+/* Attempt 0 seeds splitmix32(seed + 0): the first getBottle draw of a fresh PRNG seeded so. */
+static void check_reseed(uint32_t seed)
+{
+	RandoPrng prng;
+	RandoOptions options;
+	int64_t expected = -1;
+	Trace trace;
+
+	memset(&prng, 0, sizeof prng);
+	rando_prng_seed(&prng, rando_splitmix32(seed));
+	prng.observe = observe;
+	prng.observe_ctx = &expected;
+	rando_random_int(&prng, 0, 6);
+	CHECK(generate(NULL, NULL, seed, &trace) == RANDO_INCOMPLETE);
+	CHECK(trace.lines == 4);
+	CHECK(trace.text[strlen("0 1 getAdvancementItems 0 6 -> ")] - '0' == expected);
+
+	rando_options_init(&options);
+	CHECK(rando_generate(&gen, &options, seed, 0, NULL, NULL) == RANDO_INCOMPLETE);
+	CHECK(gen.attempt == 0);
+	CHECK(gen.draw == 4);
+}
+
+/* The gate labels claims with stages.txt's names: a renamed or reordered stage fails here. */
+static void check_stage_table(void)
+{
+	Fixture fx;
+	int n = 0;
+
+	fixture_open(&fx, STAGE_TABLE);
+	while (fixture_next(&fx)) {
+		const char *kind = strtok(fx.line, " ");
+		const char *name = strtok(NULL, " ");
+
+		if (strcmp(kind, "stage") != 0)
+			continue;
+		if (!name || strtok(NULL, " "))
+			fixture_fail(&fx, "a stage line holds one name");
+		if (n >= RANDO_STAGE_COUNT)
+			fixture_fail(&fx, "stage missing from RandoStage");
+		if (strcmp(name, rando_stage_name((RandoStage)n)) != 0)
+			fixture_fail(&fx, "RandoStage names this stage differently");
+		n++;
+	}
+	fixture_close(&fx);
+	if (n != RANDO_STAGE_COUNT)
+		test_fail(TEST, "%s lists %d stages, RandoStage %d", STAGE_TABLE, n, RANDO_STAGE_COUNT);
+}
+
+static const char *const list_names[RANDO_POOL_LIST_COUNT] = {"dungeon", "advancement", "nice", "items"};
+
+/* No world variant until Phase 3 ports it; each `state` step removes its skip. */
+static const char *const skipped_cases[] = {"state-inverted", "state-retro"};
+#define SKIPPED_COUNT ((int)(sizeof skipped_cases / sizeof skipped_cases[0]))
+
+static int skipped_index(const char *name)
+{
+	int i;
+
+	for (i = 0; i < SKIPPED_COUNT; i++)
+		if (strcmp(name, skipped_cases[i]) == 0)
+			return i;
+	return -1;
+}
+
+/* The C draws must be the first lines of the case's golden trace. */
+static void check_golden_prefix(const char *name, const Trace *trace)
+{
+	char path[256], golden[TRACE_MAX];
+	size_t len = 0;
+	int lines = 0;
+	FILE *f;
+
+	snprintf(path, sizeof path, "cases/%s/trace.txt", name);
+	f = fopen(path, "r");
+	if (!f)
+		test_fail(TEST, "%s: cannot open", path);
+	while (lines < trace->lines && fgets(golden + len, (int)(sizeof golden - len), f)) {
+		len += strlen(golden + len);
+		lines++;
+	}
+	fclose(f);
+	golden[len] = '\0';
+	if (strcmp(trace->text, golden) != 0)
+		test_fail(TEST, "%s: C draws\n%s\ndiffer from the golden's first %d lines\n%s", name, trace->text,
+			  trace->lines, golden);
+}
+
+static void check_list(Fixture *fx, const char *name, RandoPoolList list)
+{
+	const char *expected;
+	int i = 0;
+
+	if (strcmp(strtok(fx->line, " "), list_names[list]) != 0)
+		fixture_fail(fx, "expected the next list of the case");
+	for (; (expected = strtok(NULL, " ")) != NULL; i++) {
+		const char *actual = i < gen.pools.count[list] ? rando_item_info(gen.pools.items[list][i])->name : "(end)";
+
+		if (strcmp(expected, actual) != 0)
+			test_fail(TEST, "%s %s[%d]: expected %s, got %s", name, list_names[list], i, expected, actual);
+	}
+	if (i != gen.pools.count[list])
+		test_fail(TEST, "%s %s[%d]: expected (end), got %s", name, list_names[list], i,
+			  rando_item_info(gen.pools.items[list][i])->name);
+}
+
+/* oracle/pool_lists.txt: per case, VT's four lists at attempt 0, in prepareWorld's order. */
+static int check_pool_lists(void)
+{
+	int seen[SKIPPED_COUNT] = {0};
+	int cases = 0, i;
+	Fixture fx;
+
+	fixture_open(&fx, FIXTURE_POOL_LISTS);
+	while (fixture_next(&fx)) {
+		char name[128];
+		const char *kv;
+		RandoOptions options;
+		RandoPoolList list;
+		unsigned long seed;
+		Trace trace;
+		int skip;
+
+		if (strcmp(strtok(fx.line, " "), "case") != 0)
+			fixture_fail(&fx, "expected a case record");
+		snprintf(name, sizeof name, "%s", strtok(NULL, " "));
+		seed = strtoul(strtok(NULL, " "), NULL, 10);
+		rando_options_init(&options);
+		while ((kv = strtok(NULL, " ")) != NULL) {
+			char key[64];
+			const char *eq = strchr(kv, '=');
+
+			if (!eq || (size_t)(eq - kv) >= sizeof key)
+				fixture_fail(&fx, "malformed option");
+			memcpy(key, kv, (size_t)(eq - kv));
+			key[eq - kv] = '\0';
+			if (!rando_options_set(&options, key, eq + 1))
+				fixture_fail(&fx, "unknown option");
+		}
+		skip = skipped_index(name);
+		if (skip < 0) {
+			memset(&trace, 0, sizeof trace);
+			if (rando_generate(&gen, &options, (uint32_t)seed, 1, record, &trace) != RANDO_INCOMPLETE)
+				fixture_fail(&fx, "generation did not stop incomplete after getAdvancementItems");
+			check_golden_prefix(name, &trace);
+			cases++;
+		} else {
+			seen[skip]++;
+		}
+		for (list = 0; list < RANDO_POOL_LIST_COUNT; list++) {
+			if (!fixture_next(&fx))
+				fixture_fail(&fx, "case record without its four lists");
+			if (skip < 0)
+				check_list(&fx, name, list);
+		}
+	}
+	fixture_close(&fx);
+	for (i = 0; i < SKIPPED_COUNT; i++)
+		if (seen[i] != 1)
+			test_fail(TEST, "%s: case %s seen %d times, skipped once", FIXTURE_POOL_LISTS, skipped_cases[i],
+				  seen[i]);
+	return cases;
+}
+
+int main(int argc, char **argv)
+{
+	int fixtures = test_fixtures_mode(TEST, argc, argv);
+
+	check_baseline();
+	check_random_crystals();
+	check_crystals_order();
+	check_states();
+	check_reseed(1);
+	check_reseed(12345);
+	check_reseed(UINT32_MAX);
+	check_stage_table();
+	printf(TEST ": hand-written cases passed\n");
+	if (!fixtures)
+		return 0;
+	printf(TEST ": %d pool list records replayed, %d skipped (no world)\n", check_pool_lists(), SKIPPED_COUNT);
+	return 0;
+}
