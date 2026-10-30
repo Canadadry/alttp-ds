@@ -47,6 +47,7 @@ typedef struct RandoGen {
 	uint32_t seed;
 	uint32_t attempt;
 	RandoStage stage;
+	RandoStage last;
 	uint32_t draw;
 	RandoTraceFn trace;
 	void *trace_ctx;
@@ -60,5 +61,10 @@ typedef struct RandoGen {
  * is the last attempt run. */
 RandoStatus rando_generate(RandoGen *gen, const RandoOptions *options, uint32_t seed, uint32_t max_attempts,
 			   RandoTraceFn trace, void *trace_ctx);
+
+/* rando_generate, but RANDO_INCOMPLETE right after stage last completes on the attempt that reaches it.
+ * RANDO_STAGE_NONE runs every ported stage. */
+RandoStatus rando_generate_until(RandoGen *gen, const RandoOptions *options, uint32_t seed, uint32_t max_attempts,
+				 RandoTraceFn trace, void *trace_ctx, RandoStage last);
 
 #endif

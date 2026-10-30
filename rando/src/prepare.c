@@ -51,15 +51,31 @@ void rando_prepare_goal(RandoWorld *world)
 	}
 }
 
-void rando_prepare_pre_collect(RandoWorld *world)
+static void drop_first_boots(RandoPools *pools)
+{
+	uint8_t *list = pools->items[RANDO_POOL_ADVANCEMENT];
+	uint16_t *count = &pools->count[RANDO_POOL_ADVANCEMENT];
+	uint16_t i;
+
+	for (i = 0; i < *count && list[i] != RANDO_ITEM_PegasusBoots; i++)
+		;
+	if (i == *count)
+		return;
+	memmove(list + i, list + i + 1, (size_t)(*count - i - 1));
+	(*count)--;
+	assert(pools->count[RANDO_POOL_ITEMS] < RANDO_POOL_CAPACITY);
+	pools->items[RANDO_POOL_ITEMS][pools->count[RANDO_POOL_ITEMS]++] = RANDO_ITEM_TwentyRupees;
+}
+
+void rando_prepare_pre_collect(RandoWorld *world, RandoPools *pools)
 {
 	RandoLogic logic = world->config.logic;
 
-	/* TODO(step 2.3.6): VT also drops the first PegasusBoots from the advancement list and appends
-	 * TwentyRupees to the item pool here; test_generate --fixtures still compares the raw getter lists. */
 	if (logic == RANDO_LOGIC_MAJOR_GLITCHES || logic == RANDO_LOGIC_HYBRID_MAJOR_GLITCHES
-	    || logic == RANDO_LOGIC_OVERWORLD_GLITCHES || logic == RANDO_LOGIC_NO_LOGIC)
+	    || logic == RANDO_LOGIC_OVERWORLD_GLITCHES || logic == RANDO_LOGIC_NO_LOGIC) {
 		rando_items_add(&world->pre_collected, RANDO_ITEM_PegasusBoots);
+		drop_first_boots(pools);
+	}
 
 	if (world->config.mode_state != RANDO_STATE_STANDARD)
 		rando_items_add(&world->pre_collected, RANDO_ITEM_RescueZelda);

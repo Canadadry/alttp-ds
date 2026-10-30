@@ -40,6 +40,17 @@ static int resolve_crystals(RandoGen *gen, RandoCrystals crystals)
 	return (int)crystals;
 }
 
+/* Closes the running stage; true when the caller must stop there with RANDO_INCOMPLETE. */
+static bool end_stage(RandoGen *gen, RandoStatus *status)
+{
+	bool stop = gen->stage == gen->last;
+
+	gen->stage = RANDO_STAGE_NONE;
+	if (stop)
+		*status = RANDO_INCOMPLETE;
+	return stop;
+}
+
 /* Returns false when the attempt failed and the loop must retry; otherwise stores the final status. */
 static bool run_attempt(RandoGen *gen, RandoStatus *status)
 {
@@ -54,8 +65,8 @@ static bool run_attempt(RandoGen *gen, RandoStatus *status)
 	gen->stage = RANDO_STAGE_CRYSTALS;
 	crystals_ganon = resolve_crystals(gen, gen->options.crystals_ganon);
 	crystals_tower = resolve_crystals(gen, gen->options.crystals_tower);
-
-	gen->stage = RANDO_STAGE_NONE;
+	if (end_stage(gen, status))
+		return true;
 
 	if (gen->options.state == RANDO_OPTION_STATE_INVERTED || gen->options.state == RANDO_OPTION_STATE_RETRO) {
 		*status = RANDO_UNSUPPORTED;
@@ -69,24 +80,35 @@ static bool run_attempt(RandoGen *gen, RandoStatus *status)
 
 	gen->stage = RANDO_STAGE_GET_ADVANCEMENT_ITEMS;
 	rando_pool_build(&gen->world, &gen->prng, &gen->pools);
-	gen->stage = RANDO_STAGE_NONE;
-	rando_prepare_pre_collect(&gen->world);
+	if (end_stage(gen, status))
+		return true;
+	rando_prepare_pre_collect(&gen->world, &gen->pools);
 
 	/* None of these stages may call collectItems: VT caches the collectable shop items on the first call. */
 	gen->stage = RANDO_STAGE_SET_SHOPS;
 	rando_set_shops(&gen->world);
+	if (end_stage(gen, status))
+		return true;
 	gen->stage = RANDO_STAGE_SET_MEDALLIONS;
 	rando_set_medallions(&gen->world, &gen->prng);
+	if (end_stage(gen, status))
+		return true;
 	gen->stage = RANDO_STAGE_PLACE_BOSSES;
 	rando_place_bosses(&gen->world);
+	if (end_stage(gen, status))
+		return true;
 
 	gen->stage = RANDO_STAGE_FILL_PRIZES;
 	if (!rando_fill_prizes(&gen->world, &gen->prng)) {
 		gen->stage = RANDO_STAGE_NONE;
 		return false;
 	}
+	if (end_stage(gen, status))
+		return true;
 	gen->stage = RANDO_STAGE_SET_FOUNTAINS;
 	rando_set_fountains(&gen->world, &gen->prng);
+	if (end_stage(gen, status))
+		return true;
 	gen->stage = RANDO_STAGE_SHUFFLE_PRIZE_PACKS;
 	rando_shuffle_prize_packs(&gen->world, &gen->prng);
 	gen->stage = RANDO_STAGE_NONE;
@@ -98,9 +120,17 @@ static bool run_attempt(RandoGen *gen, RandoStatus *status)
 RandoStatus rando_generate(RandoGen *gen, const RandoOptions *options, uint32_t seed, uint32_t max_attempts,
 			   RandoTraceFn trace, void *trace_ctx)
 {
+	return rando_generate_until(gen, options, seed, max_attempts, trace, trace_ctx, RANDO_STAGE_NONE);
+}
+
+RandoStatus rando_generate_until(RandoGen *gen, const RandoOptions *options, uint32_t seed, uint32_t max_attempts,
+				 RandoTraceFn trace, void *trace_ctx, RandoStage last)
+{
 	RandoStatus status;
 
+	assert(last <= RANDO_STAGE_NONE);
 	gen->options = *options;
+	gen->last = last;
 	gen->seed = seed;
 	gen->trace = trace;
 	gen->trace_ctx = trace_ctx;

@@ -1,6 +1,7 @@
 #ifndef RANDO_PREPARE_H
 #define RANDO_PREPARE_H
 
+#include "rando_pool.h"
 #include "rando_prng.h"
 #include "rando_world.h"
 
@@ -12,8 +13,10 @@ void rando_prepare_start_equipment(RandoWorld *world);
 /* prepareWorld before its pool getters: completionist's accessibility switch and the goal's Triforce. */
 void rando_prepare_goal(RandoWorld *world);
 
-/* prepareWorld after its pool getters: PegasusBoots and RescueZelda into the pre-collected items. */
-void rando_prepare_pre_collect(RandoWorld *world);
+/* prepareWorld after its pool getters: PegasusBoots and RescueZelda into the pre-collected items, and
+ * the glitched logics' list edit (the first PegasusBoots out of the advancement list, TwentyRupees
+ * appended to the item pool). */
+void rando_prepare_pre_collect(RandoWorld *world, RandoPools *pools);
 
 /* Randomizer::setShops on the draw-free path. Asserts when generic keys or the rupee bow are on:
  * that path draws and is not ported. */

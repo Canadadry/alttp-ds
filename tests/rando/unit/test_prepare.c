@@ -554,31 +554,80 @@ static void logic_world(RandoWorld *world, RandoVariant variant, RandoLogic logi
 	rando_world_init(world, variant, &config);
 }
 
-/* prepareWorld after its getters: RescueZelda outside standard, PegasusBoots under the four glitched logics. */
+static void hand_pools(RandoPools *pools, const RandoItemId *advancement, size_t nadvancement)
+{
+	size_t i;
+
+	memset(pools, 0, sizeof *pools);
+	for (i = 0; i < nadvancement; i++)
+		pools->items[RANDO_POOL_ADVANCEMENT][i] = (uint8_t)advancement[i];
+	pools->count[RANDO_POOL_ADVANCEMENT] = (uint16_t)nadvancement;
+	pools->items[RANDO_POOL_ITEMS][0] = RANDO_ITEM_Arrow;
+	pools->count[RANDO_POOL_ITEMS] = 1;
+}
+
+static int same_list(const RandoPools *pools, RandoPoolList list, const RandoItemId *expected, size_t n)
+{
+	size_t i;
+
+	if (pools->count[list] != n)
+		return 0;
+	for (i = 0; i < n; i++)
+		if (pools->items[list][i] != expected[i])
+			return 0;
+	return 1;
+}
+
+/* prepareWorld after its getters: RescueZelda outside standard; under the four glitched logics,
+ * PegasusBoots pre-collected and the first one unset from the advancement list for a pushed TwentyRupees. */
 static void check_pre_collect(void)
 {
 	static const RandoLogic glitched[] = {
 		RANDO_LOGIC_OVERWORLD_GLITCHES, RANDO_LOGIC_HYBRID_MAJOR_GLITCHES, RANDO_LOGIC_MAJOR_GLITCHES,
 		RANDO_LOGIC_NO_LOGIC,
 	};
+	static const RandoItemId advancement[] = {
+		RANDO_ITEM_Hammer, RANDO_ITEM_PegasusBoots, RANDO_ITEM_Lamp, RANDO_ITEM_PegasusBoots, RANDO_ITEM_Flippers,
+	};
+	static const RandoItemId edited[] = {
+		RANDO_ITEM_Hammer, RANDO_ITEM_Lamp, RANDO_ITEM_PegasusBoots, RANDO_ITEM_Flippers,
+	};
+	static const RandoItemId no_boots[] = {RANDO_ITEM_Hammer, RANDO_ITEM_Lamp};
+	static const RandoItemId arrow[] = {RANDO_ITEM_Arrow};
+	static const RandoItemId arrow_rupees[] = {RANDO_ITEM_Arrow, RANDO_ITEM_TwentyRupees};
 	RandoWorld world;
+	RandoPools pools;
 	size_t i;
 
 	logic_world(&world, RANDO_VARIANT_OPEN, RANDO_LOGIC_NO_GLITCHES);
-	rando_prepare_pre_collect(&world);
+	hand_pools(&pools, advancement, 5);
+	rando_prepare_pre_collect(&world, &pools);
 	CHECK(rando_items_has(&world.pre_collected, RANDO_ITEM_RescueZelda));
 	CHECK(!rando_items_has(&world.pre_collected, RANDO_ITEM_PegasusBoots));
 	CHECK(rando_items_count(&world.pre_collected) == 1);
+	CHECK(same_list(&pools, RANDO_POOL_ADVANCEMENT, advancement, 5));
+	CHECK(same_list(&pools, RANDO_POOL_ITEMS, arrow, 1));
 
 	logic_world(&world, RANDO_VARIANT_STANDARD, RANDO_LOGIC_NO_GLITCHES);
-	rando_prepare_pre_collect(&world);
+	hand_pools(&pools, advancement, 5);
+	rando_prepare_pre_collect(&world, &pools);
 	CHECK(rando_items_count(&world.pre_collected) == 0);
 
 	for (i = 0; i < sizeof glitched / sizeof glitched[0]; i++) {
 		logic_world(&world, RANDO_VARIANT_STANDARD, glitched[i]);
-		rando_prepare_pre_collect(&world);
+		hand_pools(&pools, advancement, 5);
+		rando_prepare_pre_collect(&world, &pools);
 		CHECK(rando_items_has(&world.pre_collected, RANDO_ITEM_PegasusBoots));
 		CHECK(rando_items_count(&world.pre_collected) == 1);
+		CHECK(same_list(&pools, RANDO_POOL_ADVANCEMENT, edited, 4));
+		CHECK(same_list(&pools, RANDO_POOL_ITEMS, arrow_rupees, 2));
+
+		logic_world(&world, RANDO_VARIANT_STANDARD, glitched[i]);
+		hand_pools(&pools, no_boots, 2);
+		rando_prepare_pre_collect(&world, &pools);
+		CHECK(rando_items_has(&world.pre_collected, RANDO_ITEM_PegasusBoots));
+		CHECK(same_list(&pools, RANDO_POOL_ADVANCEMENT, no_boots, 2));
+		CHECK(same_list(&pools, RANDO_POOL_ITEMS, arrow, 1));
 	}
 }
 
@@ -632,15 +681,17 @@ static const RandoItemId prizes[] = {
 static void prize_world(RandoWorld *world, RandoPrng *prng, const RandoItemId *zeroed, size_t nzeroed)
 {
 	RandoConfig config;
+	RandoPools pools;
 	size_t i;
 
+	memset(&pools, 0, sizeof pools);
 	rando_config_init(&config);
 	for (i = 0; i < nzeroed; i++)
 		config.item_count[zeroed[i]] = 0;
 	rando_world_init(world, RANDO_VARIANT_OPEN, &config);
 	rando_prepare_start_equipment(world);
 	rando_prepare_goal(world);
-	rando_prepare_pre_collect(world);
+	rando_prepare_pre_collect(world, &pools);
 	rando_set_shops(world);
 	seeded(prng, 1, 0);
 	rando_set_medallions(world, prng);

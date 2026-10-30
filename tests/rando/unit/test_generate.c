@@ -208,6 +208,48 @@ static void check_reseed(uint32_t seed)
 	CHECK(gen.draw == 79);
 }
 
+static int count_item(RandoPoolList list, RandoItemId item)
+{
+	int i, n = 0;
+
+	for (i = 0; i < gen.pools.count[list]; i++)
+		n += gen.pools.items[list][i] == item;
+	return n;
+}
+
+/* A stop after getAdvancementItems leaves the getter's lists; the full run makes VT's Boots edit
+ * (tests/rando/oracle/pool_lists.txt's glitches-overworld_glitches record holds one PegasusBoots). */
+static void check_stop_stage(void)
+{
+	RandoOptions options;
+	Trace trace;
+	int items;
+
+	rando_options_init(&options);
+	CHECK(rando_options_set(&options, "glitches", "overworld_glitches"));
+	memset(&trace, 0, sizeof trace);
+	CHECK(rando_generate_until(&gen, &options, 1, 1, record, &trace, RANDO_STAGE_GET_ADVANCEMENT_ITEMS) ==
+	      RANDO_INCOMPLETE);
+	check_golden_prefix("glitches-overworld_glitches", &trace);
+	CHECK(strstr(trace.text, "setShops") == NULL);
+	CHECK(count_item(RANDO_POOL_ADVANCEMENT, RANDO_ITEM_PegasusBoots) == 1);
+	CHECK(!rando_items_has(&gen.world.pre_collected, RANDO_ITEM_PegasusBoots));
+	items = gen.pools.count[RANDO_POOL_ITEMS];
+
+	memset(&trace, 0, sizeof trace);
+	CHECK(rando_generate(&gen, &options, 1, 1, record, &trace) == RANDO_INCOMPLETE);
+	CHECK(trace.lines == 79);
+	CHECK(count_item(RANDO_POOL_ADVANCEMENT, RANDO_ITEM_PegasusBoots) == 0);
+	CHECK(rando_items_has(&gen.world.pre_collected, RANDO_ITEM_PegasusBoots));
+	CHECK(gen.pools.count[RANDO_POOL_ITEMS] == items + 1);
+	CHECK(gen.pools.items[RANDO_POOL_ITEMS][items] == RANDO_ITEM_TwentyRupees);
+
+	memset(&trace, 0, sizeof trace);
+	CHECK(rando_generate_until(&gen, &options, 1, 1, record, &trace, RANDO_STAGE_SHUFFLE_PRIZE_PACKS) ==
+	      RANDO_INCOMPLETE);
+	CHECK(trace.lines == 79);
+}
+
 /* The gate labels claims with stages.txt's names: a renamed or reordered stage fails here. */
 static void check_stage_table(void)
 {
@@ -268,7 +310,7 @@ static void check_list(Fixture *fx, const char *name, RandoPoolList list)
 			  rando_item_info(gen.pools.items[list][i])->name);
 }
 
-/* oracle/pool_lists.txt: per case, VT's four lists at attempt 0, in prepareWorld's order. */
+/* oracle/pool_lists.txt: per case, VT's four getter lists at attempt 0, before prepareWorld edits them. */
 static int check_pool_lists(void)
 {
 	int seen[SKIPPED_COUNT] = {0};
@@ -304,8 +346,9 @@ static int check_pool_lists(void)
 		skip = skipped_index(name);
 		if (skip < 0) {
 			memset(&trace, 0, sizeof trace);
-			if (rando_generate(&gen, &options, (uint32_t)seed, 1, record, &trace) != RANDO_INCOMPLETE)
-				fixture_fail(&fx, "generation did not stop incomplete after shufflePrizePacks");
+			if (rando_generate_until(&gen, &options, (uint32_t)seed, 1, record, &trace,
+						 RANDO_STAGE_GET_ADVANCEMENT_ITEMS) != RANDO_INCOMPLETE)
+				fixture_fail(&fx, "generation did not stop incomplete after getAdvancementItems");
 			check_golden_prefix(name, &trace);
 			cases++;
 		} else {
@@ -338,6 +381,7 @@ int main(int argc, char **argv)
 	check_reseed(1);
 	check_reseed(12345);
 	check_reseed(UINT32_MAX);
+	check_stop_stage();
 	check_stage_table();
 	printf(TEST ": hand-written cases passed\n");
 	if (!fixtures)
