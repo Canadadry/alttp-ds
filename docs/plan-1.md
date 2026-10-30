@@ -167,3 +167,7 @@ This plan follows the boot fix already on branch `melonds-0.9.5-boot`, commits `
 - N, all `FF`: `new`, image zeroed, defaults, nothing written.
 - X, no save memory plus a triggered save: `off`; before the trigger only the four status commands (all `00`), after it no SPI byte and no slot change; dirty cleared, the ROM kept ticking (1000 ticks), no `.sav`.
 - Phase 2 end: warn-review flagged the settings hub in `zelda_save.h`, settings codec repetitions and inline constants (all older than this plan), no direct test of the EEPROM driver, and no build guard against the removed FAT symbols. plan-review proposed nothing: the locked API and layout put them out of scope.
+
+### Step 3.1
+- README only: § Saves rewritten (cartridge 8 KB EEPROM kept as the emulator's or flashcart's `.sav`; older `.sav` same layout, copy by hand; hardware depends on the flashcart's save emulation for `ZLTP`); "To run it" names melonDS 0.9.5+, RetroArch's `melonds` core and Delta; § Settings says "saved with your game save"; layout gains the `platform/nds/calico/` row.
+- Every claim maps to a step note; all H-2.3 hypotheses held. `build.py` still requires `libfat.a` in its toolchain check although the ROM no longer links it: left as is (out of this plan's scope).

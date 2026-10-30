@@ -10,6 +10,7 @@
     - [x] the EEPROM arrives
   - [x] 2.2 A save reaches the emulator's .sav
   - [x] 2.3 A relaunch loads it
-- [ ] Phase 3 — Docs
-  - [ ] 3.1 README
+- [x] Phase 3 — Docs
+  - [x] 3.1 README
     - [x] README: saves, how to run, calico row
+- [ ] Human: on Delta, save, quit and reload; check a recent melonDS; a flashcart if possible
