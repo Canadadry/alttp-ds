@@ -5,7 +5,7 @@
     - [x] probe, chip present
     - [x] no chip, notes, probe removed
 - [ ] Phase 2 — Save through the EEPROM only
-  - [ ] 2.1 Rewrite zelda_save.c for the EEPROM
+  - [x] 2.1 Rewrite zelda_save.c for the EEPROM
     - [x] the file goes
     - [x] the EEPROM arrives
   - [ ] 2.2 A save reaches the emulator's .sav

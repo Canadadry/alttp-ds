@@ -145,3 +145,9 @@ This plan follows the boot fix already on branch `melonds-0.9.5-boot`, commits `
 - § 2 "EEPROM access" amended accordingly: own page write with hold cleared on the last byte, bounded polls, presence rule = status bit 1 set after WREN and clear after WRDI (both runs agree; a floating `FF` bus is inferred absent, not measured).
 - Phase 1 end: warn-review flagged the inline copy of ds_rules' ndstool recipe in the `Makefile` and no automated header check for `ZLTP`; plan-review proposed nothing.
 - Harness: pass the ROM as `./lttp-ds.nds` (a bare name breaks the save path); clear stale shared memory after `pkill -9` (`ipcrm`), see `scratchpad/tools/run.sh`.
+
+### Step 2.1
+- f869521 removed the file side (FAT, TWiLight, argv, stdio, legacy paths, melon/DLDI), `ZeldaSavePrepare`, `fatInitDefault`, `<fat.h>`, `-lfat`; `main` takes no arguments. zelda_save.c lost about 1000 lines.
+- The next commit added the EEPROM: presence check, one 8 KB read into a shadow at Mount, Flush writes only changed pages with our page write (hold cleared on the last byte), reads each back, keeps a failed page's shadow; `fail` after two failed flushes; no chip gives `off` and nothing is written.
+- Decisions: the slot is taken once per Mount and once per Flush, no critical section; a blank chip leaves the image zeroed and the shadow `FF`, so the first save writes all 256 pages; `__wrap_ZeldaWriteSram` also resets the retry count, as before.
+- Checks: build clean; `nm` has no `fatInitDefault`, `blkDev*`, `melon_write_sector`, `ZeldaSavePrepare`, `cardWriteEeprom`; header `ZLTP`. melonDS 0.9.5 with chip: WREN, RDSR `02`, WRDI, RDSR `00`, one `03 00 00` + 8192-byte read, no page write, boot to `ZeldaHostTick`. No chip: the four status commands only, then boot.
