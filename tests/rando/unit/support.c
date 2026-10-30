@@ -1,6 +1,8 @@
 #include "support.h"
 
 #include <stdarg.h>
+#include <stdbool.h>
+#include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -151,23 +153,28 @@ static const EnumValue weapons[] = {
 static const EnumValue placements[] = {
 	{"\"basic\"", RANDO_PLACEMENT_BASIC}, {"\"advanced\"", RANDO_PLACEMENT_ADVANCED}, {NULL, 0},
 };
+static const EnumValue logics[] = {
+	{"\"NoGlitches\"", RANDO_LOGIC_NO_GLITCHES}, {"\"OverworldGlitches\"", RANDO_LOGIC_OVERWORLD_GLITCHES},
+	{"\"HybridMajorGlitches\"", RANDO_LOGIC_HYBRID_MAJOR_GLITCHES},
+	{"\"MajorGlitches\"", RANDO_LOGIC_MAJOR_GLITCHES}, {"\"NoLogic\"", RANDO_LOGIC_NO_LOGIC}, {NULL, 0},
+};
+static const EnumValue goals[] = {
+	{"\"ganon\"", RANDO_GOAL_GANON}, {"\"fast_ganon\"", RANDO_GOAL_FAST_GANON},
+	{"\"dungeons\"", RANDO_GOAL_DUNGEONS}, {"\"pedestal\"", RANDO_GOAL_PEDESTAL},
+	{"\"triforce-hunt\"", RANDO_GOAL_TRIFORCE_HUNT}, {"\"ganonhunt\"", RANDO_GOAL_GANONHUNT},
+	{"\"completionist\"", RANDO_GOAL_COMPLETIONIST}, {NULL, 0},
+};
+static const EnumValue accessibilities[] = {
+	{"\"items\"", RANDO_ACCESSIBILITY_ITEMS}, {"\"locations\"", RANDO_ACCESSIBILITY_LOCATIONS},
+	{"\"none\"", RANDO_ACCESSIBILITY_NONE}, {NULL, 0},
+};
+static const EnumValue dungeon_items[] = {
+	{"\"standard\"", RANDO_DUNGEON_ITEMS_STANDARD}, {"\"mc\"", RANDO_DUNGEON_ITEMS_MC},
+	{"\"mcs\"", RANDO_DUNGEON_ITEMS_MCS}, {"\"full\"", RANDO_DUNGEON_ITEMS_FULL}, {NULL, 0},
+};
 static const EnumValue enemy_healths[] = {
 	{"\"default\"", RANDO_ENEMY_HEALTH_DEFAULT}, {"\"easy\"", RANDO_ENEMY_HEALTH_EASY},
 	{"\"hard\"", RANDO_ENEMY_HEALTH_HARD}, {"\"expert\"", RANDO_ENEMY_HEALTH_EXPERT}, {NULL, 0},
-};
-static const EnumValue booleans[] = {{"true", 1}, {"false", 0}, {NULL, 0}};
-
-/* Keys the predicate vectors carry that no item predicate or boss reads. */
-static const char *const unread_keys[] = {
-	"accessibility", "canBootsClip", "canBunnyRevive", "canBunnySurf", "canDungeonRevive",
-	"canFakeFlipper", "canMirrorClip", "canMirrorWrap", "canOWYBA", "canOneFrameClipOW",
-	"canOneFrameClipUW", "canSuperBunny", "canSuperSpeed", "canTransitionWrapped", "canWaterWalk",
-	"crystals.ganon", "crystals.tower", "dungeonItems", "goal", "item.Goal.Required",
-	"item.overflow.count.Shield", "item.require.Lamp", "logic", "region.bossNormalLocation",
-	"region.cantTakeDamage", "region.forceSkullWoodsKey", "region.requireBetterBow",
-	"region.requireBetterSword", "region.swordsInPool", "region.wildBigKeys", "region.wildCompasses",
-	"region.wildKeys", "region.wildMaps", "rom.genericKeys", "rom.mapOnPickup", "rom.vanillaBigKeys",
-	"rom.vanillaCompasses", "rom.vanillaKeys", "rom.vanillaMaps", NULL,
 };
 
 static int enum_value(const Fixture *fx, const EnumValue *values, const char *json)
@@ -179,34 +186,111 @@ static int enum_value(const Fixture *fx, const EnumValue *values, const char *js
 	return 0;
 }
 
-static void apply_config_key(const Fixture *fx, RandoConfig *c, const char *key, const char *json)
+static bool bool_value(const Fixture *fx, const char *json)
 {
-	const char *const *k;
+	if (strcmp(json, "true") == 0)
+		return true;
+	if (strcmp(json, "false") != 0)
+		fixture_fail(fx, "config value is not a JSON boolean");
+	return false;
+}
+
+/* VT compares these numerically, so the baseline's "7" is 7. */
+static int int_value(const Fixture *fx, const char *json)
+{
+	const char *p = json[0] == '"' ? json + 1 : json;
+	char *end;
+	long v = strtol(p, &end, 10);
+
+	if (end == p || (json[0] == '"' ? strcmp(end, "\"") : strcmp(end, "")) != 0)
+		fixture_fail(fx, "config value is not an integer");
+	return (int)v;
+}
+
+typedef struct BoolKey {
+	const char *key;
+	size_t offset;
+} BoolKey;
+
+#define BOOL_KEY(k, field) {k, offsetof(RandoConfig, field)}
+
+static const BoolKey bool_keys[] = {
+	BOOL_KEY("ignoreCanKillEscapeThings", ignore_can_kill_escape_things),
+	BOOL_KEY("region.wildKeys", region_wild_keys),
+	BOOL_KEY("region.wildBigKeys", region_wild_big_keys),
+	BOOL_KEY("region.wildMaps", region_wild_maps),
+	BOOL_KEY("region.wildCompasses", region_wild_compasses),
+	BOOL_KEY("region.bossNormalLocation", region_boss_normal_location),
+	BOOL_KEY("region.cantTakeDamage", region_cant_take_damage),
+	BOOL_KEY("region.forceSkullWoodsKey", region_force_skull_woods_key),
+	BOOL_KEY("region.requireBetterBow", region_require_better_bow),
+	BOOL_KEY("region.requireBetterSword", region_require_better_sword),
+	BOOL_KEY("region.swordsInPool", region_swords_in_pool),
+	BOOL_KEY("rom.CatchableFairies", rom_catchable_fairies),
+	BOOL_KEY("rom.rupeeBow", rom_rupee_bow),
+	BOOL_KEY("rom.genericKeys", rom_generic_keys),
+	BOOL_KEY("rom.mapOnPickup", rom_map_on_pickup),
+	BOOL_KEY("rom.vanillaKeys", rom_vanilla_keys),
+	BOOL_KEY("rom.vanillaBigKeys", rom_vanilla_big_keys),
+	BOOL_KEY("rom.vanillaMaps", rom_vanilla_maps),
+	BOOL_KEY("rom.vanillaCompasses", rom_vanilla_compasses),
+	BOOL_KEY("canSuperBunny", can_super_bunny),
+	BOOL_KEY("canFakeFlipper", can_fake_flipper),
+	BOOL_KEY("canSuperSpeed", can_super_speed),
+	BOOL_KEY("canBootsClip", can_boots_clip),
+	BOOL_KEY("canMirrorClip", can_mirror_clip),
+	BOOL_KEY("canWaterWalk", can_water_walk),
+	BOOL_KEY("canDungeonRevive", can_dungeon_revive),
+	BOOL_KEY("canMirrorWrap", can_mirror_wrap),
+	BOOL_KEY("canOWYBA", can_owyba),
+	BOOL_KEY("canOneFrameClipOW", can_one_frame_clip_ow),
+	BOOL_KEY("canOneFrameClipUW", can_one_frame_clip_uw),
+	BOOL_KEY("canTransitionWrapped", can_transition_wrapped),
+	BOOL_KEY("canBunnySurf", can_bunny_surf),
+	BOOL_KEY("canBunnyRevive", can_bunny_revive),
+};
+
+void fixture_apply_config(const Fixture *fx, RandoConfig *c, const char *key, const char *json)
+{
+	size_t i;
 
 	if (strcmp(json, "null") == 0)
 		return;
+	for (i = 0; i < sizeof bool_keys / sizeof bool_keys[0]; i++)
+		if (strcmp(key, bool_keys[i].key) == 0) {
+			*(bool *)((char *)c + bool_keys[i].offset) = bool_value(fx, json);
+			return;
+		}
 	if (strcmp(key, "mode.state") == 0)
 		c->mode_state = (RandoState)enum_value(fx, states, json);
 	else if (strcmp(key, "mode.weapons") == 0)
 		c->mode_weapons = (RandoWeapons)enum_value(fx, weapons, json);
 	else if (strcmp(key, "itemPlacement") == 0)
 		c->item_placement = (RandoItemPlacement)enum_value(fx, placements, json);
+	else if (strcmp(key, "logic") == 0)
+		c->logic = (RandoLogic)enum_value(fx, logics, json);
+	else if (strcmp(key, "goal") == 0)
+		c->goal = (RandoGoal)enum_value(fx, goals, json);
+	else if (strcmp(key, "accessibility") == 0)
+		c->accessibility = (RandoAccessibility)enum_value(fx, accessibilities, json);
+	else if (strcmp(key, "dungeonItems") == 0)
+		c->dungeon_items = (RandoDungeonItems)enum_value(fx, dungeon_items, json);
 	else if (strcmp(key, "enemizer.enemyHealth") == 0)
 		c->enemizer_enemy_health = (RandoEnemyHealth)enum_value(fx, enemy_healths, json);
-	else if (strcmp(key, "ignoreCanKillEscapeThings") == 0)
-		c->ignore_can_kill_escape_things = enum_value(fx, booleans, json);
-	else if (strcmp(key, "rom.CatchableFairies") == 0)
-		c->rom_catchable_fairies = enum_value(fx, booleans, json);
-	else if (strcmp(key, "rom.rupeeBow") == 0)
-		c->rom_rupee_bow = enum_value(fx, booleans, json);
+	else if (strcmp(key, "crystals.ganon") == 0)
+		c->crystals_ganon = int_value(fx, json);
+	else if (strcmp(key, "crystals.tower") == 0)
+		c->crystals_tower = int_value(fx, json);
+	else if (strcmp(key, "item.Goal.Required") == 0)
+		c->item_goal_required = int_value(fx, json);
+	else if (strcmp(key, "item.require.Lamp") == 0)
+		c->item_require_lamp = int_value(fx, json);
+	else if (strcmp(key, "item.overflow.count.Shield") == 0)
+		c->item_overflow_count_shield = int_value(fx, json);
 	else if (strcmp(key, "rom.BottleFill.Magic") == 0)
-		c->rom_bottle_fill_magic = atoi(json);
-	else {
-		for (k = unread_keys; *k && strcmp(*k, key) != 0; k++)
-			;
-		if (!*k)
-			fixture_fail(fx, "config key neither read nor known as unread");
-	}
+		c->rom_bottle_fill_magic = int_value(fx, json);
+	else
+		fixture_fail(fx, "unknown config key");
 }
 
 static const RandoConfig *find_config(const Fixture *fx, const NamedConfig *configs, int n, const char *name)
@@ -241,7 +325,7 @@ int fixture_replay_predicates(const char *test, const PredicateColumn *columns, 
 		} else if (strcmp(kind, "config") == 0) {
 			RandoConfig *c = (RandoConfig *)find_config(&fx, configs, nconfigs, fx.field[1]);
 
-			apply_config_key(&fx, c, fx.field[2], fx.field[3]);
+			fixture_apply_config(&fx, c, fx.field[2], fx.field[3]);
 		} else if (strcmp(kind, "columns") == 0) {
 			char *p = fx.field[1];
 			int found = 0;
@@ -304,4 +388,146 @@ int fixture_replay_predicates(const char *test, const PredicateColumn *columns, 
 	if (records == 0)
 		test_fail(test, "no pred record replayed");
 	return records;
+}
+
+static RandoLocationId location_named(const Fixture *fx, const char *name)
+{
+	RandoLocationId id = rando_location_find(name);
+
+	if (id == RANDO_LOCATION_NONE)
+		fixture_fail(fx, "unknown location");
+	return id;
+}
+
+static RandoItemId item_named(const Fixture *fx, const char *name)
+{
+	RandoItemId id = rando_item_find(name);
+
+	if (id == RANDO_ITEM_NONE)
+		fixture_fail(fx, "unknown item");
+	return id;
+}
+
+/* Splits s in place at each sep; returns the number of parts, "-" giving none. */
+static int split(const Fixture *fx, char *s, char sep, char **parts, int max)
+{
+	int n = 0;
+
+	if (strcmp(s, "-") == 0)
+		return 0;
+	for (;;) {
+		char *next = strchr(s, sep);
+
+		if (n == max)
+			fixture_fail(fx, "too many list entries");
+		parts[n++] = s;
+		if (!next)
+			return n;
+		*next = '\0';
+		s = next + 1;
+	}
+}
+
+static char *value_of(const Fixture *fx, char *entry)
+{
+	char *eq = strchr(entry, '=');
+
+	if (!eq)
+		fixture_fail(fx, "list entry without '='");
+	*eq = '\0';
+	return eq + 1;
+}
+
+enum {
+	ROW_FILE = 1, ROW_METHOD, ROW_PROVIDER, ROW_INDEX, ROW_VARIANT, ROW_CONFIG, ROW_PRESET, ROW_COUNTS,
+	ROW_VALUES, ROW_QUERY, ROW_TARGET, ROW_ITEM, ROW_EXPECTED, ROW_ANSWER, ROW_FIELDS
+};
+
+static int replay_row(Fixture *fx)
+{
+	char *parts[32];
+	char config_field[FIXTURE_LINE_MAX], preset_field[FIXTURE_LINE_MAX];
+	const char *query = fx->field[ROW_QUERY], *target = fx->field[ROW_TARGET];
+	RandoVariant variant;
+	RandoConfig config;
+	RandoWorld world;
+	RandoItems items;
+	int n, i;
+
+	if (strcmp(fx->field[ROW_VARIANT], "standard") == 0)
+		variant = RANDO_VARIANT_STANDARD;
+	else if (strcmp(fx->field[ROW_VARIANT], "open") == 0)
+		variant = RANDO_VARIANT_OPEN;
+	else
+		fixture_fail(fx, "unknown variant");
+	rando_config_init(&config);
+	rando_world_init(&world, variant, &config);
+	strcpy(config_field, fx->field[ROW_CONFIG]);
+	n = split(fx, config_field, ',', parts, 32);
+	for (i = 0; i < n; i++) {
+		char *json = value_of(fx, parts[i]);
+
+		fixture_apply_config(fx, &world.config, parts[i], json);
+	}
+	strcpy(preset_field, fx->field[ROW_PRESET]);
+	n = split(fx, preset_field, '|', parts, 32);
+	for (i = 0; i < n; i++) {
+		char *item = value_of(fx, parts[i]);
+
+		if (!rando_world_set_item(&world, location_named(fx, parts[i]), item_named(fx, item)))
+			fixture_fail(fx, "preset item refused by its location");
+	}
+	fixture_parse_items(fx, fx->field[ROW_COUNTS], fx->field[ROW_VALUES], &items);
+
+	if (strcmp(query, "access") == 0)
+		return rando_world_can_access(&world, location_named(fx, target), &items);
+	if (strcmp(query, "fill") == 0)
+		return rando_world_fill(&world, location_named(fx, target), item_named(fx, fx->field[ROW_ITEM]), &items);
+	{
+		RandoRegionId region = rando_region_find(target);
+
+		if (region == RANDO_REGION_NONE)
+			fixture_fail(fx, "unknown region");
+		if (strcmp(query, "region_can_fill") == 0)
+			return rando_world_region_can_fill(&world, region, item_named(fx, fx->field[ROW_ITEM]));
+		if (strcmp(query, "enter") == 0)
+			return rando_world_region_can_enter(&world, region, &items);
+		if (strcmp(query, "complete") == 0)
+			return rando_world_region_can_complete(&world, region, &items);
+	}
+	fixture_fail(fx, "unknown query");
+	return 0;
+}
+
+int fixture_replay_rows(const char *test, RowFilter filter, int *total)
+{
+	Fixture fx;
+	int run = 0;
+
+	*total = 0;
+	fixture_open(&fx, FIXTURE_NOGLITCHES_ROWS);
+	while (fixture_next(&fx)) {
+		int want, got;
+
+		if (strcmp(fx.field[0], "row") != 0)
+			continue;
+		if (fx.nfields != ROW_FIELDS)
+			fixture_fail(&fx, "row record without its 15 fields");
+		(*total)++;
+		if (!filter(fx.field[ROW_FILE], fx.field[ROW_METHOD]))
+			continue;
+		want = atoi(fx.field[ROW_ANSWER]);
+		got = replay_row(&fx);
+		if (got != want) {
+			fprintf(stderr, "%s: %s::%s provider %s row %s: %s(%s%s%s) VT %d, C %d (test expects %s)\n", test,
+				fx.field[ROW_FILE], fx.field[ROW_METHOD], fx.field[ROW_PROVIDER], fx.field[ROW_INDEX],
+				fx.field[ROW_QUERY], fx.field[ROW_TARGET], strcmp(fx.field[ROW_ITEM], "-") ? ", " : "",
+				strcmp(fx.field[ROW_ITEM], "-") ? fx.field[ROW_ITEM] : "", want, got,
+				fx.field[ROW_EXPECTED]);
+			fixture_fail(&fx, "row answer differs from VT");
+		}
+		run++;
+	}
+	fixture_close(&fx);
+	return run;
 }

@@ -1,13 +1,25 @@
 #include "rando_config.h"
 
+#include <string.h>
+
 void rando_config_init(RandoConfig *config)
 {
+	memset(config, 0, sizeof *config);
 	config->mode_state = RANDO_STATE_UNSET;
 	config->mode_weapons = RANDO_WEAPONS_UNSET;
 	config->item_placement = RANDO_PLACEMENT_UNSET;
+	config->logic = RANDO_LOGIC_NO_GLITCHES;
+	config->goal = RANDO_GOAL_GANON;
+	config->accessibility = RANDO_ACCESSIBILITY_UNSET;
+	config->dungeon_items = RANDO_DUNGEON_ITEMS_STANDARD;
 	config->enemizer_enemy_health = RANDO_ENEMY_HEALTH_DEFAULT;
-	config->ignore_can_kill_escape_things = false;
-	config->rom_catchable_fairies = true;
-	config->rom_rupee_bow = false;
+	config->crystals_ganon = 7;
+	config->crystals_tower = 7;
+	config->item_goal_required = RANDO_CONFIG_NULL;
+	config->item_require_lamp = 1;
+	config->item_overflow_count_shield = 3;
 	config->rom_bottle_fill_magic = 0x80;
+	config->region_boss_normal_location = true;
+	config->region_swords_in_pool = true;
+	config->rom_catchable_fairies = true;
 }

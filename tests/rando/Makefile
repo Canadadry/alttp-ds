@@ -3,12 +3,12 @@ CFLAGS := -std=c99 -Wall -Wextra -Werror
 RANDO := ../../rando
 BUILD := build
 
-UNIT_TESTS := test_prng test_items test_bosses
+UNIT_TESTS := test_prng test_items test_bosses test_world test_regions
 # test_prng has no fixture mode: it already replays its vectors in `test`.
 LOGIC_TESTS := $(filter-out test_prng,$(UNIT_TESTS))
 
 RANDO_SRC := $(wildcard $(RANDO)/src/*.c $(RANDO)/src/*/*.c)
-RANDO_HDR := $(wildcard $(RANDO)/include/*.h)
+RANDO_HDR := $(wildcard $(RANDO)/include/*.h $(RANDO)/src/*.h)
 RANDO_OBJ := $(patsubst $(RANDO)/src/%.c,$(BUILD)/obj/%.o,$(RANDO_SRC))
 RANDO_LIB := $(BUILD)/librando.a
 SUPPORT_OBJ := $(BUILD)/support.o

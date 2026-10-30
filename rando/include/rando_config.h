@@ -26,6 +26,38 @@ typedef enum RandoState {
 	RANDO_STATE_RETRO,
 } RandoState;
 
+typedef enum RandoLogic {
+	RANDO_LOGIC_NO_GLITCHES,
+	RANDO_LOGIC_OVERWORLD_GLITCHES,
+	RANDO_LOGIC_HYBRID_MAJOR_GLITCHES,
+	RANDO_LOGIC_MAJOR_GLITCHES,
+	RANDO_LOGIC_NO_LOGIC,
+} RandoLogic;
+
+typedef enum RandoGoal {
+	RANDO_GOAL_GANON,
+	RANDO_GOAL_FAST_GANON,
+	RANDO_GOAL_DUNGEONS,
+	RANDO_GOAL_PEDESTAL,
+	RANDO_GOAL_TRIFORCE_HUNT,
+	RANDO_GOAL_GANONHUNT,
+	RANDO_GOAL_COMPLETIONIST,
+} RandoGoal;
+
+typedef enum RandoAccessibility {
+	RANDO_ACCESSIBILITY_UNSET,
+	RANDO_ACCESSIBILITY_ITEMS,
+	RANDO_ACCESSIBILITY_LOCATIONS,
+	RANDO_ACCESSIBILITY_NONE,
+} RandoAccessibility;
+
+typedef enum RandoDungeonItems {
+	RANDO_DUNGEON_ITEMS_STANDARD,
+	RANDO_DUNGEON_ITEMS_MC,
+	RANDO_DUNGEON_ITEMS_MCS,
+	RANDO_DUNGEON_ITEMS_FULL,
+} RandoDungeonItems;
+
 typedef enum RandoEnemyHealth {
 	RANDO_ENEMY_HEALTH_DEFAULT,
 	RANDO_ENEMY_HEALTH_EASY,
@@ -33,17 +65,60 @@ typedef enum RandoEnemyHealth {
 	RANDO_ENEMY_HEALTH_EXPERT,
 } RandoEnemyHealth;
 
+/* VT's null for an integer key read without a default. */
+#define RANDO_CONFIG_NULL (-1)
+
 /* One field per VT world config key the ported code reads, holding VT's value or, when the key
- * is absent, the default the reading code passes to config(). */
+ * is absent, the default the reading code passes to config(). rando_world_init applies the
+ * World constructor's derived keys (dungeon_items, logic, item_placement, mode_weapons) to its copy. */
 typedef struct RandoConfig {
 	RandoState mode_state;
 	RandoWeapons mode_weapons;
 	RandoItemPlacement item_placement;
+	RandoLogic logic;
+	RandoGoal goal;
+	RandoAccessibility accessibility;
+	RandoDungeonItems dungeon_items;
 	RandoEnemyHealth enemizer_enemy_health;
+	int crystals_ganon;
+	int crystals_tower;
+	int item_goal_required;
+	int item_require_lamp;
+	int item_overflow_count_shield;
+	int rom_bottle_fill_magic;
 	bool ignore_can_kill_escape_things;
+	bool region_wild_keys;
+	bool region_wild_big_keys;
+	bool region_wild_maps;
+	bool region_wild_compasses;
+	bool region_boss_normal_location;
+	bool region_cant_take_damage;
+	bool region_force_skull_woods_key;
+	bool region_require_better_bow;
+	bool region_require_better_sword;
+	bool region_swords_in_pool;
 	bool rom_catchable_fairies;
 	bool rom_rupee_bow;
-	int rom_bottle_fill_magic;
+	bool rom_generic_keys;
+	bool rom_map_on_pickup;
+	bool rom_vanilla_keys;
+	bool rom_vanilla_big_keys;
+	bool rom_vanilla_maps;
+	bool rom_vanilla_compasses;
+	bool can_super_bunny;
+	bool can_fake_flipper;
+	bool can_super_speed;
+	bool can_boots_clip;
+	bool can_mirror_clip;
+	bool can_water_walk;
+	bool can_dungeon_revive;
+	bool can_mirror_wrap;
+	bool can_owyba;
+	bool can_one_frame_clip_ow;
+	bool can_one_frame_clip_uw;
+	bool can_transition_wrapped;
+	bool can_bunny_surf;
+	bool can_bunny_revive;
 } RandoConfig;
 
 /* Every key absent, as in a World built with no config. */

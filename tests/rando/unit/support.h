@@ -2,6 +2,7 @@
 #define RANDO_TEST_SUPPORT_H
 
 #include "rando_items.h"
+#include "rando_world.h"
 
 #include <stdint.h>
 #include <stdio.h>
@@ -48,6 +49,10 @@ void fixture_parse_view(const Fixture *fx, const char *view, uint16_t out[RANDO_
 /* Both views, `A` meaning rando_items_all. */
 void fixture_parse_items(const Fixture *fx, const char *counts, const char *values, RandoItems *out);
 
+/* Sets the field of a VT config key from its JSON value; null leaves the field as it is. Fails the
+ * record on an unknown key or value. */
+void fixture_apply_config(const Fixture *fx, RandoConfig *config, const char *key, const char *json);
+
 typedef struct PredicateColumn {
 	const char *name;
 	int (*eval)(const RandoItems *items, const RandoConfig *config);
@@ -58,5 +63,14 @@ typedef struct PredicateColumn {
  * must appear in the fixture's columns record. Returns the number of pred records replayed and
  * stores the number of values checked in *values. */
 int fixture_replay_predicates(const char *test, const PredicateColumn *columns, int ncolumns, long *values);
+
+/* Whether a NoGlitches row of that test file (under tests/NoGlitches) and method is replayed. */
+typedef int (*RowFilter)(const char *file, const char *method);
+
+/* Replays every row record the filter accepts: a fresh world of the row's variant, its config
+ * overrides and preset items, then its query on its two-view item multiset. On the first answer
+ * that differs from VT's, prints the row's origin, query, expected and actual and exits 1.
+ * Returns the number of rows replayed and stores the number of row records in *total. */
+int fixture_replay_rows(const char *test, RowFilter filter, int *total);
 
 #endif
