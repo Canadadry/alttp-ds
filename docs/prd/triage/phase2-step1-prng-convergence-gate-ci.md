@@ -146,7 +146,7 @@ All decisions below are mine. This run could not spawn a `guideline` agent, so n
 
 **Stage table (new, committed, next to the claims file)**
 - Ordered lines of two kinds:
-  - `stage <name>`, in VT's draw order. The order is fixed by the goldens (step 1.2 note): `crystals`, `getAdvancementItems`, `setShops`, `setMedallions`, `fillPrizes`, `placeBosses`, `setFountains`, `shufflePrizePacks`, `prepareWorld`, `fill`. `placeBosses` sits after `fillPrizes`, as in `Randomizer::randomize()`. If reading that function shows another order, VT wins and the table follows it.
+  - `stage <name>`, in VT's draw order. The order is fixed by the goldens (step 1.2 note): `crystals`, `getAdvancementItems`, `setShops`, `setMedallions`, `placeBosses`, `fillPrizes`, `setFountains`, `shufflePrizePacks`, `prepareWorld`, `fill`. `placeBosses` sits after `fillPrizes`, as in `Randomizer::randomize()`. If reading that function shows another order, VT wins and the table follows it.
   - `check <stage> <kind> [<arg>]`, owed by the stage it names. The kinds are:
     - `section <Name>`: the whole top-level section `<Name>` of the spoiler.
     - `keys <glob>`: every entry line, in every top-level section except `playthrough`, whose key (without quotes) matches the shell glob. The glob is the rest of the line and may contain spaces.

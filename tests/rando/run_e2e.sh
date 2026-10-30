@@ -27,29 +27,39 @@ for f in "$claims" "$stages"; do
 	[ -f "$f" ] || fail "no such file: $f"
 done
 
-awk -v out="$tmp/stages" '
+awk -v out="$tmp/stages" -v checks="$tmp/checks" '
 function bad(msg) { printf "%s:%d: %s\n", FILENAME, FNR, msg; err = 1; exit }
 BEGIN { printf "" > out }
 /^[ \t]*(#|$)/ { next }
 $1 == "stage" {
 	if (NF != 2) bad("malformed line")
 	if ($2 in seen) bad("duplicate stage: " $2)
-	seen[$2] = 1
+	seen[$2] = ++nstages
 	print $2 > out
 	next
 }
 $1 == "check" && NF >= 3 {
 	if ($3 == "section" && NF != 4 || $3 == "keys" && NF < 4 || $3 == "pool" && NF != 3) bad("malformed line")
 	if ($3 != "section" && $3 != "keys" && $3 != "pool") bad("unknown check kind: " $3)
-	check_stage[FNR] = $2
+	arg = $0
+	sub(/^[ \t]*check[ \t]+[^ \t]+[ \t]+[^ \t]+[ \t]*/, "", arg)
+	sub(/[ \t]+$/, "", arg)
+	ncheck++
+	check_line[ncheck] = FNR
+	check_stage[ncheck] = $2
+	check_text[ncheck] = $2 "\t" $3 "\t" arg
 	next
 }
 { bad("malformed line") }
 END {
 	if (err) exit 2
-	for (n in check_stage)
-		if (!(check_stage[n] in seen)) { printf "%s:%d: check names unknown stage: %s\n", FILENAME, n, check_stage[n]; exit 2 }
+	printf "" > checks
+	for (n = 1; n <= ncheck; n++) {
+		if (!(check_stage[n] in seen)) { printf "%s:%d: check names unknown stage: %s\n", FILENAME, check_line[n], check_stage[n]; exit 2 }
+		print seen[check_stage[n]] "\t" n "\t" check_text[n] > checks
+	}
 }' "$stages" >"$tmp/err" || fail "$(cat "$tmp/err")"
+sort -n -k1,1 -k2,2 "$tmp/checks" >"$tmp/checks.sorted"
 
 awk -v err="$tmp/err" '
 function bad(msg) { printf "%s:%d: %s\n", FILENAME, FNR, msg > err; exit 2 }
@@ -137,6 +147,140 @@ check_file() {
 	return 1
 }
 
+tab="$(printf '\t')"
+
+# entries <spoiler>: prints "<section>\t<key>\t<value>" for every entry line of
+# every top-level section but playthrough, key unquoted, trailing comma dropped.
+# A missing file prints nothing.
+entries() {
+	[ -f "$1" ] || return 0
+	awk '
+	/^    "/ { sec = substr($0, 6); sub(/": .*$/, "", sec); next }
+	sec != "playthrough" && /^        "/ {
+		line = substr($0, 10)
+		i = index(line, "\": ")
+		if (!i) next
+		val = substr(line, i + 3)
+		sub(/,$/, "", val)
+		print sec "\t" substr(line, 1, i - 1) "\t" val
+	}' "$1"
+}
+
+# section_block <spoiler> <name>: the lines of top-level section <name>, the
+# closing line without its trailing comma.
+section_block() {
+	[ -f "$1" ] || return 0
+	NAME="$2" awk '
+	index($0, "    \"" ENVIRON["NAME"] "\": ") == 1 { on = 1 }
+	on && /^    [}\]]/ { sub(/,$/, ""); print; exit }
+	on { print }' "$1"
+}
+
+GLOB2RE='
+function glob2re(g,   i, c, re, inb) {
+	re = "^"
+	for (i = 1; i <= length(g); i++) {
+		c = substr(g, i, 1)
+		if (inb) {
+			if (c == "]") inb = 0
+			re = re (c == "\\" ? "\\\\" : c)
+		} else if (c == "*") re = re ".*"
+		else if (c == "?") re = re "."
+		else if (c == "[") {
+			inb = 1
+			re = re "["
+			if (substr(g, i + 1, 1) == "!") { re = re "^"; i++ }
+		} else if (index(".^$+(){}|\\/", c)) re = re "\\" c
+		else re = re c
+	}
+	return re "$"
+}'
+
+# matching <entries> <glob>: the entries whose key matches <glob>, as sorted
+# "[<section>] "<key>": <value>" lines.
+matching() {
+	GLOB="$2" awk -F "$tab" "$GLOB2RE"'
+	BEGIN { re = glob2re(ENVIRON["GLOB"]) }
+	$2 ~ re { print "[" $1 "] \"" $2 "\": " $3 }' "$1" | sort
+}
+
+check_section() {
+	section_block "$golden/spoiler.json" "$1" >"$tmp/g"
+	section_block "$out/spoiler.json" "$1" >"$tmp/c"
+	cmp -s "$tmp/g" "$tmp/c" && return 0
+	if [ ! -s "$tmp/c" ]; then
+		echo "    c lacks section $1"
+		return 1
+	fi
+	first_diff "$tmp/g" "$tmp/c" >"$tmp/diff"
+	echo "    golden: $(sed -n 2p "$tmp/diff")"
+	echo "    c: $(sed -n 3p "$tmp/diff")"
+	return 1
+}
+
+check_keys() {
+	matching "$tmp/ge" "$1" >"$tmp/g"
+	matching "$tmp/ce" "$1" >"$tmp/c"
+	cmp -s "$tmp/g" "$tmp/c" && return 0
+	missing="$(awk 'FILENAME == ARGV[1] { sub(/": .*$/, "\""); have[$0] = 1; next }
+		{ sub(/": .*$/, "\"") } !($0 in have) { print; exit }' "$tmp/c" "$tmp/g")"
+	if [ -n "$missing" ]; then
+		echo "    c lacks $missing"
+		return 1
+	fi
+	first_diff "$tmp/g" "$tmp/c" >"$tmp/diff"
+	echo "    golden: $(sed -n 2p "$tmp/diff")"
+	echo "    c: $(sed -n 3p "$tmp/diff")"
+	return 1
+}
+
+# check_pool <due checks>: the golden's placed items, outside the sections that
+# hold no location and the entries of due keys checks, against the C pool.txt.
+check_pool() {
+	if [ ! -f "$out/pool.txt" ]; then
+		echo "    c wrote no pool.txt"
+		return 1
+	fi
+	awk -F "$tab" "$GLOB2RE"'
+	NR == FNR { if ($4 == "keys") re[++n] = glob2re($5); next }
+	$1 ~ /^(Bosses|Equipped|Shops|Special|meta)$/ { next }
+	{
+		for (i = 1; i <= n; i++) if ($2 ~ re[i]) next
+		v = $3
+		sub(/^"/, "", v)
+		sub(/"$/, "", v)
+		print v
+	}' "$1" "$tmp/ge" | sort >"$tmp/g"
+	grep -v '^$' "$out/pool.txt" | sort >"$tmp/c"
+	cmp -s "$tmp/g" "$tmp/c" && return 0
+	awk 'FILENAME == ARGV[1] { g[$0]++; all[$0] = 1; next } { c[$0]++; all[$0] = 1 }
+	END {
+		for (x in all) if (g[x] != c[x] && (first == "" || x < first)) first = x
+		printf "    golden: %s x%d\n    c: %s x%d\n", first, g[first], first, c[first]
+	}' "$tmp/g" "$tmp/c"
+	return 1
+}
+
+# run_checks <golden_dir> <out_dir> <stage>: runs, in table order, the checks
+# owed by <stage> and the stages before it.
+run_checks() {
+	rank="$(awk -v s="$3" '$0 == s { print NR; exit }' "$tmp/stages")"
+	awk -F "$tab" -v r="$rank" '$1 <= r' "$tmp/checks.sorted" >"$tmp/due"
+	[ -s "$tmp/due" ] || return 0
+	entries "$golden/spoiler.json" >"$tmp/ge"
+	entries "$out/spoiler.json" >"$tmp/ce"
+	while IFS="$tab" read -r _rank _n cstage kind arg; do
+		case "$kind" in
+		section) check_section "$arg" >"$tmp/check" ;;
+		keys) check_keys "$arg" >"$tmp/check" ;;
+		pool) check_pool "$tmp/due" >"$tmp/check" ;;
+		esac && continue
+		echo "  $cstage: $kind${arg:+ $arg}:"
+		cat "$tmp/check"
+		return 1
+	done <"$tmp/due"
+}
+
 # run_claim <case> <stage>: prints the detail lines and returns 1 when DIVERGENT.
 run_claim() {
 	golden="$cases_dir/$1"
@@ -160,7 +304,8 @@ run_claim() {
 		return 0
 	fi
 	draws="$(awk -v s="$2" '$1 == 0 && $3 == s { k = NR } END { print k }' "$golden/trace.txt")"
-	check_trace "$golden/trace.txt" "$out/trace.txt" "$draws"
+	check_trace "$golden/trace.txt" "$out/trace.txt" "$draws" || return 1
+	run_checks "$golden" "$out" "$2"
 }
 
 pass=0

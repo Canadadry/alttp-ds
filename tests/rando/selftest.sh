@@ -186,4 +186,114 @@ gate "unknown check kind" "" 2 "" "run_e2e.sh: $s:2: unknown check kind: lines"
 printf 'stage alpha\ncheck alpha section\n' >"$s"
 gate "section without name" "" 2 "" "run_e2e.sh: $s:2: malformed line"
 
+
+cat >"$g/cases/two/spoiler.json" <<'EOF2'
+{
+    "Bosses": {
+        "Eastern Palace": "Armos Knights",
+        "Ganon": "Ganon"
+    },
+    "Eastern Palace": {
+        "Eastern Palace - Big Chest:1": "Bow:1",
+        "Eastern Palace - Prize:1": "PendantOfCourage:1"
+    },
+    "Light World": {
+        "Link's House:1": "Arrow:1",
+        "Sahasrala:1": "Arrow:1",
+        "Uncle:1": "Sword:1"
+    },
+    "Special": {
+        "Misery Mire Medallion:1": "Ether:1",
+        "Waterfall Bottle:1": "Bottle:1"
+    },
+    "meta": {
+        "seed": 1
+    },
+    "playthrough": {
+        "1": {
+            "Eastern Palace": {
+                "Eastern Palace - Prize:1": "PendantOfCourage:1"
+            }
+        }
+    }
+}
+EOF2
+cat >"$s" <<'EOF2'
+stage alpha
+check zero section Bosses
+stage zero
+check alpha keys *Medallion:1
+stage beta
+check beta keys * - Prize:1
+stage gamma
+check gamma pool
+EOF2
+
+bosses='    "Bosses": {
+        "Eastern Palace": "Armos Knights",
+        "Ganon": "Ganon"
+    },'
+prize='    "Eastern Palace": {
+        "Eastern Palace - Prize:1": "PendantOfCourage:1"
+    },'
+medallion='    "Special": {
+        "Misery Mire Medallion:1": "Ether:1"
+    }'
+# partial <section>...: the C partial spoiler holding these section blocks
+partial() {
+	printf '{\n' >"$g/out/two/spoiler.json"
+	for b in "$@"; do printf '%s\n' "$b" >>"$g/out/two/spoiler.json"; done
+	printf '}\n' >>"$g/out/two/spoiler.json"
+}
+
+named=two
+rm -f "$g/out/two/attempts"
+fake trace.txt "$(golden_lines 3)$nl"
+partial "$bosses" "$prize" "$medallion"
+gate "checks pass, zero-draw stage's check due, later check ignored" "two beta$nl" 0 \
+	"PASS two (beta)${nl}e2e: 1 pass, 0 divergent, 0 pending"
+
+partial "$(printf '%s' "$bosses" | sed 's/"Ganon": "Ganon"/"Ganon": "Agahnim"/')" "$prize" "$medallion"
+gate "section differs" "two beta$nl" 1 \
+	"DIVERGENT two${nl}  zero: section Bosses:${nl}    golden:         \"Ganon\": \"Ganon\"${nl}    c:         \"Ganon\": \"Agahnim\"${nl}e2e: 0 pass, 1 divergent, 0 pending"
+
+partial "$prize" "$medallion"
+gate "section missing in C" "two beta$nl" 1 \
+	"DIVERGENT two${nl}  zero: section Bosses:${nl}    c lacks section Bosses${nl}e2e: 0 pass, 1 divergent, 0 pending"
+
+partial "$prize" "$(printf '%s' "$medallion" | sed 's/Ether/Bombos/')"
+gate "keys differ, reported before a later failing check" "two beta$nl" 1 \
+	"DIVERGENT two${nl}  alpha: keys *Medallion:1:${nl}    golden: [Special] \"Misery Mire Medallion:1\": \"Ether:1\"${nl}    c: [Special] \"Misery Mire Medallion:1\": \"Bombos:1\"${nl}e2e: 0 pass, 1 divergent, 0 pending"
+
+partial "$bosses" "$medallion"
+gate "key missing in C" "two beta$nl" 1 \
+	"DIVERGENT two${nl}  beta: keys * - Prize:1:${nl}    c lacks [Eastern Palace] \"Eastern Palace - Prize:1\"${nl}e2e: 0 pass, 1 divergent, 0 pending"
+
+partial "$bosses" "$prize" '    "Light World": {
+        "Sahasrala - Prize:1": "Arrow:1"
+    },' "$medallion"
+gate "extra key in C" "two beta$nl" 1 \
+	"DIVERGENT two${nl}  beta: keys * - Prize:1:${nl}    golden: <end>${nl}    c: [Light World] \"Sahasrala - Prize:1\": \"Arrow:1\"${nl}e2e: 0 pass, 1 divergent, 0 pending"
+
+fake trace.txt "0 1 alpha 0 6 -> 0$nl"
+gate "trace checked before spoiler checks" "two beta$nl" 1 \
+	"DIVERGENT two${nl}  first differing draw:${nl}    golden: 0 1 alpha 0 6 -> 3${nl}    c: 0 1 alpha 0 6 -> 0${nl}e2e: 0 pass, 1 divergent, 0 pending"
+
+fake trace.txt "$(golden_lines 4)$nl"
+partial "$bosses" "$prize" "$medallion"
+gate "missing pool.txt" "two gamma$nl" 1 \
+	"DIVERGENT two${nl}  gamma: pool:${nl}    c wrote no pool.txt${nl}e2e: 0 pass, 1 divergent, 0 pending"
+
+fake pool.txt "Sword:1${nl}Arrow:1${nl}Bow:1${nl}Arrow:1$nl"
+gate "pool pass" "two gamma$nl" 0 "PASS two (gamma)${nl}e2e: 1 pass, 0 divergent, 0 pending"
+
+fake pool.txt "Sword:1${nl}Arrow:1${nl}Bow:1$nl"
+gate "pool lacks an item" "two gamma$nl" 1 \
+	"DIVERGENT two${nl}  gamma: pool:${nl}    golden: Arrow:1 x2${nl}    c: Arrow:1 x1${nl}e2e: 0 pass, 1 divergent, 0 pending"
+
+fake pool.txt "Sword:1${nl}Arrow:1${nl}Bow:1${nl}Arrow:1${nl}Bomb:1$nl"
+gate "pool has an extra item" "two gamma$nl" 1 \
+	"DIVERGENT two${nl}  gamma: pool:${nl}    golden: Bomb:1 x0${nl}    c: Bomb:1 x1${nl}e2e: 0 pass, 1 divergent, 0 pending"
+named=
+
 echo "selftest: gate passed"
