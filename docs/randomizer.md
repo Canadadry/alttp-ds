@@ -357,3 +357,11 @@ None.
   golden trace through `fillPrizes` (70 draws for baseline).
 - Spoiler `Bosses`; checks `section Bosses` (placeBosses) and `keys *- Prize:1` (fillPrizes). 13
   claims at `fillPrizes`: 13 pass, 31 pending; e2e ~0.11 s; `make test` ~57 ms.
+
+### Step 2.3.4
+
+- `rando_set_fountains` (Waterfall, then Pyramid; filled `getBottle`; a preset fountain is
+  skipped) runs after a successful `fillPrizes`. All 42 supported cases match their golden trace
+  through `setFountains`.
+- Check `keys *Bottle:1` (exactly the two fountain keys in every golden). The 13 claims move up to
+  `setFountains`, none added: 13 pass, 31 pending; e2e ~0.11 s; `make test` ~54 ms.
