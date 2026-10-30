@@ -3,14 +3,19 @@ CFLAGS := -std=c99 -Wall -Wextra -Werror
 RANDO := ../../rando
 BUILD := build
 
-UNIT_TESTS := test_prng test_items test_bosses test_world test_regions
-# test_prng has no fixture mode: it already replays its vectors in `test`.
-LOGIC_TESTS := $(filter-out test_prng,$(UNIT_TESTS))
+UNIT_TESTS := test_prng test_items test_bosses test_world test_regions test_options test_case_reader
+# No fixture mode: test_prng already replays its vectors in `test`, the others have no fixture.
+LOGIC_TESTS := $(filter-out test_prng test_options test_case_reader,$(UNIT_TESTS))
 
 RANDO_SRC := $(wildcard $(RANDO)/src/*.c $(RANDO)/src/*/*.c)
 RANDO_HDR := $(wildcard $(RANDO)/include/*.h $(RANDO)/src/*.h)
 RANDO_OBJ := $(patsubst $(RANDO)/src/%.c,$(BUILD)/obj/%.o,$(RANDO_SRC))
 RANDO_LIB := $(BUILD)/librando.a
+HOST_SRC := $(wildcard $(RANDO)/host/*.c)
+HOST_HDR := $(wildcard $(RANDO)/host/*.h)
+HOST_OBJ := $(patsubst $(RANDO)/host/%.c,$(BUILD)/host/%.o,$(HOST_SRC))
+HOST_LIB := $(BUILD)/librando_host.a
+INCLUDES := -I$(RANDO)/include -I$(RANDO)/host
 SUPPORT_OBJ := $(BUILD)/support.o
 UNIT_BINS := $(addprefix $(BUILD)/,$(UNIT_TESTS))
 LOGIC_BINS := $(addprefix $(BUILD)/,$(LOGIC_TESTS))
@@ -41,11 +46,19 @@ $(RANDO_LIB): $(RANDO_OBJ)
 	@rm -f $@
 	ar rcs $@ $^
 
+$(BUILD)/host/%.o: $(RANDO)/host/%.c $(HOST_HDR) $(RANDO_HDR)
+	@mkdir -p $(@D)
+	$(CC) $(CFLAGS) $(INCLUDES) -c -o $@ $<
+
+$(HOST_LIB): $(HOST_OBJ)
+	@rm -f $@
+	ar rcs $@ $^
+
 $(SUPPORT_OBJ): unit/support.c unit/support.h $(RANDO_HDR) | $(BUILD)
 	$(CC) $(CFLAGS) -I$(RANDO)/include -c -o $@ $<
 
-$(BUILD)/test_%: unit/test_%.c unit/support.h $(SUPPORT_OBJ) $(RANDO_LIB) $(RANDO_HDR) | $(BUILD)
-	$(CC) $(CFLAGS) -I$(RANDO)/include -o $@ $< $(SUPPORT_OBJ) $(RANDO_LIB)
+$(BUILD)/test_%: unit/test_%.c unit/support.h $(SUPPORT_OBJ) $(HOST_LIB) $(RANDO_LIB) $(RANDO_HDR) $(HOST_HDR) | $(BUILD)
+	$(CC) $(CFLAGS) $(INCLUDES) -o $@ $< $(SUPPORT_OBJ) $(HOST_LIB) $(RANDO_LIB)
 
 $(BUILD):
 	mkdir -p $@

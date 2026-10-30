@@ -41,6 +41,73 @@ static void check_init(void)
 	CHECK(rando_items_count(&world.pre_collected) == 0);
 }
 
+static RandoConfig derived(RandoItemPool pool, RandoItemFunctionality functionality, RandoGoal goal)
+{
+	RandoConfig config;
+	RandoWorld world;
+
+	rando_config_init(&config);
+	config.item_pool = pool;
+	config.item_functionality = functionality;
+	config.goal = goal;
+	rando_world_init(&world, RANDO_VARIANT_OPEN, &config);
+	return world.config;
+}
+
+static int overrides(const RandoConfig *c)
+{
+	int i, n = 0;
+
+	for (i = 0; i < RANDO_ITEM_COUNT; i++)
+		n += c->item_count[i] != RANDO_CONFIG_NULL;
+	return n;
+}
+
+/* World::__construct's item.pool and item.functionality switches, and alttp.goals.<goal>.item.count. */
+static void check_derivations(void)
+{
+	RandoConfig c, input;
+	RandoWorld world;
+
+	c = derived(RANDO_ITEM_POOL_NORMAL, RANDO_ITEM_FUNCTIONALITY_NORMAL, RANDO_GOAL_GANON);
+	CHECK(c.rom_catchable_fairies && c.rom_bottle_fill_magic == 0x80);
+	CHECK(c.item_overflow_count_shield == 3);
+	CHECK(overrides(&c) == 0);
+
+	c = derived(RANDO_ITEM_POOL_NORMAL, RANDO_ITEM_FUNCTIONALITY_HARD, RANDO_GOAL_GANON);
+	CHECK(!c.rom_catchable_fairies && c.rom_bottle_fill_magic == 0x40);
+	c = derived(RANDO_ITEM_POOL_NORMAL, RANDO_ITEM_FUNCTIONALITY_EXPERT, RANDO_GOAL_GANON);
+	CHECK(!c.rom_catchable_fairies && c.rom_bottle_fill_magic == 0x20);
+	CHECK(overrides(&c) == 0);
+
+	c = derived(RANDO_ITEM_POOL_HARD, RANDO_ITEM_FUNCTIONALITY_NORMAL, RANDO_GOAL_GANON);
+	CHECK(c.item_overflow_count_shield == 2 && overrides(&c) == 0);
+	CHECK(c.rom_catchable_fairies);
+	c = derived(RANDO_ITEM_POOL_EXPERT, RANDO_ITEM_FUNCTIONALITY_NORMAL, RANDO_GOAL_GANON);
+	CHECK(c.item_overflow_count_shield == 1 && overrides(&c) == 0);
+	c = derived(RANDO_ITEM_POOL_CROWD_CONTROL, RANDO_ITEM_FUNCTIONALITY_NORMAL, RANDO_GOAL_GANON);
+	CHECK(c.item_overflow_count_shield == 0);
+	CHECK(c.item_count[RANDO_ITEM_BugCatchingNet] == 0);
+	CHECK(c.item_count[RANDO_ITEM_HalfMagic] == 0);
+	CHECK(c.item_count[RANDO_ITEM_CaneOfByrna] == 0);
+	CHECK(c.item_count[RANDO_ITEM_Cape] == 0);
+	CHECK(c.item_count[RANDO_ITEM_TwentyRupees2] == 4);
+	CHECK(overrides(&c) == 5);
+
+	c = derived(RANDO_ITEM_POOL_NORMAL, RANDO_ITEM_FUNCTIONALITY_NORMAL, RANDO_GOAL_TRIFORCE_HUNT);
+	CHECK(c.item_count[RANDO_ITEM_TriforcePiece] == 30 && overrides(&c) == 1);
+	c = derived(RANDO_ITEM_POOL_NORMAL, RANDO_ITEM_FUNCTIONALITY_NORMAL, RANDO_GOAL_GANONHUNT);
+	CHECK(c.item_count[RANDO_ITEM_TriforcePiece] == 50 && overrides(&c) == 1);
+	c = derived(RANDO_ITEM_POOL_CROWD_CONTROL, RANDO_ITEM_FUNCTIONALITY_NORMAL, RANDO_GOAL_TRIFORCE_HUNT);
+	CHECK(c.item_count[RANDO_ITEM_TriforcePiece] == 30 && overrides(&c) == 6);
+
+	rando_config_init(&input);
+	input.goal = RANDO_GOAL_TRIFORCE_HUNT;
+	input.item_count[RANDO_ITEM_TriforcePiece] = 0;
+	rando_world_init(&world, RANDO_VARIANT_OPEN, &input);
+	CHECK(world.config.item_count[RANDO_ITEM_TriforcePiece] == 0);
+}
+
 /* User story 14's irregular cases of VT's location class tree. */
 static void check_location_classes(void)
 {
@@ -502,6 +569,7 @@ int main(int argc, char **argv)
 	int rows, total;
 
 	check_init();
+	check_derivations();
 	check_location_classes();
 	check_set_item();
 	check_region_can_fill();

@@ -60,6 +60,40 @@ static void derive_config(RandoConfig *c, RandoVariant variant)
 	c->rom_vanilla_big_keys = c->rom_vanilla_big_keys || (!c->region_wild_big_keys && glitched);
 	c->rom_vanilla_compasses = c->rom_vanilla_compasses || (!c->region_wild_compasses && glitched);
 	c->rom_vanilla_maps = c->rom_vanilla_maps || (!c->region_wild_maps && glitched);
+	/* TODO: item.pool's overflow counts other than Shield, and shops.HardMode. */
+	switch (c->item_pool) {
+	case RANDO_ITEM_POOL_HARD:
+		c->item_overflow_count_shield = 2;
+		break;
+	case RANDO_ITEM_POOL_EXPERT:
+		c->item_overflow_count_shield = 1;
+		break;
+	case RANDO_ITEM_POOL_CROWD_CONTROL:
+		c->item_overflow_count_shield = 0;
+		c->item_count[RANDO_ITEM_BugCatchingNet] = 0;
+		c->item_count[RANDO_ITEM_HalfMagic] = 0;
+		c->item_count[RANDO_ITEM_CaneOfByrna] = 0;
+		c->item_count[RANDO_ITEM_Cape] = 0;
+		c->item_count[RANDO_ITEM_TwentyRupees2] = 4;
+		break;
+	case RANDO_ITEM_POOL_NORMAL:
+		break;
+	}
+	/* TODO: item.functionality's rom.CapeMagicUsage.*, CaneOfByrnaInvulnerability,
+	 * PowderedSpriteFairyPrize, BottleFill.Health, CatchableBees, StunItems, SilversOnlyAtGanon,
+	 * NoFarieDrops. */
+	switch (c->item_functionality) {
+	case RANDO_ITEM_FUNCTIONALITY_HARD:
+		c->rom_bottle_fill_magic = 0x40;
+		c->rom_catchable_fairies = false;
+		break;
+	case RANDO_ITEM_FUNCTIONALITY_EXPERT:
+		c->rom_bottle_fill_magic = 0x20;
+		c->rom_catchable_fairies = false;
+		break;
+	case RANDO_ITEM_FUNCTIONALITY_NORMAL:
+		break;
+	}
 	c->region_require_better_bow = c->item_placement == RANDO_PLACEMENT_BASIC
 		|| c->mode_weapons == RANDO_WEAPONS_SWORDLESS;
 	c->region_require_better_sword = c->item_placement == RANDO_PLACEMENT_BASIC;
@@ -69,6 +103,10 @@ static void derive_config(RandoConfig *c, RandoVariant variant)
 		c->item_goal_required = 20;
 	if (c->item_goal_required == RANDO_CONFIG_NULL && c->goal == RANDO_GOAL_GANONHUNT)
 		c->item_goal_required = 40;
+	if (c->item_count[RANDO_ITEM_TriforcePiece] == RANDO_CONFIG_NULL && c->goal == RANDO_GOAL_TRIFORCE_HUNT)
+		c->item_count[RANDO_ITEM_TriforcePiece] = 30;
+	if (c->item_count[RANDO_ITEM_TriforcePiece] == RANDO_CONFIG_NULL && c->goal == RANDO_GOAL_GANONHUNT)
+		c->item_count[RANDO_ITEM_TriforcePiece] = 50;
 }
 
 void rando_world_init(RandoWorld *world, RandoVariant variant, const RandoConfig *config)

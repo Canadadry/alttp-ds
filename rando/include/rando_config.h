@@ -1,7 +1,10 @@
 #ifndef RANDO_CONFIG_H
 #define RANDO_CONFIG_H
 
+#include "rando_item_ids.h"
+
 #include <stdbool.h>
+#include <stdint.h>
 
 /* UNSET is VT's absent key (null): `=== 'basic'` and `=== 'advanced'` are then both false. */
 typedef enum RandoItemPlacement {
@@ -65,12 +68,26 @@ typedef enum RandoEnemyHealth {
 	RANDO_ENEMY_HEALTH_EXPERT,
 } RandoEnemyHealth;
 
+typedef enum RandoItemPool {
+	RANDO_ITEM_POOL_NORMAL,
+	RANDO_ITEM_POOL_HARD,
+	RANDO_ITEM_POOL_EXPERT,
+	RANDO_ITEM_POOL_CROWD_CONTROL,
+} RandoItemPool;
+
+typedef enum RandoItemFunctionality {
+	RANDO_ITEM_FUNCTIONALITY_NORMAL,
+	RANDO_ITEM_FUNCTIONALITY_HARD,
+	RANDO_ITEM_FUNCTIONALITY_EXPERT,
+} RandoItemFunctionality;
+
 /* VT's null for an integer key read without a default. */
 #define RANDO_CONFIG_NULL (-1)
 
 /* One field per VT world config key the ported code reads, holding VT's value or, when the key
  * is absent, the default the reading code passes to config(). rando_world_init applies the
- * World constructor's derived keys (dungeon_items, logic, item_placement, mode_weapons) to its copy. */
+ * World constructor's derived keys (dungeon_items, logic, item_placement, mode_weapons, item_pool,
+ * item_functionality, goal) to its copy. */
 typedef struct RandoConfig {
 	RandoState mode_state;
 	RandoWeapons mode_weapons;
@@ -80,12 +97,16 @@ typedef struct RandoConfig {
 	RandoAccessibility accessibility;
 	RandoDungeonItems dungeon_items;
 	RandoEnemyHealth enemizer_enemy_health;
+	RandoItemPool item_pool;
+	RandoItemFunctionality item_functionality;
 	int crystals_ganon;
 	int crystals_tower;
 	int item_goal_required;
 	int item_require_lamp;
 	int item_overflow_count_shield;
 	int rom_bottle_fill_magic;
+	/* item.count.<raw name>; RANDO_CONFIG_NULL is absent, and 0 is an override (VT's `?? default`). */
+	int16_t item_count[RANDO_ITEM_COUNT];
 	bool ignore_can_kill_escape_things;
 	bool region_wild_keys;
 	bool region_wild_big_keys;

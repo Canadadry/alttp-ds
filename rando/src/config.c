@@ -4,6 +4,8 @@
 
 void rando_config_init(RandoConfig *config)
 {
+	int i;
+
 	memset(config, 0, sizeof *config);
 	config->mode_state = RANDO_STATE_UNSET;
 	config->mode_weapons = RANDO_WEAPONS_UNSET;
@@ -13,6 +15,8 @@ void rando_config_init(RandoConfig *config)
 	config->accessibility = RANDO_ACCESSIBILITY_UNSET;
 	config->dungeon_items = RANDO_DUNGEON_ITEMS_STANDARD;
 	config->enemizer_enemy_health = RANDO_ENEMY_HEALTH_DEFAULT;
+	config->item_pool = RANDO_ITEM_POOL_NORMAL;
+	config->item_functionality = RANDO_ITEM_FUNCTIONALITY_NORMAL;
 	config->crystals_ganon = 7;
 	config->crystals_tower = 7;
 	config->item_goal_required = RANDO_CONFIG_NULL;
@@ -22,4 +26,6 @@ void rando_config_init(RandoConfig *config)
 	config->region_boss_normal_location = true;
 	config->region_swords_in_pool = true;
 	config->rom_catchable_fairies = true;
+	for (i = 0; i < RANDO_ITEM_COUNT; i++)
+		config->item_count[i] = RANDO_CONFIG_NULL;
 }
