@@ -113,7 +113,6 @@ static bool inverted_thieves(const RandoWorld *world, const RandoWorld *location
 		&& world->config.can_one_frame_clip_uw;
 }
 
-/* TODO: Region\Inverted\DesertPalace's location overrides (step 3.12, chunk 5). */
 static bool inverted_enter(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
 	const RandoConfig *c = &world->config;
@@ -127,6 +126,47 @@ static bool inverted_enter(const RandoWorld *world, const RandoWorld *locations,
 		    || inverted_thieves(world, locations, items));
 }
 
+static bool inverted_big_key_chest(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
+{
+	const RandoConfig *c = &world->config;
+
+	(void)locations;
+	return has(items, RANDO_ITEM_KeyP2) && rando_items_can_kill_most_things(items, c, 5)
+		&& (has(items, RANDO_ITEM_MoonPearl)
+		    || c->can_dungeon_revive
+		    || (c->can_bunny_revive && rando_items_can_bunny_revive(items, c))
+		    || (c->can_owyba && rando_items_has_a_bottle(items))
+		    || rando_items_has_sword(items, 1));
+}
+
+static bool inverted_boss(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
+{
+	const RandoConfig *c = &world->config;
+
+	return can_enter(world, locations, RANDO_REGION_DESERT_PALACE, items)
+		&& ((has(items, RANDO_ITEM_MoonPearl)
+		     || (c->can_bunny_revive && rando_items_can_bunny_revive(items, c))
+		     || (c->can_owyba && rando_items_has_a_bottle(items)))
+		    || (c->can_one_frame_clip_ow && c->can_dungeon_revive))
+		&& (rando_items_can_lift_rocks(items)
+		    || (c->can_boots_clip && has(items, RANDO_ITEM_PegasusBoots))
+		    || c->can_one_frame_clip_ow)
+		&& rando_items_can_light_torches(items)
+		&& has(items, RANDO_ITEM_BigKeyP2) && has(items, RANDO_ITEM_KeyP2)
+		&& boss_can_beat(world, RANDO_REGION_DESERT_PALACE, items)
+		&& boss_has_wild_compass_and_map(world, RANDO_LOC_DESERT_PALACE_BOSS, RANDO_ITEM_CompassP2,
+						 RANDO_ITEM_MapP2, items);
+}
+
+static const RandoLocationRules inverted_locations[NLOCATIONS] = {
+	[RANDO_LOC_DESERT_PALACE_BIG_CHEST - FIRST] = {big_chest, NULL, NULL},
+	[RANDO_LOC_DESERT_PALACE_TORCH - FIRST] = {torch, NULL, NULL},
+	[RANDO_LOC_DESERT_PALACE_BIG_KEY_CHEST - FIRST] = {inverted_big_key_chest, NULL, NULL},
+	[RANDO_LOC_DESERT_PALACE_COMPASS_CHEST - FIRST] = {compass_chest, NULL, NULL},
+	[RANDO_LOC_DESERT_PALACE_BOSS - FIRST] = {inverted_boss, boss_fill, boss_always_allow},
+	[RANDO_LOC_DESERT_PALACE_PRIZE - FIRST] = {complete, NULL, NULL},
+};
+
 const RandoRegionRules rando_rules_inverted_desert_palace = {
-	"Region\\Inverted\\DesertPalace", inverted_enter, complete, locations, NULL,
+	"Region\\Inverted\\DesertPalace", inverted_enter, complete, inverted_locations, NULL,
 };

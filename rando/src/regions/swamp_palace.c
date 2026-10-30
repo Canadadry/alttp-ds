@@ -132,7 +132,53 @@ static bool inverted_mire(const RandoWorld *world, const RandoWorld *locations, 
 		&& can_enter(world, locations, RANDO_REGION_MISERY_MIRE, items);
 }
 
-/* TODO: Region\Inverted\SwampPalace's location overrides (step 3.12, chunk 5). */
+static bool inverted_hera(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
+{
+	return world->config.can_one_frame_clip_uw
+		&& can_enter(world, locations, RANDO_REGION_TOWER_OF_HERA, items)
+		&& (has(items, RANDO_ITEM_BigKeyP3)
+		    || (inverted_mire(world, locations, items) && has(items, RANDO_ITEM_BigKeyD6)));
+}
+
+static bool inverted_past_first_key(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
+{
+	return (has(items, RANDO_ITEM_KeyD2) || inverted_mire(world, locations, items))
+		&& (has(items, RANDO_ITEM_Hammer) || inverted_mire(world, locations, items)
+		    || inverted_hera(world, locations, items));
+}
+
+static bool inverted_entrance_fill(RandoWorld *world, RandoItemId item, const RandoItems *items)
+{
+	return world->config.region_wild_keys || item == RANDO_ITEM_KeyD2 || inverted_mire(world, world, items);
+}
+
+static bool inverted_big_chest(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
+{
+	return inverted_past_first_key(world, locations, items)
+		&& (has(items, RANDO_ITEM_BigKeyD2)
+		    || (inverted_mire(world, locations, items) && has(items, RANDO_ITEM_BigKeyD6))
+		    || (inverted_hera(world, locations, items) && has(items, RANDO_ITEM_BigKeyP3)));
+}
+
+static bool inverted_map_chest(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
+{
+	return rando_items_can_bomb_things(items)
+		&& (has(items, RANDO_ITEM_KeyD2) || inverted_mire(world, locations, items));
+}
+
+static bool inverted_flooded(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
+{
+	return has(items, RANDO_ITEM_Hookshot) && inverted_past_first_key(world, locations, items);
+}
+
+static bool inverted_boss(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
+{
+	return inverted_flooded(world, locations, items)
+		&& boss_can_beat(world, RANDO_REGION_SWAMP_PALACE, items)
+		&& boss_has_wild_compass_and_map(world, RANDO_LOC_SWAMP_PALACE_BOSS, RANDO_ITEM_CompassD2,
+						 RANDO_ITEM_MapD2, items);
+}
+
 static bool inverted_enter(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
 	const RandoConfig *c = &world->config;
@@ -156,6 +202,20 @@ static bool inverted_enter(const RandoWorld *world, const RandoWorld *locations,
 		&& can_enter(world, locations, RANDO_REGION_SOUTH_LIGHT_WORLD, items);
 }
 
+static const RandoLocationRules inverted_locations[NLOCATIONS] = {
+	[RANDO_LOC_SWAMP_PALACE_ENTRANCE - FIRST] = {NULL, inverted_entrance_fill, NULL},
+	[RANDO_LOC_SWAMP_PALACE_BIG_CHEST - FIRST] = {inverted_big_chest, big_chest_fill, big_chest_always_allow},
+	[RANDO_LOC_SWAMP_PALACE_BIG_KEY_CHEST - FIRST] = {inverted_past_first_key, NULL, NULL},
+	[RANDO_LOC_SWAMP_PALACE_MAP_CHEST - FIRST] = {inverted_map_chest, NULL, NULL},
+	[RANDO_LOC_SWAMP_PALACE_WEST_CHEST - FIRST] = {inverted_past_first_key, NULL, NULL},
+	[RANDO_LOC_SWAMP_PALACE_COMPASS_CHEST - FIRST] = {inverted_past_first_key, NULL, NULL},
+	[RANDO_LOC_SWAMP_PALACE_FLOODED_ROOM_LEFT - FIRST] = {inverted_flooded, NULL, NULL},
+	[RANDO_LOC_SWAMP_PALACE_FLOODED_ROOM_RIGHT - FIRST] = {inverted_flooded, NULL, NULL},
+	[RANDO_LOC_SWAMP_PALACE_WATERFALL_ROOM - FIRST] = {inverted_flooded, NULL, NULL},
+	[RANDO_LOC_SWAMP_PALACE_BOSS - FIRST] = {inverted_boss, boss_fill, boss_always_allow},
+	[RANDO_LOC_SWAMP_PALACE_PRIZE - FIRST] = {complete, NULL, NULL},
+};
+
 const RandoRegionRules rando_rules_inverted_swamp_palace = {
-	"Region\\Inverted\\SwampPalace", inverted_enter, complete, locations, NULL,
+	"Region\\Inverted\\SwampPalace", inverted_enter, complete, inverted_locations, NULL,
 };

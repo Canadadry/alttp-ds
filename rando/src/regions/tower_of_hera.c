@@ -118,12 +118,52 @@ static bool inverted_main(const RandoWorld *world, const RandoWorld *locations, 
 			    && has(items, RANDO_ITEM_MagicMirror))));
 }
 
-/* TODO: Region\Inverted\TowerOfHera's location overrides (step 3.12, chunk 5). */
 static bool inverted_enter(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
 	return inverted_main(world, locations, items) || mire(world, locations, items);
 }
 
+static bool inverted_big_key_chest(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
+{
+	const RandoConfig *c = &world->config;
+
+	return rando_items_can_light_torches(items)
+		&& ((has(items, RANDO_ITEM_KeyP3)
+		     && (has(items, RANDO_ITEM_MoonPearl)
+			 || (c->can_owyba && rando_items_has_a_bottle(items))
+			 || (c->can_bunny_revive && rando_items_can_bunny_revive(items, c))))
+		    || mire(world, locations, items));
+}
+
+static bool inverted_compass_chest(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
+{
+	return (inverted_main(world, locations, items) && has(items, RANDO_ITEM_BigKeyP3)) || mire(world, locations, items);
+}
+
+static bool inverted_big_chest(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
+{
+	return (inverted_main(world, locations, items) && has(items, RANDO_ITEM_BigKeyP3))
+		|| (mire(world, locations, items) && (has(items, RANDO_ITEM_BigKeyP3) || has(items, RANDO_ITEM_BigKeyD6)));
+}
+
+static bool inverted_boss(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
+{
+	return inverted_main(world, locations, items)
+		&& boss_can_beat(world, RANDO_REGION_TOWER_OF_HERA, items)
+		&& (has(items, RANDO_ITEM_BigKeyP3) || (mire(world, locations, items) && has(items, RANDO_ITEM_BigKeyD6)))
+		&& boss_has_wild_compass_and_map(world, RANDO_LOC_TOWER_OF_HERA_BOSS, RANDO_ITEM_CompassP3,
+						 RANDO_ITEM_MapP3, items);
+}
+
+static const RandoLocationRules inverted_locations[NLOCATIONS] = {
+	[RANDO_LOC_TOWER_OF_HERA_BIG_KEY_CHEST - FIRST] = {inverted_big_key_chest, big_key_chest_fill,
+							   big_key_chest_always_allow},
+	[RANDO_LOC_TOWER_OF_HERA_COMPASS_CHEST - FIRST] = {inverted_compass_chest, NULL, NULL},
+	[RANDO_LOC_TOWER_OF_HERA_BIG_CHEST - FIRST] = {inverted_big_chest, NULL, NULL},
+	[RANDO_LOC_TOWER_OF_HERA_BOSS - FIRST] = {inverted_boss, boss_fill, boss_always_allow},
+	[RANDO_LOC_TOWER_OF_HERA_PRIZE - FIRST] = {complete, NULL, NULL},
+};
+
 const RandoRegionRules rando_rules_inverted_tower_of_hera = {
-	"Region\\Inverted\\TowerOfHera", inverted_enter, complete, locations, NULL,
+	"Region\\Inverted\\TowerOfHera", inverted_enter, complete, inverted_locations, NULL,
 };

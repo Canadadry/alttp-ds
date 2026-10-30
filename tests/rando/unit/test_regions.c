@@ -69,6 +69,20 @@ static void check_can_enter_inverted_tower_of_hera_with_everything(void)
 	CHECK(rando_world_region_can_enter(&world, RANDO_REGION_TOWER_OF_HERA, &items));
 }
 
+/* Inverted SkullWoodsTest::testLocation's Bridge Room row: Fire Rod alone, no Moon Pearl. */
+static void check_inverted_skull_woods_bridge_room_needs_only_fire_rod(void)
+{
+	RandoConfig config;
+	RandoWorld world;
+	RandoItems items;
+
+	rando_config_init(&config);
+	rando_world_init(&world, RANDO_VARIANT_INVERTED, &config);
+	rando_items_clear(&items);
+	rando_items_add(&items, RANDO_ITEM_FireRod);
+	CHECK(rando_world_can_access(&world, RANDO_LOC_SKULL_WOODS_BRIDGE_ROOM, &items));
+}
+
 /* HyruleCastleTowerTest::testCapeOrUpgradedSwordRequiredToEnter. */
 static void check_cape_or_upgraded_sword_required_to_enter_castle_tower(void)
 {
@@ -690,15 +704,16 @@ static void replay_every_row(const char *path)
 	printf(TEST ": all %d rows of %s replayed\n", rows, path);
 }
 
-/* TODO: the Inverted files whose rows are replayed whole, in all three trees; step 3.12's chunks 5
- * and 6 add theirs, and chunk 7 removes both lists. */
+/* TODO: the Inverted files whose rows are replayed whole, in all three trees; step 3.12's chunk 6
+ * adds Turtle Rock's, and chunk 7 removes both lists. */
 static const char *const inverted_enabled_files[] = {
 	"LightWorldTest.php", "HyruleCastleEscapeTest.php",
 	"DeathMountain/EastTest.php", "DeathMountain/WestTest.php",
 	"DarkWorld/NorthEastTest.php", "DarkWorld/NorthWestTest.php", "DarkWorld/SouthTest.php", "DarkWorld/MireTest.php",
 	"DarkWorld/DeathMountain/EastTest.php", "DarkWorld/DeathMountain/WestTest.php",
 	"HyruleCastleTowerTest.php", "PalaceOfDarknessTest.php", "ThievesTownTest.php", "IcePalaceTest.php",
-	"MiseryMireTest.php", NULL,
+	"MiseryMireTest.php", "EasternPalaceTest.php", "DesertPalaceTest.php", "TowerOfHeraTest.php",
+	"SwampPalaceTest.php", "SkullWoodsTest.php", NULL,
 };
 
 static const char *const inverted_enabled_methods[] = {"testEntry", "testCanEnterWithEverything", NULL};
@@ -722,7 +737,7 @@ static void replay_inverted_rows(const char *path)
 
 	if (rows == 0)
 		test_fail(TEST, "%s: no row replayed", path);
-	printf(TEST ": %d of %d rows of %s replayed, %d left to step 3.12's chunks 5-7\n", rows, total, path,
+	printf(TEST ": %d of %d rows of %s replayed, %d left to step 3.12's chunks 6-7\n", rows, total, path,
 	       total - rows);
 }
 
@@ -733,6 +748,7 @@ int main(int argc, char **argv)
 	check_nothing_required_to_enter_eastern_palace();
 	check_can_enter_tower_of_hera_with_everything();
 	check_can_enter_inverted_tower_of_hera_with_everything();
+	check_inverted_skull_woods_bridge_room_needs_only_fire_rod();
 	check_cape_or_upgraded_sword_required_to_enter_castle_tower();
 	check_sword_required_to_complete_castle_tower();
 	check_boss_normal_location_decides_dungeon_items_on_bosses();

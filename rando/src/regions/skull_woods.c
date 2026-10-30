@@ -92,7 +92,6 @@ const RandoRegionRules rando_rules_skull_woods = {
 	"Region\\Standard\\SkullWoods", enter, complete, locations, NULL,
 };
 
-/* TODO: Region\Inverted\SkullWoods's location overrides (step 3.12, chunk 5). */
 static bool inverted_enter(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
 	const RandoConfig *c = &world->config;
@@ -103,6 +102,32 @@ static bool inverted_enter(const RandoWorld *world, const RandoWorld *locations,
 		&& can_enter(world, locations, RANDO_REGION_NORTH_WEST_DARK_WORLD, items);
 }
 
+static bool inverted_bridge_room(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
+{
+	(void)world;
+	(void)locations;
+	return has(items, RANDO_ITEM_FireRod);
+}
+
+static bool inverted_boss(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
+{
+	return can_enter(world, locations, RANDO_REGION_SKULL_WOODS, items)
+		&& has(items, RANDO_ITEM_FireRod)
+		&& (world->config.mode_weapons == RANDO_WEAPONS_SWORDLESS || rando_items_has_sword(items, 1))
+		&& has_n(items, RANDO_ITEM_KeyD3, 3)
+		&& boss_can_beat(world, RANDO_REGION_SKULL_WOODS, items)
+		&& boss_has_wild_compass_and_map(world, RANDO_LOC_SKULL_WOODS_BOSS, RANDO_ITEM_CompassD3,
+						 RANDO_ITEM_MapD3, items);
+}
+
+static const RandoLocationRules inverted_locations[NLOCATIONS] = {
+	[RANDO_LOC_SKULL_WOODS_BIG_CHEST - FIRST] = {big_chest, big_chest_fill, big_chest_always_allow},
+	[RANDO_LOC_SKULL_WOODS_BRIDGE_ROOM - FIRST] = {inverted_bridge_room, NULL, NULL},
+	[RANDO_LOC_SKULL_WOODS_PINBALL_ROOM - FIRST] = {NULL, pinball_room_fill, NULL},
+	[RANDO_LOC_SKULL_WOODS_BOSS - FIRST] = {inverted_boss, boss_fill, boss_always_allow},
+	[RANDO_LOC_SKULL_WOODS_PRIZE - FIRST] = {complete, NULL, NULL},
+};
+
 const RandoRegionRules rando_rules_inverted_skull_woods = {
-	"Region\\Inverted\\SkullWoods", inverted_enter, complete, locations, NULL,
+	"Region\\Inverted\\SkullWoods", inverted_enter, complete, inverted_locations, NULL,
 };
