@@ -18,6 +18,7 @@ HOST_LIB := $(BUILD)/librando_host.a
 INCLUDES := -I$(RANDO)/include -I$(RANDO)/host
 SUPPORT_OBJ := $(BUILD)/support.o
 UNIT_BINS := $(addprefix $(BUILD)/,$(UNIT_TESTS))
+GEN := $(BUILD)/rando_gen
 LOGIC_BINS := $(addprefix $(BUILD)/,$(LOGIC_TESTS))
 
 .PHONY: test logic selftest e2e clean
@@ -34,7 +35,7 @@ logic: $(LOGIC_BINS)
 selftest:
 	@./selftest.sh
 
-e2e:
+e2e: $(GEN)
 	@./run_e2e.sh
 
 $(BUILD)/obj/%.o: $(RANDO)/src/%.c $(RANDO_HDR)
@@ -59,6 +60,9 @@ $(SUPPORT_OBJ): unit/support.c unit/support.h $(RANDO_HDR) | $(BUILD)
 
 $(BUILD)/test_%: unit/test_%.c unit/support.h $(SUPPORT_OBJ) $(HOST_LIB) $(RANDO_LIB) $(RANDO_HDR) $(HOST_HDR) | $(BUILD)
 	$(CC) $(CFLAGS) $(INCLUDES) -o $@ $< $(SUPPORT_OBJ) $(HOST_LIB) $(RANDO_LIB)
+
+$(GEN): $(RANDO)/host/main/rando_gen.c $(HOST_LIB) $(RANDO_LIB) $(RANDO_HDR) $(HOST_HDR) | $(BUILD)
+	$(CC) $(CFLAGS) $(INCLUDES) -o $@ $< $(HOST_LIB) $(RANDO_LIB)
 
 $(BUILD):
 	mkdir -p $@
