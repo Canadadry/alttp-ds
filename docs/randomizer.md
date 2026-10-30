@@ -642,3 +642,25 @@ None.
   VT agrees, its old `accessibility: full` replays as `items`). The C port already matched; library
   unchanged. `make logic` now runs `test_prepare`'s fixture mode.
 - `weapons-*` already at `all`. `make test` ~85 ms, `logic` ~0.38 s, e2e ~0.18 s.
+
+### Step 4.1
+
+- Refactor (outputs byte-identical): one out-of-line Moon Pearl / bunny revive / OWYBA predicate
+  (ARM code −3.6 KB); Inverted rule placement kept and written down (a VT class calling
+  `parent::initalize()` is a second table in the classic file, one rewriting every rule has its own
+  `inverted_*.c`); a test-build check that `layouts.c`, each location's `{region, slot}` and the
+  region files' slot tables agree, in all four variants.
+- `make measure` (devkitARM absent: ARM figures from the clang 18 ARMv5TE stand-in, asserts off, so
+  its code size is a lower bound):
+
+  | Assumption | Figure | Toolchain | Margin | Verdict |
+  |---|---|---|---|---|
+  | A-1 stack ≤ 8 KiB | 6 328 B, ARM frames 1.00× host | host, scaled by stand-in | 1 864 B (fails above 1.29× host frames) | depends on the stand-in |
+  | A-2 code+rodata ≤ 128 KiB | 110.0 KB (host -O2 126.8, -Os 113.3) | stand-in | 21.0 KB (4.2 KB at host -O2) | depends on the stand-in |
+  | A-2 state ≤ 32 KiB, no writable static | `RandoGen` 3 896 B; 0 writable, 0 bss | stand-in and host agree | 28.9 KB | within |
+  | A-3 ≤ 2 s per generation | max case 17.6 ms → 2.64 s (`item_placement-basic`); sweep max 13.7 ms → 2.05 s, median 4.7 ms → 0.71 s | host, ×150 assumed | +35 % (max case) | over |
+  | A-4 no attempt budget | 44 goldens at attempt 0; 1 024-seed sweep, 0 retries | goldens, host | no retry seen | within |
+
+- Host timing is noisy here (max case 17.6–22.3 ms over four runs); `item_placement-basic` is the
+  only case over, the next is `goal-ganonhunt` at 7.4 ms. Roadmap items 2 and 3 recheck A-1, A-2
+  (devkitARM build) and A-3 (time on the DS) before anything else.

@@ -66,7 +66,7 @@
     - [x] Chunk 1: measure target and static figures
     - [x] Chunk 2: run-time driver
     - [x] Chunk 3: step note
-- [ ] Phase 3 — Options
+- [x] Phase 3 — Options
   - [x] 3.0 Claim what is green, refactor duplications
     - [x] Chunk 1: parallel e2e gate
     - [x] Chunk 2: claims
@@ -88,8 +88,8 @@
   - [x] 3.14 weapons
   - [x] 3.15 item_pool
   - [x] 3.16 item_functionality
-- [ ] Phase 4 — Fits on the DS
-  - [ ] 4.1 Measure on the host
+- [x] Phase 4 — Fits on the DS
+  - [x] 4.1 Measure on the host
 - [x] Step 3.6 chunks
   - [x] Chunk 1: two-world rule shape
   - [x] Chunk 2: playthrough world pairs, mcs at all
@@ -122,6 +122,6 @@
 - [x] Step 3.14 chunks
   - [x] Chunk 1: RandomizerTest sword rows
   - [x] Step note
-- [ ] Step 4.1 chunks
+- [x] Step 4.1 chunks
   - [x] Chunk 1: Phase 3 warn-review refactor
-  - [ ] Chunk 2: measure and note
+  - [x] Chunk 2: measure and note
