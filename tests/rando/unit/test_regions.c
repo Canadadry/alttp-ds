@@ -703,7 +703,7 @@ int main(int argc, char **argv)
 		return 0;
 	rows = fixture_replay_rows(TEST, every_row, &total);
 	if (rows != total)
-		test_fail(TEST, "%d of %d NoGlitches rows replayed", rows, total);
-	printf(TEST ": all %d NoGlitches rows replayed\n", rows);
+		test_fail(TEST, "%d of %d rows replayed", rows, total);
+	printf(TEST ": all %d rows replayed\n", rows);
 	return 0;
 }

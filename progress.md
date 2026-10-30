@@ -95,3 +95,4 @@
   - [x] Chunk 2: playthrough world pairs, mcs at all
   - [ ] Chunk 3: owed VT tests, measure, note
   - [x] Owed VT tests: fixture rows
+  - [x] Owed VT tests: replay

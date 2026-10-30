@@ -827,6 +827,12 @@ static int region_locked_items(const char *file, const char *method)
 	return strcmp(method, "testRegionLockedItems") == 0;
 }
 
+static int vanilla_dungeon_items(const char *file, const char *method)
+{
+	(void)file;
+	return strcmp(method, "testSetVanillaDungeonItems") == 0;
+}
+
 /* placeBosses: Region::setBoss, and GanonsTower's level argument. */
 static void check_set_boss(void)
 {
@@ -997,9 +1003,13 @@ int main(int argc, char **argv)
 		return 0;
 	printf(TEST ": %d world dump records checked\n", check_world_dump());
 	rows = fixture_replay_rows(TEST, region_locked_items, &total);
-	if (rows != 360)
-		test_fail(TEST, "%d testRegionLockedItems rows replayed, the four classes have 360", rows);
-	printf(TEST ": %d of %d NoGlitches rows replayed (testRegionLockedItems)\n", rows, total);
+	if (rows != 450)
+		test_fail(TEST, "%d testRegionLockedItems rows replayed, the four classes and RegionTest have 450", rows);
+	printf(TEST ": %d of %d rows replayed (testRegionLockedItems)\n", rows, total);
+	rows = fixture_replay_rows(TEST, vanilla_dungeon_items, &total);
+	if (rows != 8)
+		test_fail(TEST, "%d testSetVanillaDungeonItems rows replayed, WorldTest has 8", rows);
+	printf(TEST ": %d of %d rows replayed (testSetVanillaDungeonItems)\n", rows, total);
 	rows = check_collect_vectors();
 	if (rows == 0)
 		test_fail(TEST, "no collectItems step replayed");

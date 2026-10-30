@@ -438,6 +438,43 @@ static char *value_of(const Fixture *fx, char *entry)
 	return eq + 1;
 }
 
+static void apply_overrides(const Fixture *fx, RandoConfig *config, char **parts, int n)
+{
+	int i;
+
+	for (i = 0; i < n; i++) {
+		char *json = value_of(fx, parts[i]);
+
+		fixture_apply_config(fx, config, parts[i], json);
+	}
+}
+
+/* Returns the value the four rom.vanilla* flags share, -1 when they differ. */
+static int vanilla_dungeon_items(const RandoConfig *c)
+{
+	if (c->rom_vanilla_keys != c->rom_vanilla_big_keys || c->rom_vanilla_keys != c->rom_vanilla_compasses
+	    || c->rom_vanilla_keys != c->rom_vanilla_maps)
+		return -1;
+	return c->rom_vanilla_keys;
+}
+
+static RandoRegionId region_named(const Fixture *fx, const char *key)
+{
+	RandoRegionId region = rando_region_find(key);
+
+	if (region == RANDO_REGION_NONE)
+		fixture_fail(fx, "unknown region");
+	return region;
+}
+
+/* RegionTest's bare Region has no region items, so any C region without them answers canFill as it does. */
+static RandoRegionId bare_region(const Fixture *fx)
+{
+	if (rando_region_info(RANDO_REGION_NORTH_EAST_LIGHT_WORLD)->nitems != 0)
+		fixture_fail(fx, "the region standing for VT's bare Region has region items");
+	return RANDO_REGION_NORTH_EAST_LIGHT_WORLD;
+}
+
 enum {
 	ROW_FILE = 1, ROW_METHOD, ROW_PROVIDER, ROW_INDEX, ROW_VARIANT, ROW_CONFIG, ROW_PRESET, ROW_COUNTS,
 	ROW_VALUES, ROW_QUERY, ROW_TARGET, ROW_ITEM, ROW_EXPECTED, ROW_ANSWER, ROW_FIELDS
@@ -461,14 +498,15 @@ static int replay_row(Fixture *fx)
 	else
 		fixture_fail(fx, "unknown variant");
 	rando_config_init(&config);
-	rando_world_init(&world, variant, &config);
 	strcpy(config_field, fx->field[ROW_CONFIG]);
 	n = split(fx, config_field, ',', parts, 32);
-	for (i = 0; i < n; i++) {
-		char *json = value_of(fx, parts[i]);
-
-		fixture_apply_config(fx, &world.config, parts[i], json);
+	if (strcmp(query, "vanilla_dungeon_items") == 0) {
+		apply_overrides(fx, &config, parts, n);
+		rando_world_init(&world, variant, &config);
+		return vanilla_dungeon_items(&world.config);
 	}
+	rando_world_init(&world, variant, &config);
+	apply_overrides(fx, &world.config, parts, n);
 	strcpy(preset_field, fx->field[ROW_PRESET]);
 	n = split(fx, preset_field, '|', parts, 32);
 	for (i = 0; i < n; i++) {
@@ -483,18 +521,14 @@ static int replay_row(Fixture *fx)
 		return rando_world_can_access(&world, location_named(fx, target), &items);
 	if (strcmp(query, "fill") == 0)
 		return rando_world_fill(&world, location_named(fx, target), item_named(fx, fx->field[ROW_ITEM]), &items);
-	{
-		RandoRegionId region = rando_region_find(target);
-
-		if (region == RANDO_REGION_NONE)
-			fixture_fail(fx, "unknown region");
-		if (strcmp(query, "region_can_fill") == 0)
-			return rando_world_region_can_fill(&world, region, item_named(fx, fx->field[ROW_ITEM]));
-		if (strcmp(query, "enter") == 0)
-			return rando_world_region_can_enter(&world, region, &items);
-		if (strcmp(query, "complete") == 0)
-			return rando_world_region_can_complete(&world, region, &items);
-	}
+	if (strcmp(query, "region_can_fill") == 0)
+		return rando_world_region_can_fill(&world,
+						   strcmp(target, "Region") == 0 ? bare_region(fx) : region_named(fx, target),
+						   item_named(fx, fx->field[ROW_ITEM]));
+	if (strcmp(query, "enter") == 0)
+		return rando_world_region_can_enter(&world, region_named(fx, target), &items);
+	if (strcmp(query, "complete") == 0)
+		return rando_world_region_can_complete(&world, region_named(fx, target), &items);
 	fixture_fail(fx, "unknown query");
 	return 0;
 }
