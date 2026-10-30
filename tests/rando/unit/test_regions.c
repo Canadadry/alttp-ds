@@ -2,7 +2,6 @@
 #include "support.h"
 
 #include <stdio.h>
-#include <string.h>
 
 #define TEST "test_regions"
 
@@ -457,36 +456,126 @@ static void check_ice_mire_and_turtle_rock_bosses(void)
 	}
 }
 
-/* The tests/NoGlitches files whose rows are replayed whole; each chunk of the region port adds its
- * own, and the last one removes the list. */
-static const char *const enabled_files[] = {
-	"LightWorldTest.php", "HyruleCastleEscapeTest.php", "OpenTest.php",
-	"DeathMountain/EastTest.php", "DeathMountain/WestTest.php",
-	"DarkWorld/NorthEastTest.php", "DarkWorld/NorthWestTest.php", "DarkWorld/SouthTest.php", "DarkWorld/MireTest.php",
-	"DarkWorld/DeathMountain/EastTest.php", "DarkWorld/DeathMountain/WestTest.php",
-	"EasternPalaceTest.php", "DesertPalaceTest.php", "TowerOfHeraTest.php", "HyruleCastleTowerTest.php",
-	"PalaceOfDarknessTest.php", "SwampPalaceTest.php", "SkullWoodsTest.php",
-	"ThievesTownTest.php", "IcePalaceTest.php",
-	"MiseryMireTest.php", "TurtleRockTest.php", NULL,
-};
-
-/* Methods replayed in every file: their region rules are all ported. */
-static const char *const enabled_methods[] = {
-	"testEntry", "testNothingRequiredToEnter", "testCanEnterWithEverything",
-	"testCapeOrUpgradedSwordRequiredToEnter", "testSwordRequiredToComplete", NULL,
-};
-
-static int listed(const char *const *list, const char *name)
+/* Ganon's Tower key rooms: BigKeyA2 in a sibling chest, or a KeyA2 or BigKeyA2 on the chest itself, saves a KeyA2. */
+static void check_big_key_placement_lowers_ganons_tower_key_counts(void)
 {
-	for (; *list; list++)
-		if (strcmp(*list, name) == 0)
-			return 1;
-	return 0;
+	static const struct {
+		RandoLocationId location, holder, self;
+		RandoItemId held;
+		int keys;
+	} rooms[] = {
+		{RANDO_LOC_GANONS_TOWER_RANDOMIZER_ROOM_TOP_LEFT, RANDO_LOC_GANONS_TOWER_RANDOMIZER_ROOM_BOTTOM_RIGHT,
+		 RANDO_LOC_GANONS_TOWER_RANDOMIZER_ROOM_TOP_LEFT, RANDO_ITEM_BigKeyA2, 3},
+		{RANDO_LOC_GANONS_TOWER_COMPASS_ROOM_BOTTOM_RIGHT, RANDO_LOC_GANONS_TOWER_COMPASS_ROOM_TOP_LEFT,
+		 RANDO_LOC_GANONS_TOWER_COMPASS_ROOM_BOTTOM_RIGHT, RANDO_ITEM_BigKeyA2, 3},
+		{RANDO_LOC_GANONS_TOWER_FIRESNAKE_ROOM, RANDO_LOC_GANONS_TOWER_RANDOMIZER_ROOM_TOP_RIGHT,
+		 RANDO_LOCATION_NONE, RANDO_ITEM_BigKeyA2, 2},
+		{RANDO_LOC_GANONS_TOWER_FIRESNAKE_ROOM, RANDO_LOC_GANONS_TOWER_FIRESNAKE_ROOM, RANDO_LOCATION_NONE,
+		 RANDO_ITEM_KeyA2, 2},
+		{RANDO_LOC_GANONS_TOWER_MAP_CHEST, RANDO_LOC_GANONS_TOWER_MAP_CHEST, RANDO_LOCATION_NONE, RANDO_ITEM_KeyA2, 3},
+		{RANDO_LOC_GANONS_TOWER_MAP_CHEST, RANDO_LOC_GANONS_TOWER_MAP_CHEST, RANDO_LOCATION_NONE,
+		 RANDO_ITEM_BigKeyA2, 3},
+	};
+	RandoWorld world;
+	RandoItems items;
+
+	for (size_t i = 0; i < sizeof rooms / sizeof rooms[0]; i++) {
+		standard_world(&world);
+		all_items_with_n(&items, RANDO_ITEM_KeyA2, rooms[i].keys);
+		CHECK(!rando_world_can_access(&world, rooms[i].location, &items));
+		if (rooms[i].self != RANDO_LOCATION_NONE) {
+			CHECK(rando_world_set_item(&world, rooms[i].self, RANDO_ITEM_BigKeyA2));
+			CHECK(!rando_world_can_access(&world, rooms[i].location, &items));
+		}
+		CHECK(rando_world_set_item(&world, rooms[i].holder, rooms[i].held));
+		CHECK(rando_world_can_access(&world, rooms[i].location, &items));
+	}
 }
 
-static int enabled(const char *file, const char *method)
+/* Ganon's Tower under "basic": the Map Chest loses its boots path, Bob's Chest wants the Fire Rod or Ether and a sword. */
+static void check_basic_placement_in_ganons_tower(void)
 {
-	return listed(enabled_files, file) || listed(enabled_methods, method);
+	static const RandoItemId no_hookshot[] = {RANDO_ITEM_Hookshot};
+	static const RandoItemId no_fire[] = {RANDO_ITEM_FireRod, RANDO_ITEM_Ether};
+	RandoConfig config;
+	RandoWorld world;
+	RandoItems items;
+
+	rando_config_init(&config);
+	config.item_placement = RANDO_PLACEMENT_ADVANCED;
+	rando_world_init(&world, RANDO_VARIANT_STANDARD, &config);
+	all_items_except(&items, no_hookshot, 1);
+	add_basic_hearts(&items);
+	CHECK(rando_world_can_access(&world, RANDO_LOC_GANONS_TOWER_MAP_CHEST, &items));
+	all_items_except(&items, no_fire, 2);
+	add_basic_hearts(&items);
+	CHECK(rando_world_can_access(&world, RANDO_LOC_GANONS_TOWER_BOBS_CHEST, &items));
+
+	config.item_placement = RANDO_PLACEMENT_BASIC;
+	rando_world_init(&world, RANDO_VARIANT_STANDARD, &config);
+	CHECK(rando_world_region_can_enter(&world, RANDO_REGION_GANONS_TOWER, &items));
+	CHECK(!rando_world_can_access(&world, RANDO_LOC_GANONS_TOWER_BOBS_CHEST, &items));
+	rando_items_add(&items, RANDO_ITEM_Ether);
+	CHECK(rando_world_can_access(&world, RANDO_LOC_GANONS_TOWER_BOBS_CHEST, &items));
+	all_items_except(&items, no_hookshot, 1);
+	add_basic_hearts(&items);
+	CHECK(!rando_world_can_access(&world, RANDO_LOC_GANONS_TOWER_MAP_CHEST, &items));
+}
+
+/* Ganon's Tower from an empty collection: Moldorm Chest refuses KeyA2, completion needs the Moldorm Chest. */
+static void check_ganons_tower_moldorm_chest_and_completion(void)
+{
+	RandoWorld world;
+	RandoItems items;
+
+	standard_world(&world);
+	rando_items_clear(&items);
+	CHECK(!rando_world_can_fill(&world, RANDO_LOC_GANONS_TOWER_MOLDORM_CHEST, RANDO_ITEM_KeyA2, &items, false));
+	CHECK(rando_world_can_fill(&world, RANDO_LOC_GANONS_TOWER_MOLDORM_CHEST, RANDO_ITEM_MapA2, &items, false));
+	CHECK(rando_world_can_fill(&world, RANDO_LOC_GANONS_TOWER_MAP_CHEST, RANDO_ITEM_KeyA2, &items, false));
+
+	all_items_except(&items, NULL, 0);
+	CHECK(rando_world_region_can_complete(&world, RANDO_REGION_GANONS_TOWER, &items));
+	CHECK(rando_world_can_access(&world, RANDO_LOC_AGAHNIM_2, &items));
+	all_items_with_n(&items, RANDO_ITEM_KeyA2, 3);
+	CHECK(rando_world_region_can_enter(&world, RANDO_REGION_GANONS_TOWER, &items));
+	CHECK(!rando_world_region_can_complete(&world, RANDO_REGION_GANONS_TOWER, &items));
+	CHECK(!rando_world_can_access(&world, RANDO_LOC_AGAHNIM_2, &items));
+}
+
+/* Ganon's Tower's default bosses: Armos Knights below (no rod without magic), Moldorm on top (sword or Hammer). */
+static void check_ganons_tower_default_bosses(void)
+{
+	static const RandoItemId path[] = {
+		RANDO_ITEM_RescueZelda, RANDO_ITEM_MoonPearl, RANDO_ITEM_Crystal1, RANDO_ITEM_Crystal2,
+		RANDO_ITEM_Crystal3, RANDO_ITEM_Crystal4, RANDO_ITEM_Crystal5, RANDO_ITEM_Crystal6,
+		RANDO_ITEM_Crystal7, RANDO_ITEM_TitansMitt, RANDO_ITEM_Lamp, RANDO_ITEM_Hookshot,
+		RANDO_ITEM_MagicMirror, RANDO_ITEM_OcarinaActive, RANDO_ITEM_FireRod, RANDO_ITEM_CaneOfSomaria,
+		RANDO_ITEM_BigKeyA2, RANDO_ITEM_KeyA2, RANDO_ITEM_KeyA2, RANDO_ITEM_KeyA2, RANDO_ITEM_KeyA2,
+	};
+	RandoWorld world;
+	RandoItems items;
+
+	standard_world(&world);
+	rando_items_clear(&items);
+	for (size_t i = 0; i < sizeof path / sizeof path[0]; i++)
+		rando_items_add(&items, path[i]);
+	CHECK(rando_world_region_can_enter(&world, RANDO_REGION_GANONS_TOWER, &items));
+	CHECK(!rando_world_can_access(&world, RANDO_LOC_GANONS_TOWER_BIG_KEY_ROOM_LEFT, &items));
+	rando_items_add(&items, RANDO_ITEM_Boomerang);
+	CHECK(rando_world_can_access(&world, RANDO_LOC_GANONS_TOWER_BIG_KEY_ROOM_LEFT, &items));
+
+	rando_items_add(&items, RANDO_ITEM_BowAndArrows);
+	CHECK(!rando_world_can_access(&world, RANDO_LOC_GANONS_TOWER_MOLDORM_CHEST, &items));
+	rando_items_add(&items, RANDO_ITEM_Hammer);
+	CHECK(rando_world_can_access(&world, RANDO_LOC_GANONS_TOWER_MOLDORM_CHEST, &items));
+}
+
+static int every_row(const char *file, const char *method)
+{
+	(void)file;
+	(void)method;
+	return 1;
 }
 
 int main(int argc, char **argv)
@@ -511,10 +600,16 @@ int main(int argc, char **argv)
 	check_turtle_rock_big_key_chest_keys();
 	check_turtle_rock_big_chest_and_chain_chomps();
 	check_ice_mire_and_turtle_rock_bosses();
+	check_big_key_placement_lowers_ganons_tower_key_counts();
+	check_basic_placement_in_ganons_tower();
+	check_ganons_tower_moldorm_chest_and_completion();
+	check_ganons_tower_default_bosses();
 	printf(TEST ": hand-written cases passed\n");
 	if (!fixtures)
 		return 0;
-	rows = fixture_replay_rows(TEST, enabled, &total);
-	printf(TEST ": %d of %d NoGlitches rows replayed\n", rows, total);
+	rows = fixture_replay_rows(TEST, every_row, &total);
+	if (rows != total)
+		test_fail(TEST, "%d of %d NoGlitches rows replayed", rows, total);
+	printf(TEST ": all %d NoGlitches rows replayed\n", rows);
 	return 0;
 }

@@ -24,7 +24,7 @@
     - [x] Chunk 5: Light World dungeons
     - [x] Chunk 6: PoD, Swamp, Skull Woods, Thieves' Town
     - [x] Chunk 7: Ice Palace, Misery Mire, Turtle Rock
-    - [ ] Chunk 8: Ganon's Tower and full row count
+    - [x] Chunk 8: Ganon's Tower and full row count
   - [ ] 2.3 Pre-fill RNG consumers
     - [ ] 2.3.1 getAdvancementItems, generator driver and trace
     - [ ] 2.3.2 setMedallions (with setShops baseline path)
