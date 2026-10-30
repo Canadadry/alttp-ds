@@ -11,6 +11,7 @@
 #define FIXTURE_PREDICATE_VECTORS "oracle/predicate_vectors.txt"
 #define FIXTURE_NOGLITCHES_ROWS "oracle/noglitches_rows.txt"
 #define FIXTURE_POOL_LISTS "oracle/pool_lists.txt"
+#define FIXTURE_PREPARED_POOLS "oracle/prepared_pools.txt"
 
 #define FIXTURE_LINE_MAX 8192
 #define FIXTURE_FIELDS_MAX 32

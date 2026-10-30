@@ -32,6 +32,10 @@ void rando_set_fountains(RandoWorld *world, RandoPrng *prng);
  * The four special packs are untouched. */
 void rando_shuffle_prize_packs(RandoWorld *world, RandoPrng *prng);
 
+/* prepareWorld after shufflePrizePacks: its pre-fills, list moves and exactly three shuffles (advancement,
+ * nice, item pool); the dungeon list is not shuffled. Under swordless it calls collectItems. */
+void rando_prepare_pools(RandoWorld *world, RandoPrng *prng, RandoPools *pools);
+
 /* Randomizer::placeBosses with enemizer.bossShuffle none, the only path the matrix reaches: it draws nothing. */
 void rando_place_bosses(RandoWorld *world);
 

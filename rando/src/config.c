@@ -26,6 +26,8 @@ void rando_config_init(RandoConfig *config)
 	config->rom_bottle_fill_magic = 0x80;
 	config->region_boss_normal_location = true;
 	config->region_swords_in_pool = true;
+	config->region_boss_hearts_in_pool = true;
+	config->region_bosses_have_item = RANDO_ITEM_NONE;
 	config->rom_catchable_fairies = true;
 	for (i = 0; i < RANDO_ITEM_COUNT; i++)
 		config->item_count[i] = RANDO_CONFIG_NULL;

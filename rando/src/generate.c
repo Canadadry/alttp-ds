@@ -111,6 +111,10 @@ static bool run_attempt(RandoGen *gen, RandoStatus *status)
 		return true;
 	gen->stage = RANDO_STAGE_SHUFFLE_PRIZE_PACKS;
 	rando_shuffle_prize_packs(&gen->world, &gen->prng);
+	if (end_stage(gen, status))
+		return true;
+	gen->stage = RANDO_STAGE_PREPARE_WORLD;
+	rando_prepare_pools(&gen->world, &gen->prng, &gen->pools);
 	gen->stage = RANDO_STAGE_NONE;
 
 	*status = RANDO_INCOMPLETE;

@@ -51,7 +51,7 @@
       - [x] Chunk 1: prepared pools fixture
       - [x] Chunk 2: generalized pool check
       - [x] Chunk 3: generate_until and the Boots edit
-      - [ ] Chunk 4: prepareWorld pools stage
+      - [x] Chunk 4: prepareWorld pools stage
       - [ ] Chunk 5: pool.txt, check line and claims
   - [ ] 2.4 RandomAssumed fill, isWinnable() and the retry loop
   - [ ] 2.5 Measure on the host

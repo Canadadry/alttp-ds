@@ -1,8 +1,10 @@
+#include "rando.h"
 #include "rando_options.h"
 #include "rando_pool.h"
 #include "rando_prepare.h"
 #include "support.h"
 
+#include <assert.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -786,6 +788,495 @@ static void check_fill_prizes_pendant_failure(void)
 	CHECK(!rando_world_has_item(&world, RANDO_LOC_TOWER_OF_HERA_PRIZE, RANDO_ITEM_NONE));
 }
 
+static void set_list(RandoPools *pools, RandoPoolList list, const RandoItemId *items, size_t n)
+{
+	size_t i;
+
+	assert(n <= RANDO_POOL_CAPACITY);
+	for (i = 0; i < n; i++)
+		pools->items[list][i] = (uint8_t)items[i];
+	pools->count[list] = (uint16_t)n;
+}
+
+#define SET_LIST(pools, list, items) set_list(pools, list, items, sizeof items / sizeof items[0])
+
+static void config_world(RandoWorld *world, const RandoConfig *config)
+{
+	rando_world_init(world, config->mode_state == RANDO_STATE_STANDARD ? RANDO_VARIANT_STANDARD : RANDO_VARIANT_OPEN,
+			 config);
+}
+
+/* expected holds the lists before VT's three shuffles; a twin PRNG shuffles them in VT's order
+ * (advancement, nice, item pool), and they must then equal what rando_prepare_pools leaves. */
+static void check_prepared(RandoWorld *world, RandoPools *pools, RandoPools *expected, int line)
+{
+	RandoPrng prng, twin;
+	int list, i;
+
+	seeded(&prng, 7, 0);
+	seeded(&twin, 7, 0);
+	rando_prepare_pools(world, &prng, pools);
+	rando_fy_shuffle(&twin, expected->items[RANDO_POOL_ADVANCEMENT], expected->count[RANDO_POOL_ADVANCEMENT], 1);
+	rando_fy_shuffle(&twin, expected->items[RANDO_POOL_NICE], expected->count[RANDO_POOL_NICE], 1);
+	rando_fy_shuffle(&twin, expected->items[RANDO_POOL_ITEMS], expected->count[RANDO_POOL_ITEMS], 1);
+	for (list = 0; list < RANDO_POOL_LIST_COUNT; list++) {
+		if (pools->count[list] != expected->count[list])
+			test_fail(TEST, "line %d, list %d: %d items, expected %d", line, list, pools->count[list],
+				  expected->count[list]);
+		for (i = 0; i < expected->count[list]; i++)
+			if (pools->items[list][i] != expected->items[list][i])
+				test_fail(TEST, "line %d, list %d[%d]: %s, expected %s", line, list, i,
+					  rando_item_info((RandoItemId)pools->items[list][i])->name,
+					  rando_item_info((RandoItemId)expected->items[list][i])->name);
+	}
+}
+
+static const RandoItemId branch_advancement[] = {
+	RANDO_ITEM_Hammer, RANDO_ITEM_SilverArrowUpgrade, RANDO_ITEM_L1Sword, RANDO_ITEM_Bottle, RANDO_ITEM_Lamp,
+	RANDO_ITEM_MasterSword, RANDO_ITEM_BottleWithBee,
+};
+static const RandoItemId branch_nice[] = {
+	RANDO_ITEM_L3Sword, RANDO_ITEM_BossHeartContainer, RANDO_ITEM_ProgressiveArmor, RANDO_ITEM_Cape,
+	RANDO_ITEM_ProgressiveSword,
+};
+static const RandoItemId branch_items[] = {RANDO_ITEM_Arrow, RANDO_ITEM_PieceOfHeart, RANDO_ITEM_TenArrows};
+
+/* The walks collect the swords in list order, L1Sword, MasterSword, L3Sword, ProgressiveSword: the
+ * uncle pops the last one. */
+static void branch_pools(RandoPools *pools)
+{
+	memset(pools, 0, sizeof *pools);
+	SET_LIST(pools, RANDO_POOL_ADVANCEMENT, branch_advancement);
+	SET_LIST(pools, RANDO_POOL_NICE, branch_nice);
+	SET_LIST(pools, RANDO_POOL_ITEMS, branch_items);
+}
+
+static void branch_config(RandoConfig *config, RandoWeapons weapons, RandoItemPlacement placement)
+{
+	rando_config_init(config);
+	config->mode_weapons = weapons;
+	config->item_placement = placement;
+}
+
+/* SilverArrowUpgrade joins the nice list before its walk; health then armor go to the nice list unless
+ * basic; the uncle's UncleSword then the master sword are pushed; one bottle back, the rest to nice. */
+static void check_pools_randomized(void)
+{
+	static const RandoItemId advancement[] = {
+		RANDO_ITEM_Hammer, RANDO_ITEM_Lamp, RANDO_ITEM_UncleSword, RANDO_ITEM_L3Sword, RANDO_ITEM_BottleWithBee,
+	};
+	static const RandoItemId nice[] = {
+		RANDO_ITEM_Cape, RANDO_ITEM_SilverArrowUpgrade, RANDO_ITEM_BossHeartContainer, RANDO_ITEM_PieceOfHeart,
+		RANDO_ITEM_ProgressiveArmor, RANDO_ITEM_L1Sword, RANDO_ITEM_MasterSword, RANDO_ITEM_Bottle,
+	};
+	static const RandoItemId items[] = {RANDO_ITEM_Arrow, RANDO_ITEM_TenArrows};
+	RandoConfig config;
+	RandoWorld world;
+	RandoPools pools, expected;
+
+	branch_config(&config, RANDO_WEAPONS_RANDOMIZED, RANDO_PLACEMENT_ADVANCED);
+	config_world(&world, &config);
+	branch_pools(&pools);
+	memset(&expected, 0, sizeof expected);
+	SET_LIST(&expected, RANDO_POOL_ADVANCEMENT, advancement);
+	SET_LIST(&expected, RANDO_POOL_NICE, nice);
+	SET_LIST(&expected, RANDO_POOL_ITEMS, items);
+	check_prepared(&world, &pools, &expected, __LINE__);
+	CHECK(!rando_items_has(&world.pre_collected, RANDO_ITEM_UncleSword));
+}
+
+/* basic: health then armor to the advancement list; the World derives region.requireBetterSword from it. */
+static void check_pools_basic(void)
+{
+	static const RandoItemId advancement[] = {
+		RANDO_ITEM_Hammer, RANDO_ITEM_Lamp, RANDO_ITEM_BossHeartContainer, RANDO_ITEM_PieceOfHeart,
+		RANDO_ITEM_ProgressiveArmor, RANDO_ITEM_UncleSword, RANDO_ITEM_L3Sword, RANDO_ITEM_MasterSword,
+		RANDO_ITEM_BottleWithBee,
+	};
+	static const RandoItemId nice[] = {RANDO_ITEM_Cape, RANDO_ITEM_SilverArrowUpgrade, RANDO_ITEM_L1Sword, RANDO_ITEM_Bottle};
+	static const RandoItemId items[] = {RANDO_ITEM_Arrow, RANDO_ITEM_TenArrows};
+	RandoConfig config;
+	RandoWorld world;
+	RandoPools pools, expected;
+
+	branch_config(&config, RANDO_WEAPONS_RANDOMIZED, RANDO_PLACEMENT_BASIC);
+	config_world(&world, &config);
+	branch_pools(&pools);
+	memset(&expected, 0, sizeof expected);
+	SET_LIST(&expected, RANDO_POOL_ADVANCEMENT, advancement);
+	SET_LIST(&expected, RANDO_POOL_NICE, nice);
+	SET_LIST(&expected, RANDO_POOL_ITEMS, items);
+	check_prepared(&world, &pools, &expected, __LINE__);
+}
+
+/* requireBetterSword pushes a third sword; takeAnys swaps one of those left for a TwentyRupees. The World
+ * derives requireBetterSword from itemPlacement, so it is set after rando_world_init. */
+static void check_pools_better_sword(void)
+{
+	static const RandoItemId advancement[] = {
+		RANDO_ITEM_Hammer, RANDO_ITEM_Lamp, RANDO_ITEM_UncleSword, RANDO_ITEM_L3Sword, RANDO_ITEM_MasterSword,
+		RANDO_ITEM_BottleWithBee,
+	};
+	static const RandoItemId nice[] = {
+		RANDO_ITEM_Cape, RANDO_ITEM_SilverArrowUpgrade, RANDO_ITEM_BossHeartContainer, RANDO_ITEM_PieceOfHeart,
+		RANDO_ITEM_ProgressiveArmor, RANDO_ITEM_Bottle,
+	};
+	static const RandoItemId items[] = {RANDO_ITEM_Arrow, RANDO_ITEM_TenArrows, RANDO_ITEM_TwentyRupees};
+	RandoConfig config;
+	RandoWorld world;
+	RandoPools pools, expected;
+
+	branch_config(&config, RANDO_WEAPONS_RANDOMIZED, RANDO_PLACEMENT_ADVANCED);
+	config.region_take_anys = true;
+	config_world(&world, &config);
+	world.config.region_require_better_sword = true;
+	branch_pools(&pools);
+	memset(&expected, 0, sizeof expected);
+	SET_LIST(&expected, RANDO_POOL_ADVANCEMENT, advancement);
+	SET_LIST(&expected, RANDO_POOL_NICE, nice);
+	SET_LIST(&expected, RANDO_POOL_ITEMS, items);
+	check_prepared(&world, &pools, &expected, __LINE__);
+}
+
+static void check_pools_assured(void)
+{
+	static const RandoItemId advancement[] = {
+		RANDO_ITEM_Hammer, RANDO_ITEM_Lamp, RANDO_ITEM_L3Sword, RANDO_ITEM_BottleWithBee,
+	};
+	static const RandoItemId nice[] = {
+		RANDO_ITEM_Cape, RANDO_ITEM_SilverArrowUpgrade, RANDO_ITEM_BossHeartContainer, RANDO_ITEM_PieceOfHeart,
+		RANDO_ITEM_ProgressiveArmor, RANDO_ITEM_L1Sword, RANDO_ITEM_MasterSword, RANDO_ITEM_Bottle,
+	};
+	static const RandoItemId items[] = {RANDO_ITEM_Arrow, RANDO_ITEM_TenArrows, RANDO_ITEM_FiftyRupees};
+	RandoConfig config;
+	RandoWorld world;
+	RandoPools pools, expected;
+
+	branch_config(&config, RANDO_WEAPONS_ASSURED, RANDO_PLACEMENT_ADVANCED);
+	config_world(&world, &config);
+	branch_pools(&pools);
+	memset(&expected, 0, sizeof expected);
+	SET_LIST(&expected, RANDO_POOL_ADVANCEMENT, advancement);
+	SET_LIST(&expected, RANDO_POOL_NICE, nice);
+	SET_LIST(&expected, RANDO_POOL_ITEMS, items);
+	check_prepared(&world, &pools, &expected, __LINE__);
+	CHECK(rando_items_has(&world.pre_collected, RANDO_ITEM_UncleSword));
+}
+
+/* Vanilla pre-fills from the end of the sword list and merges none back; with the Triforce on the
+ * pedestal, the pedestal's sword becomes a TwentyRupees in the item pool. */
+static void check_pools_vanilla(bool pedestal_goal)
+{
+	static const RandoItemId advancement[] = {RANDO_ITEM_Hammer, RANDO_ITEM_Lamp, RANDO_ITEM_BottleWithBee};
+	static const RandoItemId nice[] = {
+		RANDO_ITEM_Cape, RANDO_ITEM_SilverArrowUpgrade, RANDO_ITEM_BossHeartContainer, RANDO_ITEM_PieceOfHeart,
+		RANDO_ITEM_ProgressiveArmor, RANDO_ITEM_Bottle,
+	};
+	static const RandoItemId items[] = {RANDO_ITEM_Arrow, RANDO_ITEM_TenArrows, RANDO_ITEM_TwentyRupees};
+	RandoConfig config;
+	RandoWorld world;
+	RandoPools pools, expected;
+
+	branch_config(&config, RANDO_WEAPONS_VANILLA, RANDO_PLACEMENT_ADVANCED);
+	if (pedestal_goal)
+		config.goal = RANDO_GOAL_PEDESTAL;
+	config_world(&world, &config);
+	rando_prepare_goal(&world);
+	branch_pools(&pools);
+	memset(&expected, 0, sizeof expected);
+	SET_LIST(&expected, RANDO_POOL_ADVANCEMENT, advancement);
+	SET_LIST(&expected, RANDO_POOL_NICE, nice);
+	set_list(&expected, RANDO_POOL_ITEMS, items, pedestal_goal ? 3 : 2);
+	check_prepared(&world, &pools, &expected, __LINE__);
+	CHECK(rando_world_item(&world, RANDO_LOC_LINKS_UNCLE) == RANDO_ITEM_UncleSword);
+	CHECK(rando_world_item(&world, RANDO_LOC_PYRAMID_FAIRY_LEFT) == RANDO_ITEM_L3Sword);
+	CHECK(rando_world_item(&world, RANDO_LOC_BLACKSMITH) == RANDO_ITEM_MasterSword);
+	CHECK(rando_world_item(&world, RANDO_LOC_MASTER_SWORD_PEDESTAL) ==
+	      (pedestal_goal ? RANDO_ITEM_Triforce : RANDO_ITEM_L1Sword));
+}
+
+/* Swordless: a TwentyRupees2 per sword; SilverArrowUpgrade pushed only when the collected items plus the
+ * advancement list hold fewer than two ProgressiveBow and the nice list has none. */
+static void check_pools_swordless(void)
+{
+	static const RandoItemId one_bow[] = {RANDO_ITEM_ProgressiveBow, RANDO_ITEM_L1Sword, RANDO_ITEM_Lamp};
+	static const RandoItemId two_bows[] = {
+		RANDO_ITEM_ProgressiveBow, RANDO_ITEM_ProgressiveBow, RANDO_ITEM_L1Sword, RANDO_ITEM_Lamp,
+	};
+	static const RandoItemId silvers[] = {
+		RANDO_ITEM_ProgressiveBow, RANDO_ITEM_SilverArrowUpgrade, RANDO_ITEM_L1Sword, RANDO_ITEM_Lamp,
+	};
+	static const RandoItemId sword[] = {RANDO_ITEM_ProgressiveSword};
+	static const RandoItemId one_bow_out[] = {RANDO_ITEM_ProgressiveBow, RANDO_ITEM_Lamp, RANDO_ITEM_SilverArrowUpgrade};
+	static const RandoItemId two_bows_out[] = {RANDO_ITEM_ProgressiveBow, RANDO_ITEM_ProgressiveBow, RANDO_ITEM_Lamp};
+	static const RandoItemId rupees[] = {RANDO_ITEM_TwentyRupees2, RANDO_ITEM_TwentyRupees2};
+	static const RandoItemId silvers_nice[] = {
+		RANDO_ITEM_SilverArrowUpgrade, RANDO_ITEM_TwentyRupees2, RANDO_ITEM_TwentyRupees2,
+	};
+	RandoConfig config;
+	RandoWorld world;
+	RandoPools pools, expected;
+
+	branch_config(&config, RANDO_WEAPONS_SWORDLESS, RANDO_PLACEMENT_ADVANCED);
+
+	config_world(&world, &config);
+	memset(&pools, 0, sizeof pools);
+	SET_LIST(&pools, RANDO_POOL_ADVANCEMENT, one_bow);
+	SET_LIST(&pools, RANDO_POOL_NICE, sword);
+	memset(&expected, 0, sizeof expected);
+	SET_LIST(&expected, RANDO_POOL_ADVANCEMENT, one_bow_out);
+	SET_LIST(&expected, RANDO_POOL_NICE, rupees);
+	check_prepared(&world, &pools, &expected, __LINE__);
+
+	config_world(&world, &config);
+	memset(&pools, 0, sizeof pools);
+	SET_LIST(&pools, RANDO_POOL_ADVANCEMENT, two_bows);
+	SET_LIST(&pools, RANDO_POOL_NICE, sword);
+	memset(&expected, 0, sizeof expected);
+	SET_LIST(&expected, RANDO_POOL_ADVANCEMENT, two_bows_out);
+	SET_LIST(&expected, RANDO_POOL_NICE, rupees);
+	check_prepared(&world, &pools, &expected, __LINE__);
+
+	config_world(&world, &config);
+	memset(&pools, 0, sizeof pools);
+	SET_LIST(&pools, RANDO_POOL_ADVANCEMENT, silvers);
+	SET_LIST(&pools, RANDO_POOL_NICE, sword);
+	memset(&expected, 0, sizeof expected);
+	set_list(&expected, RANDO_POOL_ADVANCEMENT, one_bow_out, 2);
+	SET_LIST(&expected, RANDO_POOL_NICE, silvers_nice);
+	check_prepared(&world, &pools, &expected, __LINE__);
+}
+
+/* rom.rupeeBow: every Arrow and arrow upgrade leaves the item pool for a FiveRupees appended after it. */
+static void check_pools_rupee_bow(void)
+{
+	static const RandoItemId items[] = {
+		RANDO_ITEM_Arrow, RANDO_ITEM_ThreeBombs, RANDO_ITEM_ArrowUpgrade10, RANDO_ITEM_TenArrows, RANDO_ITEM_RedPotion,
+	};
+	static const RandoItemId replaced[] = {
+		RANDO_ITEM_ThreeBombs, RANDO_ITEM_RedPotion, RANDO_ITEM_FiveRupees, RANDO_ITEM_FiveRupees,
+		RANDO_ITEM_FiveRupees,
+	};
+	RandoConfig config;
+	RandoWorld world;
+	RandoPools pools, expected;
+
+	rando_config_init(&config);
+	config.rom_rupee_bow = true;
+	config_world(&world, &config);
+	memset(&pools, 0, sizeof pools);
+	SET_LIST(&pools, RANDO_POOL_ITEMS, items);
+	memset(&expected, 0, sizeof expected);
+	SET_LIST(&expected, RANDO_POOL_ITEMS, replaced);
+	check_prepared(&world, &pools, &expected, __LINE__);
+}
+
+static void check_pools_skull_woods_key(void)
+{
+	static const RandoItemId dungeon[] = {RANDO_ITEM_KeyD1, RANDO_ITEM_KeyD3, RANDO_ITEM_BigKeyD3, RANDO_ITEM_KeyD3};
+	static const RandoItemId left[] = {RANDO_ITEM_KeyD1, RANDO_ITEM_BigKeyD3, RANDO_ITEM_KeyD3};
+	RandoConfig config;
+	RandoWorld world;
+	RandoPools pools, expected;
+
+	rando_config_init(&config);
+	config.region_force_skull_woods_key = true;
+	config_world(&world, &config);
+	memset(&pools, 0, sizeof pools);
+	SET_LIST(&pools, RANDO_POOL_DUNGEON, dungeon);
+	memset(&expected, 0, sizeof expected);
+	SET_LIST(&expected, RANDO_POOL_DUNGEON, left);
+	check_prepared(&world, &pools, &expected, __LINE__);
+	CHECK(rando_world_item(&world, RANDO_LOC_SKULL_WOODS_PINBALL_ROOM) == RANDO_ITEM_KeyD3);
+}
+
+static const RandoItemId wild_dungeon[] = {
+	RANDO_ITEM_KeyH2, RANDO_ITEM_BigKeyD1, RANDO_ITEM_MapD1, RANDO_ITEM_CompassD1, RANDO_ITEM_KeyD1,
+	RANDO_ITEM_BigKeyD2, RANDO_ITEM_MapD2,
+};
+
+typedef struct WildCase {
+	bool big_keys, keys, maps, compasses;
+	RandoState state;
+	RandoLogic logic;
+	RandoItemId dungeon[8];
+	RandoItemId advancement[8];
+} WildCase;
+
+#define N RANDO_ITEM_NONE
+
+/* The four walks run big keys, keys, maps, compasses; standard keeps KeyH2 unless NoLogic. */
+static const WildCase wild_cases[] = {
+	{true, false, false, false, RANDO_STATE_OPEN, RANDO_LOGIC_NO_GLITCHES,
+	 {RANDO_ITEM_KeyH2, RANDO_ITEM_MapD1, RANDO_ITEM_CompassD1, RANDO_ITEM_KeyD1, RANDO_ITEM_MapD2, N},
+	 {RANDO_ITEM_BigKeyD1, RANDO_ITEM_BigKeyD2, N}},
+	{false, true, false, false, RANDO_STATE_OPEN, RANDO_LOGIC_NO_GLITCHES,
+	 {RANDO_ITEM_BigKeyD1, RANDO_ITEM_MapD1, RANDO_ITEM_CompassD1, RANDO_ITEM_BigKeyD2, RANDO_ITEM_MapD2, N},
+	 {RANDO_ITEM_KeyH2, RANDO_ITEM_KeyD1, N}},
+	{false, true, false, false, RANDO_STATE_STANDARD, RANDO_LOGIC_NO_GLITCHES,
+	 {RANDO_ITEM_KeyH2, RANDO_ITEM_BigKeyD1, RANDO_ITEM_MapD1, RANDO_ITEM_CompassD1, RANDO_ITEM_BigKeyD2,
+	  RANDO_ITEM_MapD2, N},
+	 {RANDO_ITEM_KeyD1, N}},
+	{false, true, false, false, RANDO_STATE_STANDARD, RANDO_LOGIC_NO_LOGIC,
+	 {RANDO_ITEM_BigKeyD1, RANDO_ITEM_MapD1, RANDO_ITEM_CompassD1, RANDO_ITEM_BigKeyD2, RANDO_ITEM_MapD2, N},
+	 {RANDO_ITEM_KeyH2, RANDO_ITEM_KeyD1, N}},
+	{false, false, true, false, RANDO_STATE_OPEN, RANDO_LOGIC_NO_GLITCHES,
+	 {RANDO_ITEM_KeyH2, RANDO_ITEM_BigKeyD1, RANDO_ITEM_CompassD1, RANDO_ITEM_KeyD1, RANDO_ITEM_BigKeyD2, N},
+	 {RANDO_ITEM_MapD1, RANDO_ITEM_MapD2, N}},
+	{false, false, false, true, RANDO_STATE_OPEN, RANDO_LOGIC_NO_GLITCHES,
+	 {RANDO_ITEM_KeyH2, RANDO_ITEM_BigKeyD1, RANDO_ITEM_MapD1, RANDO_ITEM_KeyD1, RANDO_ITEM_BigKeyD2,
+	  RANDO_ITEM_MapD2, N},
+	 {RANDO_ITEM_CompassD1, N}},
+	{true, true, true, true, RANDO_STATE_OPEN, RANDO_LOGIC_NO_GLITCHES,
+	 {N},
+	 {RANDO_ITEM_BigKeyD1, RANDO_ITEM_BigKeyD2, RANDO_ITEM_KeyH2, RANDO_ITEM_KeyD1, RANDO_ITEM_MapD1,
+	  RANDO_ITEM_MapD2, RANDO_ITEM_CompassD1, N}},
+};
+
+#undef N
+
+static size_t until_none(const RandoItemId *items)
+{
+	size_t n = 0;
+
+	while (items[n] != RANDO_ITEM_NONE)
+		n++;
+	return n;
+}
+
+static void check_pools_wild(void)
+{
+	size_t c;
+
+	for (c = 0; c < sizeof wild_cases / sizeof wild_cases[0]; c++) {
+		const WildCase *w = &wild_cases[c];
+		RandoConfig config;
+		RandoWorld world;
+		RandoPools pools, expected;
+
+		rando_config_init(&config);
+		config.region_wild_big_keys = w->big_keys;
+		config.region_wild_keys = w->keys;
+		config.region_wild_maps = w->maps;
+		config.region_wild_compasses = w->compasses;
+		config.mode_state = w->state;
+		config.logic = w->logic;
+		config_world(&world, &config);
+		memset(&pools, 0, sizeof pools);
+		SET_LIST(&pools, RANDO_POOL_DUNGEON, wild_dungeon);
+		memset(&expected, 0, sizeof expected);
+		set_list(&expected, RANDO_POOL_DUNGEON, w->dungeon, until_none(w->dungeon));
+		set_list(&expected, RANDO_POOL_ADVANCEMENT, w->advancement, until_none(w->advancement));
+		check_prepared(&world, &pools, &expected, (int)c);
+	}
+}
+
+static const RandoLocationId boss_locations[] = {
+	RANDO_LOC_DESERT_PALACE_BOSS, RANDO_LOC_EASTERN_PALACE_BOSS, RANDO_LOC_ICE_PALACE_BOSS,
+	RANDO_LOC_MISERY_MIRE_BOSS, RANDO_LOC_PALACE_OF_DARKNESS_BOSS, RANDO_LOC_SKULL_WOODS_BOSS,
+	RANDO_LOC_SWAMP_PALACE_BOSS, RANDO_LOC_THIEVES_TOWN_BOSS, RANDO_LOC_TURTLE_ROCK_BOSS,
+	RANDO_LOC_TOWER_OF_HERA_BOSS,
+};
+
+/* Pyramid Fairy - Bow gets VT's trade item; the ten bosses get BossHeartContainer when the hearts are not
+ * in the pool, otherwise region.bossesHaveItem's item, otherwise nothing. */
+static void check_pools_prefills(bool hearts_in_pool, RandoItemId bosses_have, bool bow_upgrade, RandoItemId boss_item)
+{
+	RandoConfig config;
+	RandoWorld world;
+	RandoPools pools, expected;
+	size_t i;
+
+	rando_config_init(&config);
+	config.region_boss_hearts_in_pool = hearts_in_pool;
+	config.region_bosses_have_item = bosses_have;
+	config.region_pyramid_bow_upgrade = bow_upgrade;
+	config_world(&world, &config);
+	memset(&pools, 0, sizeof pools);
+	memset(&expected, 0, sizeof expected);
+	check_prepared(&world, &pools, &expected, __LINE__);
+	CHECK(rando_world_item(&world, RANDO_LOC_PYRAMID_FAIRY_BOW) ==
+	      (bow_upgrade ? RANDO_ITEM_BowAndSilverArrows : RANDO_ITEM_BowAndArrows));
+	for (i = 0; i < sizeof boss_locations / sizeof boss_locations[0]; i++)
+		CHECK(rando_world_item(&world, boss_locations[i]) == boss_item);
+}
+
+typedef struct Ranges {
+	int n;
+	int64_t max[RANDO_POOL_CAPACITY];
+} Ranges;
+
+static void record_max(void *ctx, int64_t min, int64_t max, int64_t r)
+{
+	Ranges *ranges = ctx;
+
+	(void)r;
+	CHECK(min == 0);
+	CHECK(ranges->n < RANDO_POOL_CAPACITY);
+	ranges->max[ranges->n++] = max;
+}
+
+static RandoGen gen;
+
+/* tests/rando/cases/baseline seed 1: prepareWorld's 153 draws are three countdowns, 0..42, 0..39, 0..69. */
+static void check_pools_baseline_draws(void)
+{
+	static const int sizes[] = {43, 40, 70};
+	RandoOptions options;
+	RandoWorld world;
+	RandoPools pools;
+	RandoPrng prng;
+	Ranges ranges;
+	int s, k, d = 0;
+
+	rando_options_init(&options);
+	CHECK(rando_generate_until(&gen, &options, 1, 1, NULL, NULL, RANDO_STAGE_SHUFFLE_PRIZE_PACKS) == RANDO_INCOMPLETE);
+	world = gen.world;
+	pools = gen.pools;
+	seeded(&prng, 1, 0);
+	ranges.n = 0;
+	prng.observe = record_max;
+	prng.observe_ctx = &ranges;
+	rando_prepare_pools(&world, &prng, &pools);
+	CHECK(ranges.n == 153);
+	for (s = 0; s < 3; s++)
+		for (k = sizes[s] - 1; k >= 0; k--)
+			CHECK(ranges.max[d++] == k);
+}
+
+static RandoItemId first_item(RandoPoolList list)
+{
+	return (RandoItemId)gen.pools.items[list][0];
+}
+
+static RandoItemId last_item(RandoPoolList list)
+{
+	return (RandoItemId)gen.pools.items[list][gen.pools.count[list] - 1];
+}
+
+/* oracle/prepared_pools.txt's baseline record: 63/43/40/70 items, first and last of each list
+ * BigKeyA2..CompassP3, BossHeartContainer..Powder, BottleWithBluePotion..PieceOfHeart, TwentyRupees..ThreeBombs. */
+static void check_pools_baseline_anchors(void)
+{
+	RandoOptions options;
+
+	rando_options_init(&options);
+	CHECK(rando_generate(&gen, &options, 1, 1, NULL, NULL) == RANDO_INCOMPLETE);
+	CHECK(gen.pools.count[RANDO_POOL_DUNGEON] == 63);
+	CHECK(gen.pools.count[RANDO_POOL_ADVANCEMENT] == 43);
+	CHECK(gen.pools.count[RANDO_POOL_NICE] == 40);
+	CHECK(gen.pools.count[RANDO_POOL_ITEMS] == 70);
+	CHECK(first_item(RANDO_POOL_DUNGEON) == RANDO_ITEM_BigKeyA2);
+	CHECK(last_item(RANDO_POOL_DUNGEON) == RANDO_ITEM_CompassP3);
+	CHECK(first_item(RANDO_POOL_ADVANCEMENT) == RANDO_ITEM_BossHeartContainer);
+	CHECK(last_item(RANDO_POOL_ADVANCEMENT) == RANDO_ITEM_Powder);
+	CHECK(first_item(RANDO_POOL_NICE) == RANDO_ITEM_BottleWithBluePotion);
+	CHECK(last_item(RANDO_POOL_NICE) == RANDO_ITEM_PieceOfHeart);
+	CHECK(first_item(RANDO_POOL_ITEMS) == RANDO_ITEM_TwentyRupees);
+	CHECK(last_item(RANDO_POOL_ITEMS) == RANDO_ITEM_ThreeBombs);
+	CHECK(rando_world_item(&gen.world, RANDO_LOC_PYRAMID_FAIRY_BOW) == RANDO_ITEM_BowAndArrows);
+}
+
 int main(int argc, char **argv)
 {
 	test_fixtures_mode(TEST, argc, argv);
@@ -816,6 +1307,21 @@ int main(int argc, char **argv)
 	check_place_bosses(RANDO_WEAPONS_SWORDLESS);
 	check_fill_prizes_all_refused();
 	check_fill_prizes_pendant_failure();
+	check_pools_randomized();
+	check_pools_basic();
+	check_pools_better_sword();
+	check_pools_assured();
+	check_pools_vanilla(false);
+	check_pools_vanilla(true);
+	check_pools_swordless();
+	check_pools_rupee_bow();
+	check_pools_skull_woods_key();
+	check_pools_wild();
+	check_pools_prefills(true, RANDO_ITEM_NONE, false, RANDO_ITEM_NONE);
+	check_pools_prefills(true, RANDO_ITEM_TwentyRupees, true, RANDO_ITEM_TwentyRupees);
+	check_pools_prefills(false, RANDO_ITEM_TwentyRupees, false, RANDO_ITEM_BossHeartContainer);
+	check_pools_baseline_draws();
+	check_pools_baseline_anchors();
 	printf(TEST ": hand-written cases passed\n");
 	return 0;
 }

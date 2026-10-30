@@ -120,6 +120,11 @@ typedef struct RandoConfig {
 	bool region_require_better_bow;
 	bool region_require_better_sword;
 	bool region_swords_in_pool;
+	bool region_pyramid_bow_upgrade;
+	bool region_boss_hearts_in_pool;
+	/* RANDO_ITEM_NONE is VT's false. */
+	RandoItemId region_bosses_have_item;
+	bool region_take_anys;
 	bool rom_catchable_fairies;
 	bool rom_rupee_bow;
 	bool rom_generic_keys;

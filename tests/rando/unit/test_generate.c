@@ -14,7 +14,7 @@
 			test_fail(TEST, "%s:%d: %s", __FILE__, __LINE__, #cond); \
 	} while (0)
 
-#define TRACE_MAX 16384
+#define TRACE_MAX 32768
 #define STAGE_TABLE "stages.txt"
 
 /* The hook's draws in trace.txt's format. */
@@ -50,10 +50,11 @@ static RandoStatus generate(const char *key, const char *value, uint32_t seed, T
 	return rando_generate(&gen, &options, seed, 1, record, trace);
 }
 
-/* The C draws must be the first lines of the case's golden trace. */
-static void check_golden_prefix(const char *name, const Trace *trace)
+/* The C draws must be the first lines of the case's golden trace; with next_stage, the golden's next
+ * line must belong to that stage. */
+static void check_golden_stop(const char *name, const Trace *trace, const char *next_stage)
 {
-	char path[256], golden[TRACE_MAX];
+	char path[256], golden[TRACE_MAX], next[128] = "", stage[64] = "";
 	size_t len = 0;
 	int lines = 0;
 	FILE *f;
@@ -66,11 +67,21 @@ static void check_golden_prefix(const char *name, const Trace *trace)
 		len += strlen(golden + len);
 		lines++;
 	}
+	if (!fgets(next, sizeof next, f))
+		next[0] = '\0';
 	fclose(f);
 	golden[len] = '\0';
 	if (strcmp(trace->text, golden) != 0)
 		test_fail(TEST, "%s: C draws\n%s\ndiffer from the golden's first %d lines\n%s", name, trace->text,
 			  trace->lines, golden);
+	if (next_stage && (sscanf(next, "%*s %*s %63s", stage) != 1 || strcmp(stage, next_stage) != 0))
+		test_fail(TEST, "%s: the golden goes on with \"%s\" after the C draws, not stage %s", name, next,
+			  next_stage);
+}
+
+static void check_golden_prefix(const char *name, const Trace *trace)
+{
+	check_golden_stop(name, trace, NULL);
 }
 
 static const struct {
@@ -89,7 +100,7 @@ static const struct {
 	{RANDO_LOC_TURTLE_ROCK_PRIZE, RANDO_ITEM_Crystal2},
 };
 
-/* tests/rando/cases/baseline: its trace through shufflePrizePacks, its ten "- Prize:1" entries and two bottles;
+/* tests/rando/cases/baseline: its trace through prepareWorld, its ten "- Prize:1" entries and two bottles;
  * packs 0 and 5 are VT's rows 2 and 0 (VT dump behind test_prepare's golden case). */
 static void check_baseline(void)
 {
@@ -99,8 +110,9 @@ static void check_baseline(void)
 
 	CHECK(generate(NULL, NULL, 1, &trace) == RANDO_INCOMPLETE);
 	CHECK(gen.attempt == 0);
-	CHECK(trace.lines == 79);
+	CHECK(trace.lines == 232);
 	check_golden_prefix("baseline", &trace);
+	CHECK(strstr(trace.text, "0 232 prepareWorld 0 0 -> 0\n") != NULL);
 	CHECK(strstr(trace.text, "0 6 setMedallions 0 2 -> 0\n0 7 fillPrizes 0 13 -> 12\n") != NULL);
 	CHECK(strstr(trace.text, "0 71 setFountains 1 6 -> 3\n0 72 setFountains 1 6 -> 6\n") != NULL);
 	CHECK(strstr(trace.text, "0 79 shufflePrizePacks 0 0 -> 0\n") != NULL);
@@ -126,7 +138,7 @@ static void check_random_ganon(void)
 	Trace trace;
 
 	CHECK(generate("crystals_ganon", "random", 1, &trace) == RANDO_INCOMPLETE);
-	CHECK(trace.lines == 80);
+	CHECK(trace.lines == 233);
 	check_golden_prefix("crystals_ganon-random", &trace);
 }
 
@@ -136,7 +148,7 @@ static void check_random_crystals(void)
 	Trace trace;
 
 	CHECK(generate("crystals_tower", "random", 1, &trace) == RANDO_INCOMPLETE);
-	CHECK(trace.lines == 80);
+	CHECK(trace.lines == 233);
 	check_golden_prefix("crystals_tower-random", &trace);
 	CHECK(strncmp(trace.text, "0 1 crystals 0 7 -> 5\n", 22) == 0);
 	CHECK(gen.world.config.crystals_tower == 5);
@@ -154,7 +166,7 @@ static void check_crystals_order(void)
 	CHECK(rando_options_set(&options, "crystals_tower", "random"));
 	memset(&trace, 0, sizeof trace);
 	CHECK(rando_generate(&gen, &options, 1, 1, record, &trace) == RANDO_INCOMPLETE);
-	CHECK(trace.lines == 81);
+	CHECK(trace.lines == 234);
 	CHECK(strncmp(trace.text, "0 1 crystals 0 7 -> 5\n0 2 crystals 0 7 -> ", 42) == 0);
 	CHECK(gen.world.config.crystals_ganon == 5);
 	CHECK(gen.world.config.crystals_tower == trace.text[42] - '0');
@@ -172,7 +184,8 @@ static void check_states(void)
 	CHECK(generate("state", "standard", 1, &trace) == RANDO_INCOMPLETE);
 	CHECK(gen.world.variant == RANDO_VARIANT_STANDARD);
 	CHECK(gen.world.config.mode_state == RANDO_STATE_STANDARD);
-	CHECK(trace.lines == 79);
+	CHECK(trace.lines == 232);
+	check_golden_prefix("state-standard", &trace);
 	CHECK(!rando_items_has(&gen.world.pre_collected, RANDO_ITEM_RescueZelda));
 	CHECK(generate(NULL, NULL, 1, &trace) == RANDO_INCOMPLETE);
 	CHECK(gen.world.variant == RANDO_VARIANT_OPEN);
@@ -199,13 +212,13 @@ static void check_reseed(uint32_t seed)
 	prng.observe_ctx = &expected;
 	rando_random_int(&prng, 0, 6);
 	CHECK(generate(NULL, NULL, seed, &trace) == RANDO_INCOMPLETE);
-	CHECK(trace.lines == 79);
+	CHECK(trace.lines == 232);
 	CHECK(trace.text[strlen("0 1 getAdvancementItems 0 6 -> ")] - '0' == expected);
 
 	rando_options_init(&options);
 	CHECK(rando_generate(&gen, &options, seed, 0, NULL, NULL) == RANDO_INCOMPLETE);
 	CHECK(gen.attempt == 0);
-	CHECK(gen.draw == 79);
+	CHECK(gen.draw == 232);
 }
 
 static int count_item(RandoPoolList list, RandoItemId item)
@@ -217,8 +230,8 @@ static int count_item(RandoPoolList list, RandoItemId item)
 	return n;
 }
 
-/* A stop after getAdvancementItems leaves the getter's lists; the full run makes VT's Boots edit
- * (tests/rando/oracle/pool_lists.txt's glitches-overworld_glitches record holds one PegasusBoots). */
+/* A stop after getAdvancementItems leaves the getter's lists; one after shufflePrizePacks holds VT's Boots
+ * edit (tests/rando/oracle/pool_lists.txt's glitches-overworld_glitches record holds one PegasusBoots). */
 static void check_stop_stage(void)
 {
 	RandoOptions options;
@@ -237,7 +250,8 @@ static void check_stop_stage(void)
 	items = gen.pools.count[RANDO_POOL_ITEMS];
 
 	memset(&trace, 0, sizeof trace);
-	CHECK(rando_generate(&gen, &options, 1, 1, record, &trace) == RANDO_INCOMPLETE);
+	CHECK(rando_generate_until(&gen, &options, 1, 1, record, &trace, RANDO_STAGE_SHUFFLE_PRIZE_PACKS) ==
+	      RANDO_INCOMPLETE);
 	CHECK(trace.lines == 79);
 	CHECK(count_item(RANDO_POOL_ADVANCEMENT, RANDO_ITEM_PegasusBoots) == 0);
 	CHECK(rando_items_has(&gen.world.pre_collected, RANDO_ITEM_PegasusBoots));
@@ -245,9 +259,9 @@ static void check_stop_stage(void)
 	CHECK(gen.pools.items[RANDO_POOL_ITEMS][items] == RANDO_ITEM_TwentyRupees);
 
 	memset(&trace, 0, sizeof trace);
-	CHECK(rando_generate_until(&gen, &options, 1, 1, record, &trace, RANDO_STAGE_SHUFFLE_PRIZE_PACKS) ==
-	      RANDO_INCOMPLETE);
-	CHECK(trace.lines == 79);
+	CHECK(rando_generate(&gen, &options, 1, 1, record, &trace) == RANDO_INCOMPLETE);
+	CHECK(trace.lines == 232);
+	check_golden_prefix("glitches-overworld_glitches", &trace);
 }
 
 /* The gate labels claims with stages.txt's names: a renamed or reordered stage fails here. */
@@ -310,14 +324,16 @@ static void check_list(Fixture *fx, const char *name, RandoPoolList list)
 			  rando_item_info(gen.pools.items[list][i])->name);
 }
 
-/* oracle/pool_lists.txt: per case, VT's four getter lists at attempt 0, before prepareWorld edits them. */
-static int check_pool_lists(void)
+/* Replays a pool_lists.txt-format fixture: per case, the generator stopped after last at attempt 0 must
+ * hold the record's four lists in order, its draws the golden's up to next_stage (NULL: unchecked).
+ * Returns the cases replayed. */
+static int check_pool_records(const char *path, RandoStage last, const char *next_stage)
 {
 	int seen[SKIPPED_COUNT] = {0};
 	int cases = 0, i;
 	Fixture fx;
 
-	fixture_open(&fx, FIXTURE_POOL_LISTS);
+	fixture_open(&fx, path);
 	while (fixture_next(&fx)) {
 		char name[128];
 		const char *kv;
@@ -346,10 +362,10 @@ static int check_pool_lists(void)
 		skip = skipped_index(name);
 		if (skip < 0) {
 			memset(&trace, 0, sizeof trace);
-			if (rando_generate_until(&gen, &options, (uint32_t)seed, 1, record, &trace,
-						 RANDO_STAGE_GET_ADVANCEMENT_ITEMS) != RANDO_INCOMPLETE)
-				fixture_fail(&fx, "generation did not stop incomplete after getAdvancementItems");
-			check_golden_prefix(name, &trace);
+			if (rando_generate_until(&gen, &options, (uint32_t)seed, 1, record, &trace, last) !=
+			    RANDO_INCOMPLETE)
+				fixture_fail(&fx, "generation did not stop incomplete");
+			check_golden_stop(name, &trace, next_stage);
 			cases++;
 		} else {
 			seen[skip]++;
@@ -364,7 +380,7 @@ static int check_pool_lists(void)
 	fixture_close(&fx);
 	for (i = 0; i < SKIPPED_COUNT; i++)
 		if (seen[i] != 1)
-			test_fail(TEST, "%s: case %s seen %d times, skipped once", FIXTURE_POOL_LISTS, skipped_cases[i],
+			test_fail(TEST, "%s: case %s seen %d times, skipped once", path, skipped_cases[i],
 				  seen[i]);
 	return cases;
 }
@@ -386,6 +402,9 @@ int main(int argc, char **argv)
 	printf(TEST ": hand-written cases passed\n");
 	if (!fixtures)
 		return 0;
-	printf(TEST ": %d pool list records replayed, %d skipped (no world)\n", check_pool_lists(), SKIPPED_COUNT);
+	printf(TEST ": %d pool list records replayed, %d skipped (no world)\n",
+	       check_pool_records(FIXTURE_POOL_LISTS, RANDO_STAGE_GET_ADVANCEMENT_ITEMS, NULL), SKIPPED_COUNT);
+	printf(TEST ": %d prepared pool records replayed, %d skipped (no world)\n",
+	       check_pool_records(FIXTURE_PREPARED_POOLS, RANDO_STAGE_PREPARE_WORLD, "fill"), SKIPPED_COUNT);
 	return 0;
 }
