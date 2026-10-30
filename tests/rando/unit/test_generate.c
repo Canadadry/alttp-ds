@@ -56,7 +56,7 @@ static void check_trace(const char *what, const Trace *trace, const char *expect
 		test_fail(TEST, "%s: trace\n%s\nexpected\n%s", what, trace->text, expected);
 }
 
-/* tests/rando/cases/baseline/trace.txt, then placeBosses: not ported yet. */
+/* tests/rando/cases/baseline/trace.txt through placeBosses, which draws nothing; fillPrizes is not ported yet. */
 static void check_baseline(void)
 {
 	Trace trace;
@@ -76,6 +76,9 @@ static void check_baseline(void)
 	for (i = 0; i < RANDO_SHOP_COUNT; i++)
 		CHECK(rando_world_shop_active(&gen.world, (RandoShopId)i) ==
 		      (rando_shop_info((RandoShopId)i)->kind != RANDO_SHOP_KIND_TAKE_ANY));
+	CHECK(rando_world_item(&gen.world, RANDO_LOC_GANON) == RANDO_ITEM_Triforce);
+	CHECK(rando_items_has(&gen.world.pre_collected, RANDO_ITEM_RescueZelda));
+	CHECK(rando_world_boss(&gen.world, RANDO_REGION_HYRULE_CASTLE_TOWER, RANDO_BOSS_SLOT_BOSS) == RANDO_BOSS_AGAHNIM);
 }
 
 /* tests/rando/cases/crystals_ganon-random/trace.txt. */
@@ -142,6 +145,7 @@ static void check_states(void)
 	CHECK(gen.world.variant == RANDO_VARIANT_STANDARD);
 	CHECK(gen.world.config.mode_state == RANDO_STATE_STANDARD);
 	CHECK(trace.lines == 6);
+	CHECK(!rando_items_has(&gen.world.pre_collected, RANDO_ITEM_RescueZelda));
 	CHECK(generate(NULL, NULL, 1, &trace) == RANDO_INCOMPLETE);
 	CHECK(gen.world.variant == RANDO_VARIANT_OPEN);
 }

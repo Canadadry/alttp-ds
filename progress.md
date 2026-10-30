@@ -40,7 +40,7 @@
     - [ ] 2.3.3 fillPrizes (with placeBosses baseline path)
       - [x] Chunk 1: gate restructure
       - [x] Chunk 2: library support
-      - [ ] Chunk 3: prologue and placeBosses
+      - [x] Chunk 3: prologue and placeBosses
       - [ ] Chunk 4: fillPrizes and stop point
       - [ ] Chunk 5: Bosses writer, check lines and claims
     - [ ] 2.3.4 setFountains

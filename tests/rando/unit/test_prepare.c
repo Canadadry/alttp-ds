@@ -193,6 +193,132 @@ static void check_medallion_preset(void)
 	CHECK(rando_world_item(&world, RANDO_LOC_TURTLE_ROCK_MEDALLION) == by_index[rando_random_int(&twin, 0, 2)]);
 }
 
+static void goal_world(RandoWorld *world, RandoGoal goal)
+{
+	RandoConfig config;
+
+	rando_config_init(&config);
+	config.goal = goal;
+	rando_world_init(world, RANDO_VARIANT_OPEN, &config);
+}
+
+/* prepareWorld's goal switch: the Triforce at Ganon, on the pedestal for pedestal, nowhere for triforce-hunt. */
+static void check_goal_triforce(void)
+{
+	static const RandoGoal at_ganon[] = {
+		RANDO_GOAL_GANON, RANDO_GOAL_FAST_GANON, RANDO_GOAL_DUNGEONS, RANDO_GOAL_GANONHUNT, RANDO_GOAL_COMPLETIONIST,
+	};
+	RandoWorld world;
+	size_t i;
+
+	for (i = 0; i < sizeof at_ganon / sizeof at_ganon[0]; i++) {
+		goal_world(&world, at_ganon[i]);
+		rando_prepare_goal(&world);
+		CHECK(rando_world_item(&world, RANDO_LOC_GANON) == RANDO_ITEM_Triforce);
+		CHECK(rando_world_item(&world, RANDO_LOC_MASTER_SWORD_PEDESTAL) == RANDO_ITEM_NONE);
+	}
+	goal_world(&world, RANDO_GOAL_PEDESTAL);
+	rando_prepare_goal(&world);
+	CHECK(rando_world_item(&world, RANDO_LOC_MASTER_SWORD_PEDESTAL) == RANDO_ITEM_Triforce);
+	CHECK(rando_world_item(&world, RANDO_LOC_GANON) == RANDO_ITEM_DefeatGanon);
+	goal_world(&world, RANDO_GOAL_TRIFORCE_HUNT);
+	rando_prepare_goal(&world);
+	CHECK(rando_world_item(&world, RANDO_LOC_GANON) == RANDO_ITEM_DefeatGanon);
+	CHECK(rando_world_item(&world, RANDO_LOC_MASTER_SWORD_PEDESTAL) == RANDO_ITEM_NONE);
+}
+
+/* completionist forces accessibility locations; other goals keep the world's value. */
+static void check_goal_accessibility(void)
+{
+	RandoWorld world;
+
+	goal_world(&world, RANDO_GOAL_COMPLETIONIST);
+	world.config.accessibility = RANDO_ACCESSIBILITY_ITEMS;
+	rando_prepare_goal(&world);
+	CHECK(world.config.accessibility == RANDO_ACCESSIBILITY_LOCATIONS);
+	goal_world(&world, RANDO_GOAL_GANON);
+	world.config.accessibility = RANDO_ACCESSIBILITY_ITEMS;
+	rando_prepare_goal(&world);
+	CHECK(world.config.accessibility == RANDO_ACCESSIBILITY_ITEMS);
+}
+
+static void logic_world(RandoWorld *world, RandoVariant variant, RandoLogic logic)
+{
+	RandoConfig config;
+
+	rando_config_init(&config);
+	config.logic = logic;
+	rando_world_init(world, variant, &config);
+}
+
+/* prepareWorld after its getters: RescueZelda outside standard, PegasusBoots under the four glitched logics. */
+static void check_pre_collect(void)
+{
+	static const RandoLogic glitched[] = {
+		RANDO_LOGIC_OVERWORLD_GLITCHES, RANDO_LOGIC_HYBRID_MAJOR_GLITCHES, RANDO_LOGIC_MAJOR_GLITCHES,
+		RANDO_LOGIC_NO_LOGIC,
+	};
+	RandoWorld world;
+	size_t i;
+
+	logic_world(&world, RANDO_VARIANT_OPEN, RANDO_LOGIC_NO_GLITCHES);
+	rando_prepare_pre_collect(&world);
+	CHECK(rando_items_has(&world.pre_collected, RANDO_ITEM_RescueZelda));
+	CHECK(!rando_items_has(&world.pre_collected, RANDO_ITEM_PegasusBoots));
+	CHECK(rando_items_count(&world.pre_collected) == 1);
+
+	logic_world(&world, RANDO_VARIANT_STANDARD, RANDO_LOGIC_NO_GLITCHES);
+	rando_prepare_pre_collect(&world);
+	CHECK(rando_items_count(&world.pre_collected) == 0);
+
+	for (i = 0; i < sizeof glitched / sizeof glitched[0]; i++) {
+		logic_world(&world, RANDO_VARIANT_STANDARD, glitched[i]);
+		rando_prepare_pre_collect(&world);
+		CHECK(rando_items_has(&world.pre_collected, RANDO_ITEM_PegasusBoots));
+		CHECK(rando_items_count(&world.pre_collected) == 1);
+	}
+}
+
+static const struct {
+	RandoRegionId region;
+	RandoBossSlot slot;
+	RandoBossId boss;
+} placed_bosses[] = {
+	{RANDO_REGION_EASTERN_PALACE, RANDO_BOSS_SLOT_BOSS, RANDO_BOSS_ARMOS_KNIGHTS},
+	{RANDO_REGION_DESERT_PALACE, RANDO_BOSS_SLOT_BOSS, RANDO_BOSS_LANMOLAS},
+	{RANDO_REGION_TOWER_OF_HERA, RANDO_BOSS_SLOT_BOSS, RANDO_BOSS_MOLDORM},
+	{RANDO_REGION_PALACE_OF_DARKNESS, RANDO_BOSS_SLOT_BOSS, RANDO_BOSS_HELMASAUR_KING},
+	{RANDO_REGION_SWAMP_PALACE, RANDO_BOSS_SLOT_BOSS, RANDO_BOSS_ARRGHUS},
+	{RANDO_REGION_SKULL_WOODS, RANDO_BOSS_SLOT_BOSS, RANDO_BOSS_MOTHULA},
+	{RANDO_REGION_THIEVES_TOWN, RANDO_BOSS_SLOT_BOSS, RANDO_BOSS_BLIND},
+	{RANDO_REGION_ICE_PALACE, RANDO_BOSS_SLOT_BOSS, RANDO_BOSS_KHOLDSTARE},
+	{RANDO_REGION_MISERY_MIRE, RANDO_BOSS_SLOT_BOSS, RANDO_BOSS_VITREOUS},
+	{RANDO_REGION_TURTLE_ROCK, RANDO_BOSS_SLOT_BOSS, RANDO_BOSS_TRINEXX},
+	{RANDO_REGION_GANONS_TOWER, RANDO_BOSS_SLOT_BOTTOM, RANDO_BOSS_ARMOS_KNIGHTS},
+	{RANDO_REGION_GANONS_TOWER, RANDO_BOSS_SLOT_MIDDLE, RANDO_BOSS_LANMOLAS},
+	{RANDO_REGION_GANONS_TOWER, RANDO_BOSS_SLOT_TOP, RANDO_BOSS_MOLDORM},
+	{RANDO_REGION_HYRULE_CASTLE_TOWER, RANDO_BOSS_SLOT_BOSS, RANDO_BOSS_AGAHNIM},
+	{RANDO_REGION_GANONS_TOWER, RANDO_BOSS_SLOT_BOSS, RANDO_BOSS_AGAHNIM2},
+};
+
+/* placeBosses with bossShuffle none: the baseline golden's Bosses block, whatever the slots held before. */
+static void check_place_bosses(RandoWeapons weapons)
+{
+	RandoWorld world;
+	RandoConfig config;
+	size_t i;
+
+	rando_config_init(&config);
+	config.mode_weapons = weapons;
+	rando_world_init(&world, RANDO_VARIANT_OPEN, &config);
+	for (i = 0; i < sizeof placed_bosses / sizeof placed_bosses[0]; i++)
+		rando_world_set_boss(&world, placed_bosses[i].region, placed_bosses[i].slot, RANDO_BOSS_TRINEXX);
+	rando_world_set_boss(&world, RANDO_REGION_TURTLE_ROCK, RANDO_BOSS_SLOT_BOSS, RANDO_BOSS_ARRGHUS);
+	rando_place_bosses(&world);
+	for (i = 0; i < sizeof placed_bosses / sizeof placed_bosses[0]; i++)
+		CHECK(rando_world_boss(&world, placed_bosses[i].region, placed_bosses[i].slot) == placed_bosses[i].boss);
+}
+
 int main(int argc, char **argv)
 {
 	test_fixtures_mode(TEST, argc, argv);
@@ -204,6 +330,11 @@ int main(int argc, char **argv)
 	check_medallions_golden();
 	check_medallion_index();
 	check_medallion_preset();
+	check_goal_triforce();
+	check_goal_accessibility();
+	check_pre_collect();
+	check_place_bosses(RANDO_WEAPONS_RANDOMIZED);
+	check_place_bosses(RANDO_WEAPONS_SWORDLESS);
 	printf(TEST ": hand-written cases passed\n");
 	return 0;
 }

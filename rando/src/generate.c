@@ -64,15 +64,20 @@ static bool run_attempt(RandoGen *gen, RandoStatus *status)
 	variant = gen->options.state == RANDO_OPTION_STATE_STANDARD ? RANDO_VARIANT_STANDARD : RANDO_VARIANT_OPEN;
 	rando_config_from_options(&gen->options, crystals_ganon, crystals_tower, &config);
 	rando_world_init(&gen->world, variant, &config);
+	rando_prepare_goal(&gen->world);
 
 	gen->stage = RANDO_STAGE_GET_ADVANCEMENT_ITEMS;
 	rando_pool_build(&gen->world, &gen->prng, &gen->pools);
+	gen->stage = RANDO_STAGE_NONE;
+	rando_prepare_pre_collect(&gen->world);
 
-	/* Neither stage may call collectItems: VT caches the collectable shop items on the first call. */
+	/* None of these stages may call collectItems: VT caches the collectable shop items on the first call. */
 	gen->stage = RANDO_STAGE_SET_SHOPS;
 	rando_set_shops(&gen->world);
 	gen->stage = RANDO_STAGE_SET_MEDALLIONS;
 	rando_set_medallions(&gen->world, &gen->prng);
+	gen->stage = RANDO_STAGE_PLACE_BOSSES;
+	rando_place_bosses(&gen->world);
 	gen->stage = RANDO_STAGE_NONE;
 
 	*status = RANDO_INCOMPLETE;
