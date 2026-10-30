@@ -63,6 +63,9 @@
       - [x] -O2 e2e generator
       - [x] Claims raised to all
   - [ ] 2.5 Measure on the host
+    - [x] Chunk 1: measure target and static figures
+    - [ ] Chunk 2: run-time driver
+    - [ ] Chunk 3: step note
 - [ ] Phase 3 — Options
   - [ ] 3.1 glitches: overworld_glitches
   - [ ] 3.2 glitches: hybrid_major_glitches

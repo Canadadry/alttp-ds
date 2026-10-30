@@ -23,7 +23,13 @@ GEN_DIR := $(BUILD)/o2
 GEN_OBJ := $(patsubst $(RANDO)/src/%.c,$(GEN_DIR)/obj/%.o,$(RANDO_SRC)) $(patsubst $(RANDO)/host/%.c,$(GEN_DIR)/host/%.o,$(HOST_SRC))
 LOGIC_BINS := $(addprefix $(BUILD)/,$(LOGIC_TESTS))
 
-.PHONY: test logic selftest e2e clean
+MEASURE := $(BUILD)/measure
+MEASURE_CFLAGS := -std=c99 -Wall -Wextra -Werror -O2 -fstack-usage -fno-stack-protector -U_FORTIFY_SOURCE
+MEASURE_OBJ := $(patsubst $(RANDO)/src/%.c,$(MEASURE)/host-O2/obj/%.o,$(RANDO_SRC)) $(MEASURE)/host-O2/host/case_reader.o
+MEASURE_OS_OBJ := $(patsubst $(RANDO)/src/%.c,$(MEASURE)/host-Os/obj/%.o,$(RANDO_SRC))
+MEASURE_PROBE := $(MEASURE)/host-O2/size_probe.o
+
+.PHONY: test logic selftest e2e measure clean
 
 test: $(UNIT_BINS)
 	@set -e; for t in $(UNIT_BINS); do ./$$t; done
@@ -73,6 +79,25 @@ $(GEN_DIR)/host/%.o: $(RANDO)/host/%.c $(HOST_HDR) $(RANDO_HDR)
 
 $(GEN): $(RANDO)/host/main/rando_gen.c $(GEN_OBJ) $(RANDO_HDR) $(HOST_HDR) | $(BUILD)
 	$(CC) $(CFLAGS) -O2 $(INCLUDES) -o $@ $< $(GEN_OBJ)
+
+measure: $(MEASURE_OBJ) $(MEASURE_OS_OBJ) $(MEASURE_PROBE)
+	@CC='$(CC)' MEASURE_DIR='$(MEASURE)' ./measure.sh
+
+$(MEASURE)/host-O2/obj/%.o: $(RANDO)/src/%.c $(RANDO_HDR)
+	@mkdir -p $(@D)
+	$(CC) $(MEASURE_CFLAGS) -I$(RANDO)/include -c -o $@ $<
+
+$(MEASURE)/host-Os/obj/%.o: $(RANDO)/src/%.c $(RANDO_HDR)
+	@mkdir -p $(@D)
+	$(CC) $(MEASURE_CFLAGS) -Os -I$(RANDO)/include -c -o $@ $<
+
+$(MEASURE)/host-O2/host/%.o: $(RANDO)/host/%.c $(HOST_HDR) $(RANDO_HDR)
+	@mkdir -p $(@D)
+	$(CC) $(MEASURE_CFLAGS) $(INCLUDES) -c -o $@ $<
+
+$(MEASURE_PROBE): measure/size_probe.c $(RANDO_HDR)
+	@mkdir -p $(@D)
+	$(CC) $(MEASURE_CFLAGS) -fno-common -I$(RANDO)/include -c -o $@ $<
 
 $(BUILD):
 	mkdir -p $@
