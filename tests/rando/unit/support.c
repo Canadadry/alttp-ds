@@ -289,6 +289,8 @@ void fixture_apply_config(const Fixture *fx, RandoConfig *c, const char *key, co
 		c->item_overflow_count_shield = int_value(fx, json);
 	else if (strcmp(key, "rom.BottleFill.Magic") == 0)
 		c->rom_bottle_fill_magic = int_value(fx, json);
+	else if (strcmp(key, "rom.freeItemMenu") == 0)
+		(void)int_value(fx, json);
 	else
 		fixture_fail(fx, "unknown config key");
 }

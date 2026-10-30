@@ -195,14 +195,15 @@ static void check_derivations(void)
 	CHECK(world.config.item_overflow_replacement_shield == RANDO_ITEM_FiftyRupees);
 }
 
-static int glitch_flags_set(const RandoConfig *c, int overworld)
+static int glitch_flags_set(const RandoConfig *c, int overworld, int major)
 {
-	int set = c->can_super_bunny + c->can_fake_flipper + c->can_super_speed + c->can_boots_clip
-		  + c->can_mirror_clip + c->can_water_walk + c->can_dungeon_revive;
-	int clear = !c->can_mirror_wrap + !c->can_owyba + !c->can_one_frame_clip_ow + !c->can_one_frame_clip_uw
-		    + !c->can_transition_wrapped + !c->can_bunny_surf + !c->can_bunny_revive;
+	int overworld_set = c->can_super_bunny + c->can_fake_flipper + c->can_super_speed + c->can_boots_clip
+			    + c->can_mirror_clip + c->can_water_walk + c->can_dungeon_revive;
+	int major_set = c->can_mirror_wrap + c->can_owyba + c->can_one_frame_clip_ow + c->can_one_frame_clip_uw
+			+ c->can_transition_wrapped;
 
-	return clear == 7 && set == (overworld ? 7 : 0);
+	return !c->can_bunny_surf && !c->can_bunny_revive && overworld_set == (overworld ? 7 : 0)
+	       && major_set == (major ? 5 : 0);
 }
 
 /* config/logic.php's OverworldGlitches block, outside VT's $glitched_logic for the vanilla dungeon items. */
@@ -213,13 +214,27 @@ static void check_overworld_glitches_derivation(void)
 
 	rando_config_init(&input);
 	rando_world_init(&world, RANDO_VARIANT_STANDARD, &input);
-	CHECK(glitch_flags_set(&world.config, 0));
+	CHECK(glitch_flags_set(&world.config, 0, 0));
 
 	input.logic = RANDO_LOGIC_OVERWORLD_GLITCHES;
 	rando_world_init(&world, RANDO_VARIANT_STANDARD, &input);
-	CHECK(glitch_flags_set(&world.config, 1));
+	CHECK(glitch_flags_set(&world.config, 1, 0));
 	CHECK(!world.config.rom_vanilla_keys && !world.config.rom_vanilla_big_keys && !world.config.rom_vanilla_maps
 	      && !world.config.rom_vanilla_compasses);
+}
+
+/* config/logic.php's MajorGlitches block, inside VT's $glitched_logic for the vanilla dungeon items. */
+static void check_major_glitches_derivation(void)
+{
+	RandoConfig input;
+	RandoWorld world;
+
+	rando_config_init(&input);
+	input.logic = RANDO_LOGIC_MAJOR_GLITCHES;
+	rando_world_init(&world, RANDO_VARIANT_STANDARD, &input);
+	CHECK(glitch_flags_set(&world.config, 1, 1));
+	CHECK(world.config.rom_vanilla_keys && world.config.rom_vanilla_big_keys && world.config.rom_vanilla_maps
+	      && world.config.rom_vanilla_compasses);
 }
 
 /* User story 14's irregular cases of VT's location class tree. */
@@ -1010,6 +1025,7 @@ int main(int argc, char **argv)
 	check_shop_inventory();
 	check_derivations();
 	check_overworld_glitches_derivation();
+	check_major_glitches_derivation();
 	check_location_classes();
 	check_set_item();
 	check_region_can_fill();

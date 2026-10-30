@@ -99,6 +99,6 @@
 - [x] Step 3.1 chunks
   - [x] Chunk 1: OverworldGlitches fixture
   - [x] Chunk 2: C replay and derivation case
-- [ ] Step 3.3 chunks
+- [x] Step 3.3 chunks
   - [x] Chunk 1: MajorGlitches fixture
-  - [ ] Chunk 2: C replay and derivation case
+  - [x] Chunk 2: C replay and derivation case

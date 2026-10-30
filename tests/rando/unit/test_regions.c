@@ -711,5 +711,6 @@ int main(int argc, char **argv)
 		return 0;
 	replay_every_row(FIXTURE_NOGLITCHES_ROWS);
 	replay_every_row(FIXTURE_OVERWORLD_GLITCHES_ROWS);
+	replay_every_row(FIXTURE_MAJOR_GLITCHES_ROWS);
 	return 0;
 }

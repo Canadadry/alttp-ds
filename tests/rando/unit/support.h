@@ -11,6 +11,7 @@
 #define FIXTURE_PREDICATE_VECTORS "oracle/predicate_vectors.txt"
 #define FIXTURE_NOGLITCHES_ROWS "oracle/noglitches_rows.txt"
 #define FIXTURE_OVERWORLD_GLITCHES_ROWS "oracle/overworld_glitches_rows.txt"
+#define FIXTURE_MAJOR_GLITCHES_ROWS "oracle/major_glitches_rows.txt"
 #define FIXTURE_POOL_LISTS "oracle/pool_lists.txt"
 #define FIXTURE_PREPARED_POOLS "oracle/prepared_pools.txt"
 
@@ -53,7 +54,8 @@ void fixture_parse_view(const Fixture *fx, const char *view, uint16_t out[RANDO_
 void fixture_parse_items(const Fixture *fx, const char *counts, const char *values, RandoItems *out);
 
 /* Sets the field of a VT config key from its JSON value; null leaves the field as it is. Fails the
- * record on an unknown key or value. */
+ * record on an unknown key or value. rom.freeItemMenu, read by VT only when writing the ROM, is
+ * checked to be an integer and ignored. */
 void fixture_apply_config(const Fixture *fx, RandoConfig *config, const char *key, const char *json);
 
 typedef struct PredicateColumn {
