@@ -15,7 +15,7 @@
     - [x] Chunk 3: shared case discovery
     - [x] Chunk 4: claims and trace-prefix gate
     - [x] Chunk 5: spoiler checks
-    - [ ] Chunk 6: CI
+    - [x] Chunk 6: CI
   - [ ] 2.2 World, regions and location rules for the baseline
   - [ ] 2.3 Pre-fill RNG consumers
     - [ ] 2.3.1 getAdvancementItems, generator driver and trace
