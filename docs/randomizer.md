@@ -556,3 +556,13 @@ None.
   query); the C port already matched every row.
 - `make measure`: ARM code+rodata 80.4 KB, stack peak 6 328 B, max case 19.8 ms
   (`item_placement-basic`, still over A-3), sweep max 8.0 ms; `make test` 65–82 ms; e2e ~0.17 s.
+
+### Step 3.1
+
+- Extractor walks a table of VT test trees; `tests/OverworldGlitches` → `overworld_glitches_rows.txt`
+  (1 204 rows, 41 methods, 23 files, VT agrees with every test). Goldens and fixtures byte-identical.
+- `make logic` replays them (a row's `logic` applied before world init); the C port matched every
+  row, no rule fix. A `make test` case pins world init's seven OverworldGlitches flags — it, not the
+  fixture, catches a missing derived flag. No row exercises `canSuperSpeed`.
+- `glitches-overworld_glitches` already at `all`. `make test` 74–93 ms, `logic` ~0.2 s, e2e ~0.16 s;
+  library unchanged.
