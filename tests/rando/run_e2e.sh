@@ -270,16 +270,31 @@ function check_keys(glob,   re, mg, mc, k, p, have) {
 	out = "    golden: " fd_g "\n    c: " fd_c "\n"
 	return 0
 }
-function check_pool(   np, k, i, n, re, v, g, c, all, x, first) {
+function in_pool(sec, key,   i) {
+	if (sec ~ /^(Bosses|Equipped|Shops|Special|meta)$/) return 0
+	for (i = 1; i <= npre; i++) if (key ~ PRE[i]) return 0
+	return 1
+}
+function check_pool(   np, k, v, g, c, all, x, first, at, pre, bad, y) {
 	np = slurp(ENVIRON["O"] "/pool.txt", PL)
 	if (np < 0) { out = "    c wrote no pool.txt\n"; return 0 }
 	load_entries()
-	n = 0
-	for (k = 1; k <= ndue; k++) if (DK[k] == "keys") { v = DA[k]; sub(/\t.*/, "", v); re[++n] = glob2re(v) }
+	npre = 0
+	for (k = 1; k <= ndue; k++) if (DK[k] == "keys") { v = DA[k]; sub(/\t.*/, "", v); PRE[++npre] = glob2re(v) }
+	for (k = 1; k <= gn; k++) at[GES[k] SUBSEP GEK[k]] = k
+	for (k = 1; k <= cn; k++) {
+		if (CEV[k] == "\"Nothing\"" || !in_pool(CES[k], CEK[k])) continue
+		x = CES[k] SUBSEP CEK[k]
+		if (x in at && GEV[at[x]] == CEV[k]) { pre[at[x]] = 1; continue }
+		y = "[" CES[k] "] \"" CEK[k] "\""
+		if (bad == "" || y < bad) {
+			bad = y
+			out = "    golden: " (x in at ? y ": " GEV[at[x]] : "<none>") "\n    c: " y ": " CEV[k] "\n"
+		}
+	}
+	if (bad != "") return 0
 	for (k = 1; k <= gn; k++) {
-		if (GES[k] ~ /^(Bosses|Equipped|Shops|Special|meta)$/) continue
-		for (i = 1; i <= n; i++) if (GEK[k] ~ re[i]) break
-		if (i <= n) continue
+		if (k in pre || !in_pool(GES[k], GEK[k])) continue
 		v = GEV[k]
 		sub(/^"/, "", v)
 		sub(/"$/, "", v)

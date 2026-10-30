@@ -295,6 +295,47 @@ fake pool.txt "Sword:1${nl}Arrow:1${nl}Bow:1${nl}Arrow:1${nl}Bomb:1$nl"
 gate "pool has an extra item" "two gamma$nl" 1 \
 	"DIVERGENT two${nl}  gamma: pool:${nl}    golden: Bomb:1 x0${nl}    c: Bomb:1 x1${nl}e2e: 0 pass, 1 divergent, 0 pending"
 
+uncle='    "Light World": {
+        "Uncle:1": "Sword:1"
+    },'
+partial "$bosses" "$prize" "$uncle" "$medallion"
+fake pool.txt "Arrow:1${nl}Bow:1${nl}Arrow:1$nl"
+gate "pre-fill leaves the pool" "two gamma$nl" 0 "PASS two (gamma)${nl}e2e: 1 pass, 0 divergent, 0 pending"
+
+partial "$bosses" "$prize" "$(printf '%s' "$uncle" | sed 's/Sword/Bow/')" "$medallion"
+gate "pre-fill differs" "two gamma$nl" 1 \
+	"DIVERGENT two${nl}  gamma: pool:${nl}    golden: [Light World] \"Uncle:1\": \"Sword:1\"${nl}    c: [Light World] \"Uncle:1\": \"Bow:1\"${nl}e2e: 0 pass, 1 divergent, 0 pending"
+
+partial "$bosses" "$prize" '    "Light World": {
+        "Zora:1": "Arrow:1"
+    },' "$medallion"
+gate "pre-fill on a key the golden lacks" "two gamma$nl" 1 \
+	"DIVERGENT two${nl}  gamma: pool:${nl}    golden: <none>${nl}    c: [Light World] \"Zora:1\": \"Arrow:1\"${nl}e2e: 0 pass, 1 divergent, 0 pending"
+
+partial "$bosses" "$prize" '    "Light World": {
+        "Zora:1": "Arrow:1",
+        "Uncle:1": "Bow:1",
+        "Witch:1": "Arrow:1"
+    },' "$medallion"
+gate "first offending pre-fill, bytewise" "two gamma$nl" 1 \
+	"DIVERGENT two${nl}  gamma: pool:${nl}    golden: [Light World] \"Uncle:1\": \"Sword:1\"${nl}    c: [Light World] \"Uncle:1\": \"Bow:1\"${nl}e2e: 0 pass, 1 divergent, 0 pending"
+
+partial "$bosses" "$prize" '    "Eastern Palace": {
+        "Eastern Palace - Big Chest:1": "Nothing"
+    },
+    "Light World": {
+        "Link'"'"'s House:1": "Nothing",
+        "Sahasrala:1": "Nothing",
+        "Uncle:1": "Nothing"
+    },' "$medallion"
+fake pool.txt "Sword:1${nl}Arrow:1${nl}Bow:1${nl}Arrow:1$nl"
+gate "Nothing is no pre-fill" "two gamma$nl" 0 "PASS two (gamma)${nl}e2e: 1 pass, 0 divergent, 0 pending"
+
+partial "$bosses" "$prize" "$uncle" "$medallion"
+fake pool.txt "Arrow:1${nl}Bow:1${nl}Arrow:1${nl}PendantOfCourage:1$nl"
+gate "a due keys entry is no pre-fill" "two gamma$nl" 1 \
+	"DIVERGENT two${nl}  gamma: pool:${nl}    golden: PendantOfCourage:1 x0${nl}    c: PendantOfCourage:1 x1${nl}e2e: 0 pass, 1 divergent, 0 pending"
+
 partial "$prize" "$(printf '%s' "$medallion" | sed 's/Ether/Bombos/')"
 gate "a later stage's failing check is not due" "two alpha$nl" 1 \
 	"DIVERGENT two${nl}  alpha: keys *Medallion:1:${nl}    golden: [Special] \"Misery Mire Medallion:1\": \"Ether:1\"${nl}    c: [Special] \"Misery Mire Medallion:1\": \"Bombos:1\"${nl}e2e: 0 pass, 1 divergent, 0 pending"
@@ -310,6 +351,15 @@ gate "attempts lack their newline" "two all$nl" 1 \
 
 cp "$g/cases/two/attempts" "$g/out/two/"
 gate "all pass after stage checks" "two all$nl" 0 "PASS two (all)${nl}e2e: 1 pass, 0 divergent, 0 pending"
+
+printf 'stage alpha\nstage beta\nstage gamma\ncheck gamma pool\ncheck gamma keys Zora:1\n' >"$s"
+fake trace.txt "$(golden_lines 4)$nl"
+partial '    "Light World": {
+        "Zora:1": "Arrow:1"
+    },'
+fake pool.txt "Sword:1${nl}Arrow:1${nl}Bow:1${nl}Arrow:1${nl}PendantOfCourage:1$nl"
+gate "a pre-fill on a due keys glob is left to that check" "two gamma$nl" 1 \
+	"DIVERGENT two${nl}  gamma: keys Zora:1:${nl}    golden: <end>${nl}    c: [Light World] \"Zora:1\": \"Arrow:1\"${nl}e2e: 0 pass, 1 divergent, 0 pending"
 named=
 
 echo "selftest: gate passed"

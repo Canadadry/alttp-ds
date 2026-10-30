@@ -49,7 +49,7 @@
       - [x] shufflePrizePacks stage and claims
     - [ ] 2.3.6 prepareWorld item pool and shuffles
       - [x] Chunk 1: prepared pools fixture
-      - [ ] Chunk 2: generalized pool check
+      - [x] Chunk 2: generalized pool check
       - [ ] Chunk 3: generate_until and the Boots edit
       - [ ] Chunk 4: prepareWorld pools stage
       - [ ] Chunk 5: pool.txt, check line and claims
