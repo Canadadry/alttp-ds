@@ -120,9 +120,6 @@ if [ -z "$names" ]; then
 	echo "e2e: no cases"
 	exit 0
 fi
-set -f
-set -- $names
-set +f
 
 # Compares one claim's C output (O) with its golden (G), prints the detail lines
 # of the first failure and exits 1, or exits 0. MODE is "all" or "stage"; a
@@ -334,59 +331,89 @@ BEGIN {
 	}
 }'
 
-# run_claim <case> <stage> <draws> <due>: prints the detail lines and returns 1
-# when DIVERGENT.
-nout=0
+# Writes $tmp/plan, one "<index>\t<case>[\t<stage>\t<draws>\t<due>]" line per
+# case in case order, the claim fields only when claimed, and prints the output
+# directory of each claim.
+dirs="$(printf '%s\n' "$names" | TMP="$tmp" awk -F '\t' '
+FILENAME != "-" { claim[$1] = $0; next }
+{
+	line = ++n "\t" $0
+	if ($0 in claim) {
+		line = n "\t" claim[$0]
+		print ENVIRON["TMP"] "/" n
+	}
+	print line > (ENVIRON["TMP"] "/plan")
+}' "$tmp/claims" -)"
+
+# run_claim <index> <case> <stage> <draws> <due>: writes $tmp/<index>.detail,
+# the detail lines, $tmp/<index>.err, the generator's stdout and stderr, and
+# $tmp/<index>.status, 1 when DIVERGENT, else 0.
 run_claim() {
-	golden="$cases_dir/$1"
-	if [ ! -f "$gen" ] || [ ! -x "$gen" ]; then
-		echo "  no C generator: $gen"
-		return 1
-	fi
-	nout=$((nout + 1))
-	out="$tmp/out$nout"
-	mkdir "$out"
+	golden="$cases_dir/$2"
+	out="$tmp/$1"
 	status=0
-	if [ "$2" = all ]; then
-		"$gen" "$golden" "$out" >&2 || status=$?
+	if [ "$3" = all ]; then
+		"$gen" "$golden" "$out" >"$out.err" 2>&1 || status=$?
 	else
-		"$gen" "$golden" "$out" "$2" >&2 || status=$?
+		"$gen" "$golden" "$out" "$3" >"$out.err" 2>&1 || status=$?
+	fi
+	if [ "$3" = all ] && [ "$status" -ne 0 ]; then
+		echo "  C generator exited $status" >"$out.detail"
+		echo 1 >"$out.status"
+		return
 	fi
 	mode=stage
-	if [ "$2" = all ]; then
-		if [ "$status" -ne 0 ]; then
-			echo "  C generator exited $status"
-			return 1
-		fi
-		mode=all
-	fi
-	G="$golden" O="$out" MODE="$mode" DRAWS="$3" DUE="$4" awk "$CLAIM_AWK"
+	[ "$3" = all ] && mode=all
+	status=0
+	G="$golden" O="$out" MODE="$mode" DRAWS="$4" DUE="$5" awk "$CLAIM_AWK" >"$out.detail" 2>>"$out.err" || status=$?
+	echo "$status" >"$out.status"
 }
 
-tab="$(printf '\t')"
-pass=0
-divergent=0
-pending=0
-for name in "$@"; do
-	stage=
-	while IFS="$tab" read -r claimed claimed_stage claimed_draws claimed_due; do
-		if [ "$claimed" = "$name" ]; then
-			stage="$claimed_stage"
-			draws="$claimed_draws"
-			due="$claimed_due"
+nogen=
+if [ ! -f "$gen" ] || [ ! -x "$gen" ]; then
+	nogen="  no C generator: $gen"
+elif [ -n "$dirs" ]; then
+	mkdir $dirs
+	tab="$(printf '\t')"
+	while IFS="$tab" read -r index name stage draws due; do
+		if [ -n "$stage" ]; then
+			run_claim "$index" "$name" "$stage" "$draws" "$due" &
 		fi
-	done <"$tmp/claims"
-	if [ -z "$stage" ]; then
-		echo "PENDING $name"
-		pending=$((pending + 1))
-	elif run_claim "$name" "$stage" "$draws" "$due" >"$tmp/detail"; then
-		echo "PASS $name ($stage)"
-		pass=$((pass + 1))
-	else
-		echo "DIVERGENT $name"
-		cat "$tmp/detail"
-		divergent=$((divergent + 1))
-	fi
-done
-echo "e2e: $pass pass, $divergent divergent, $pending pending"
-[ "$divergent" -eq 0 ]
+	done <"$tmp/plan"
+	wait
+fi
+
+TMP="$tmp" NOGEN="$nogen" awk -F '\t' '
+function slurp(path,   s, r) {
+	s = ""
+	r = (getline s < path)
+	close(path)
+	return r > 0 ? s : ""
+}
+BEGIN { RS = "\001" }
+{
+	split($0, P, "\n")
+	for (i = 1; i in P; i++) {
+		if (P[i] == "") continue
+		nf = split(P[i], F, "\t")
+		if (nf == 2) { print "PENDING " F[2]; pending++; continue }
+		base = ENVIRON["TMP"] "/" F[1]
+		if (ENVIRON["NOGEN"] != "") { detail = ENVIRON["NOGEN"] "\n"; st = 1 }
+		else {
+			err = slurp(base ".err")
+			if (err != "") {
+				fflush()
+				printf "%s", err > "/dev/stderr"
+				fflush("/dev/stderr")
+			}
+			detail = slurp(base ".detail")
+			st = slurp(base ".status") != "0\n"
+		}
+		if (st) { print "DIVERGENT " F[2]; printf "%s", detail; divergent++ }
+		else { print "PASS " F[2] " (" F[3] ")"; pass++ }
+	}
+}
+END {
+	printf "e2e: %d pass, %d divergent, %d pending\n", pass, divergent, pending
+	exit (divergent > 0)
+}' "$tmp/plan"

@@ -68,6 +68,10 @@
     - [x] Chunk 3: step note
 - [ ] Phase 3 — Options
   - [ ] 3.0 Claim what is green, refactor duplications
+    - [x] Chunk 1: parallel e2e gate
+    - [ ] Chunk 2: claims
+    - [ ] Chunk 3: owed list and closed rows
+    - [ ] Chunk 4: refactor duplications
   - [ ] 3.1 glitches: overworld_glitches
   - [ ] 3.2 glitches: hybrid_major_glitches
   - [ ] 3.3 glitches: major_glitches

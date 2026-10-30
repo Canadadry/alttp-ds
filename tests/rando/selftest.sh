@@ -70,6 +70,8 @@ printf 'stage alpha\nstage zero\nstage beta\nstage gamma\n' >"$g/stages.txt"
 cat >"$g/gen" <<'EOF2'
 #!/bin/sh
 src="$FAKE_OUT/$(basename "$1")"
+if [ -f "$src/sleep" ]; then sleep "$(cat "$src/sleep")"; fi
+if [ -f "$src/stderr" ]; then cat "$src/stderr" >&2; fi
 for f in "$src"/*; do if [ -f "$f" ]; then cp "$f" "$2"/; fi; done
 if [ -f "$src/status" ]; then exit "$(cat "$src/status")"; fi
 EOF2
@@ -148,7 +150,7 @@ cp "$g/cases/two/attempts" "$g/out/two/"
 fake trace.txt "$(golden_lines 5)$nl"
 gate "all, short C trace" "two all$nl" 1 \
 	"PENDING one${nl}DIVERGENT two${nl}  c trace ends after 5 draws, claim needs 6${nl}e2e: 0 pass, 1 divergent, 1 pending"
-cp "$g/cases/two/trace.txt" "$g/out/two/"
+cp "$g/cases/two/trace.txt" "$g/cases/two/attempts" "$g/cases/two/spoiler.json" "$g/out/two/"
 
 fake spoiler.json "{$nl    \"meta\": {$nl        \"seed\": 2$nl    }$nl}$nl"
 gate "spoiler mismatch" "two all$nl" 1 \
@@ -376,5 +378,27 @@ fake pool.txt "Sword:1${nl}Arrow:1${nl}Bow:1${nl}Arrow:1${nl}PendantOfCourage:1$
 gate "a pre-fill on a due keys glob is left to that check" "two gamma$nl" 1 \
 	"DIVERGENT two${nl}  gamma: keys Zora:1:${nl}    golden: <end>${nl}    c: [Light World] \"Zora:1\": \"Arrow:1\"${nl}e2e: 0 pass, 1 divergent, 0 pending"
 named=
+
+mkdir -p "$g/cases/one" "$g/out/one"
+printf 'stage alpha\nstage beta\nstage gamma\n' >"$s"
+for f in trace.txt attempts spoiler.json; do cp "$g/cases/two/$f" "$g/cases/one/"; cp "$g/cases/two/$f" "$g/out/one/"; done
+cp "$g/cases/two/trace.txt" "$g/cases/two/attempts" "$g/cases/two/spoiler.json" "$g/out/two/"
+printf '0.2' >"$g/out/one/sleep"
+gate "slowest first case still reported first" "two all${nl}one all$nl" 0 \
+	"PASS one (all)${nl}PASS two (all)${nl}e2e: 2 pass, 0 divergent, 0 pending"
+
+printf '0\n' >"$g/out/one/attempts"
+fake spoiler.json "{$nl}$nl"
+gate "two divergent cases keep their own details" "one all${nl}two all$nl" 1 \
+	"DIVERGENT one${nl}  attempts: first differing line 1:${nl}    golden: 1${nl}    c: 0${nl}DIVERGENT two${nl}  spoiler.json: first differing line 2:${nl}    golden:     \"Bosses\": {${nl}    c: }${nl}e2e: 0 pass, 2 divergent, 0 pending"
+
+cp "$g/cases/two/attempts" "$g/out/one/"
+cp "$g/cases/two/spoiler.json" "$g/out/two/"
+printf 'one says\n' >"$g/out/one/stderr"
+printf '4' >"$g/out/one/status"
+fake stderr "two says$nl"
+gate "generator stderr reaches stderr, grouped in case order" "one all${nl}two all$nl" 1 \
+	"DIVERGENT one${nl}  C generator exited 4${nl}PASS two (all)${nl}e2e: 1 pass, 1 divergent, 0 pending" \
+	"one says${nl}two says"
 
 echo "selftest: gate passed"
