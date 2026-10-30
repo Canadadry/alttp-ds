@@ -1,17 +1,23 @@
-- [ ] Phase 1 — Oracle
+- [x] Phase 1 — Oracle
   - [x] 1.1 Bare harness, then vt.patch, retry wrapper and gen_golden.sh, proven deterministic
     - [x] Chunk 1: bare harness
     - [x] Chunk 2: patched VT and its PRNG
     - [x] Chunk 3: retry wrapper, baseline golden, determinism
       - [x] Retry wrapper and per-case generation
       - [x] Baseline golden
-  - [ ] 1.2 Every golden committed
+  - [x] 1.2 Every golden committed
     - [x] Chunk 1: case list
     - [x] Chunk 2: goldens
 - [ ] Phase 2 — C port, baseline
   - [ ] 2.1 PRNG and fy_shuffle, convergence gate claims, CI
   - [ ] 2.2 World, regions and location rules for the baseline
   - [ ] 2.3 Pre-fill RNG consumers
+    - [ ] 2.3.1 getAdvancementItems, generator driver and trace
+    - [ ] 2.3.2 setMedallions (with setShops baseline path)
+    - [ ] 2.3.3 fillPrizes (with placeBosses baseline path)
+    - [ ] 2.3.4 setFountains
+    - [ ] 2.3.5 shufflePrizePacks
+    - [ ] 2.3.6 prepareWorld item pool and shuffles
   - [ ] 2.4 RandomAssumed fill, isWinnable() and the retry loop
   - [ ] 2.5 Measure on the host
 - [ ] Phase 3 — Options

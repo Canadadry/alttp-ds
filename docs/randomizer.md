@@ -180,14 +180,29 @@ is required only at the last step. Stages follow the order in which
 VT draws from the RNG, read from `Randomizer::randomize()`.
 
 1. **PRNG and `fy_shuffle`**, the claim and stage-prefix checking of the convergence gate, and
-   CI. Verified by unit tests against VT on N draws.
+   CI. A stage claim also checks the spoiler entries its stages determine (step 3 names them).
+   Also resolves Phase 1's warnings on the files it rewrites: one shared case discovery for
+   `run_e2e.sh` and `gen_golden.sh`, and a `prng_vectors.txt` header naming what verifies it. Verified by unit tests against VT on N draws.
 2. **World, regions and location rules** for the baseline settings. Verified by the
    `tests/NoGlitches` location tests ported from VT.
-3. **Pre-fill RNG consumers** (shops, medallions, bosses, prizes with their internal attempts,
-   fountains, prize packs, item pool), one step per consumer in VT's draw order, numbered at the
-   end of Phase 1. Each claims the baseline up to its stage.
+3. **Pre-fill RNG consumers**, one sub-step per stage in VT's draw order (step 1.1 note). Each
+   claims the baseline up to its stage and checks the spoiler entries listed. Step 3 has no note
+   of its own: its sub-steps get `### Step 2.3.k` notes, and it is done when 2.3.6 has one.
+   1. **`getAdvancementItems`**, plus the generator driver, per-attempt reseeding and the C
+      `trace.txt` writer the gate calls.
+   2. **`setMedallions`**, with `setShops`' baseline path (no draw). Checks the medallions and
+      `Shops`.
+   3. **`fillPrizes`** with its 5 internal attempts, with `placeBosses`' baseline path (no draw).
+      Checks the dungeon prizes and `Bosses`.
+   4. **`setFountains`.** Checks the two fountain bottles.
+   5. **`shufflePrizePacks`.** Trace only: prize packs are not in the spoiler.
+   6. **`prepareWorld`'s own work:** the rest of the item pool and its shuffles. Checks that the
+      pool's items equal those the golden spoiler places, minus the pre-filled ones.
 4. **`RandomAssumed` fill, `isWinnable()` and the retry loop.** Claims the baseline case: full
-   spoiler equality and the same `attempts`; also claims the retry-seed cases.
+   spoiler equality and the same `attempts`; also claims the retry-seed cases. No golden has a
+   failed attempt (step 1.2 note), so the loop is also verified by the identity "attempt k of
+   seed s is attempt 0 of seed s+k": seed 0 with attempt 0 forced to fail (host-only injection,
+   once mid-fill, once at `isWinnable()`) must reproduce the baseline golden, with `attempts` 1.
 5. **Measure on the host**, as Phase 4 step 1 does, now that the state layout and the fill are
    fixed and before options build on them.
 
@@ -235,3 +250,18 @@ None.
   64, `setFountains` 2, `shufflePrizePacks` 7, `prepareWorld` (its own shuffles) 153, `fill` 573.
   `setShops`, `placeBosses` and `crystals` draw nothing in this preset. `getAdvancementItems` and
   `prepareWorld` are consumers § 2 does not list.
+
+### Step 1.2
+
+- 43 matrix cases added (`<option>-<value>`, seed 1, config one line off baseline's) and their
+  goldens generated: two `--fresh` runs byte-identical to each other and to the committed files;
+  baseline unchanged.
+- Every case succeeds on attempt 0. Draws: 773 (`item_placement-basic`) to 924
+  (`dungeon_items-full`); baseline 805. `item_pool-hard` and `-expert` have baseline's trace (VT at
+  this commit only changes shops and overflow for them).
+- Stages: 41 cases have baseline's sequence. `crystals_*-random` add `crystals` first;
+  `state-retro` adds `setShops` after `getAdvancementItems`. `placeBosses` draws in no case.
+- **No retry-seed case** (`guideline`): bounded scan, baseline config seeds 2–8000 and each of the
+  43 configs seeds 2–200 (16 556 generations), all succeed on attempt 0. VT's failure paths
+  (`Cannot Place Prize`, unwinnable) exist but never fire here. The plan's "at least one retry
+  seed" is unmet; Phase 2 step 4's retry-seed claim is empty.
