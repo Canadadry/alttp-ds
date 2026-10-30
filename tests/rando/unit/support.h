@@ -1,6 +1,9 @@
 #ifndef RANDO_TEST_SUPPORT_H
 #define RANDO_TEST_SUPPORT_H
 
+#include "rando_items.h"
+
+#include <stdint.h>
 #include <stdio.h>
 
 #define FIXTURE_WORLD_DUMP "oracle/world_dump.txt"
@@ -36,5 +39,24 @@ int fixture_next(Fixture *fx);
 void fixture_fail(const Fixture *fx, const char *why);
 
 void fixture_close(Fixture *fx);
+
+/* Parses a fixture view (`E` or `A`, then `:<raw name>=<count>|...`) into out; `A` starts from
+ * all, which may be NULL when the record cannot use it. Fails the record on a malformed view. */
+void fixture_parse_view(const Fixture *fx, const char *view, uint16_t out[RANDO_ITEM_COUNT],
+			const uint16_t all[RANDO_ITEM_COUNT]);
+
+/* Both views, `A` meaning rando_items_all. */
+void fixture_parse_items(const Fixture *fx, const char *counts, const char *values, RandoItems *out);
+
+typedef struct PredicateColumn {
+	const char *name;
+	int (*eval)(const RandoItems *items, const RandoConfig *config);
+} PredicateColumn;
+
+/* Replays the predicate vectors: every value of a column named in columns[0..ncolumns) is checked
+ * against eval on its multiset and config, the other columns are skipped. Every entry of columns
+ * must appear in the fixture's columns record. Returns the number of pred records replayed and
+ * stores the number of values checked in *values. */
+int fixture_replay_predicates(const char *test, const PredicateColumn *columns, int ncolumns, long *values);
 
 #endif

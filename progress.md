@@ -18,7 +18,7 @@
     - [x] Chunk 6: CI
   - [ ] 2.2 World, regions and location rules for the baseline
     - [x] Chunk 1: VT logic extractor and fixtures
-    - [ ] Chunk 2: items and bosses
+    - [x] Chunk 2: items and bosses
     - [ ] Chunk 3: world core
     - [ ] Chunk 4: overworld regions and escape variants
     - [ ] Chunk 5: Light World dungeons
