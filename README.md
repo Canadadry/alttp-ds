@@ -38,7 +38,7 @@ When no game is running (title, file select, boot), the bottom screen shows a Tr
 
 ### Settings
 
-Press **Select** in game to open the save menu. It has three rows: **Continue**, **Save and Quit**, and **Settings**. Settings are saved in your `.sav` file.
+Press **Select** in game to open the save menu. It has three rows: **Continue**, **Save and Quit**, and **Settings**. Settings are saved with your game save.
 
 | Setting | Options | What it does |
 |---|---|---|
@@ -78,7 +78,7 @@ You can remap the controls however you like in the settings menu.
 
   On Windows: `py -3 -m venv .venv`, then `.venv\Scripts\pip install Pillow PyYAML`. `python3 build.py` uses that `.venv` when the Python on `PATH` does not already have those libraries. On a very new Python, PyYAML may compile from source. On macOS that needs the Xcode command line tools (`xcode-select --install`).
 - Git.
-- To run it: [melonDS](https://melonds.melonemu.org/), or a DS, DS Lite, or DSi with a DLDI flashcart or Twilight Menu++.
+- To run it: [melonDS](https://melonds.melonemu.org/) 0.9.5 or newer, including RetroArch's `melonds` core and Delta on iOS; or a DS, DS Lite, or DSi with a flashcart or TWiLight Menu++.
 
 ### 1. Clone
 
@@ -111,9 +111,10 @@ On Windows, `py build.py` does the same thing. Either command uses `.venv` when 
 
 ## Saves
 
-- On a flashcart the save is an 8 KB `.sav` in TWiLight Menu++'s save location, named after the ROM. It holds the three game slots and your Settings. melonDS folder sync still writes `lttp-ds.sav` in the synced folder.
-- Settings are stored in unused space past the save slots, so they travel with the file.
-- A save from an older build at the card root, or in `saves/sram.dat`, is still read and written to that location on the next save.
+- The save is the cartridge's 8 KB (64 kbit) EEPROM. Your emulator or flashcart keeps it as its own `.sav` for the ROM; melonDS writes it next to the ROM, named after it. It holds the three game slots and your Settings.
+- Settings are stored in unused space past the save slots, so they travel with the save.
+- An older build's save is an 8 KB `.sav` with the same layout, found in TWiLight Menu++'s save folder, at the card root, or as `saves/sram.dat`. It is not read automatically any more: copy it in place of the `.sav` your emulator or flashcart uses for this ROM, while the game is closed.
+- On real hardware, saving depends on the flashcart's or nds-bootstrap's save emulation for an unknown game code (`ZLTP`). If it gives the game no 64 kbit EEPROM, the game still runs but saves do not stick.
 
 ## Not included
 
@@ -127,6 +128,7 @@ alttp-ds/
   platform/nds/
     source/             ARM9: host, video, HUD, map, save, audio
     arm7/               ARM7: sound-channel driver
+    calico/             patched calico 1.2.0 boot stubs and IRQ handler, so the ROM boots on melonDS 0.9.5; re-sync them when devkitPro's calico changes
     bottom-screen/      HUD artwork (PNG + grit)
     include/            stubs that replace SDL / Opus
     prepare_assets.py   reads vendor/zelda3/assets/zelda3.sfc and stages the game data for the link

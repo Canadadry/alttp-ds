@@ -1,19 +1,16 @@
 #include <nds.h>
-#include <fat.h>
 
 #include "zelda_bottom.h"
 #include "zelda_host.h"
 #include "zelda_save.h"
 #include "zelda_video.h"
 
-int main(int argc, char **argv)
+int main(void)
 {
 	u16 *framebuffer;
 
 	lcdMainOnTop();
 	ZeldaVideoShowBottom();
-	fatInitDefault();
-	ZeldaSavePrepare(argc, argv);
 
 	ZeldaHostInit();
 	framebuffer = ZeldaVideoFramebuffer();
