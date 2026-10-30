@@ -43,6 +43,7 @@ const TEST_CONFIG = ['difficulty' => 'test_rules', 'logic' => 'NoGlitches'];
 const ROW_TREES = [
     'NoGlitches' => 'noglitches_rows.txt',
     'OverworldGlitches' => 'overworld_glitches_rows.txt',
+    'MajorGlitches' => 'major_glitches_rows.txt',
 ];
 const VARIANTS = ['standard', 'open'];
 // Every key read by the ported files: Region/Standard, Region/Open, Region, Location*, Boss, ItemCollection.
@@ -1059,6 +1060,19 @@ $headers = [
         '#   queries: access (Location::canAccess), fill (Location::fill), region_can_fill (Region::canFill),',
         '#   enter (Region::canEnter), complete (Region::canComplete); the C port must return the VT answer',
     ],
+    'major_glitches_rows.txt' => [
+        "# VT's tests/MajorGlitches rows run inside VT, written by extract_logic.php (run by gen_golden.sh).",
+        '# Each row was replayed by VT from its record alone; test_regions --fixtures checks the C port.',
+        '# Fields are tab-separated; views as in world_dump.txt.',
+        '# row <test file under tests/MajorGlitches> <method> <provider or -> <index> <variant> <config overrides or -> <preset items or ->',
+        '#   <counts view> <values view> <query> <location or region> <item or -> <test expectation> <VT answer>',
+        '#   config overrides: <key>=<JSON>,... applied with World::testSetConfig on the World::factory test world',
+        '#   a logic override is also passed to World::factory with the test config, before the testSetConfig calls',
+        '#   rom.freeItemMenu is ROM-only (VT\'s constructor derives it from glitched logic); a replay may ignore it',
+        '#   preset items: <location>=<item>|... set with Location::setItem before the query',
+        '#   queries: access (Location::canAccess), fill (Location::fill), region_can_fill (Region::canFill),',
+        '#   enter (Region::canEnter), complete (Region::canComplete); the C port must return the VT answer',
+    ],
 ];
 $bodies = [
     'world_dump.txt' => $world_lines,
@@ -1078,6 +1092,7 @@ foreach ($mismatches as $tree => $lines) {
         fwrite(STDERR, "extract_logic: VT disagrees with its $tree test: $line\n");
     }
 }
-printf("extract_logic: %d world records, %d predicate records, %d NoGlitches rows (%d VT answers differ from the test), %d OverworldGlitches rows (%d differ), %d collect records\n",
+printf("extract_logic: %d world records, %d predicate records, %d NoGlitches rows (%d VT answers differ from the test), %d OverworldGlitches rows (%d differ), %d MajorGlitches rows (%d differ), %d collect records\n",
     count($world_lines), count($predicate_lines), count($row_lines['NoGlitches']), count($mismatches['NoGlitches']),
-    count($row_lines['OverworldGlitches']), count($mismatches['OverworldGlitches']), count($collect_lines));
+    count($row_lines['OverworldGlitches']), count($mismatches['OverworldGlitches']),
+    count($row_lines['MajorGlitches']), count($mismatches['MajorGlitches']), count($collect_lines));
