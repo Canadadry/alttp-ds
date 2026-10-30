@@ -28,6 +28,9 @@ MEASURE_CFLAGS := -std=c99 -Wall -Wextra -Werror -O2 -fstack-usage -fno-stack-pr
 MEASURE_OBJ := $(patsubst $(RANDO)/src/%.c,$(MEASURE)/host-O2/obj/%.o,$(RANDO_SRC)) $(MEASURE)/host-O2/host/case_reader.o
 MEASURE_OS_OBJ := $(patsubst $(RANDO)/src/%.c,$(MEASURE)/host-Os/obj/%.o,$(RANDO_SRC))
 MEASURE_PROBE := $(MEASURE)/host-O2/size_probe.o
+MEASURE_BIN := $(MEASURE)/rando_measure
+MEASURE_SWEEP ?= 1024
+MEASURE_REPS ?= 5
 
 .PHONY: test logic selftest e2e measure clean
 
@@ -80,8 +83,8 @@ $(GEN_DIR)/host/%.o: $(RANDO)/host/%.c $(HOST_HDR) $(RANDO_HDR)
 $(GEN): $(RANDO)/host/main/rando_gen.c $(GEN_OBJ) $(RANDO_HDR) $(HOST_HDR) | $(BUILD)
 	$(CC) $(CFLAGS) -O2 $(INCLUDES) -o $@ $< $(GEN_OBJ)
 
-measure: $(MEASURE_OBJ) $(MEASURE_OS_OBJ) $(MEASURE_PROBE)
-	@CC='$(CC)' MEASURE_DIR='$(MEASURE)' ./measure.sh
+measure: $(MEASURE_OBJ) $(MEASURE_OS_OBJ) $(MEASURE_PROBE) $(MEASURE_BIN)
+	@CC='$(CC)' MEASURE_DIR='$(MEASURE)' MEASURE_SWEEP='$(MEASURE_SWEEP)' MEASURE_REPS='$(MEASURE_REPS)' ./measure.sh
 
 $(MEASURE)/host-O2/obj/%.o: $(RANDO)/src/%.c $(RANDO_HDR)
 	@mkdir -p $(@D)
@@ -98,6 +101,10 @@ $(MEASURE)/host-O2/host/%.o: $(RANDO)/host/%.c $(HOST_HDR) $(RANDO_HDR)
 $(MEASURE_PROBE): measure/size_probe.c $(RANDO_HDR)
 	@mkdir -p $(@D)
 	$(CC) $(MEASURE_CFLAGS) -fno-common -I$(RANDO)/include -c -o $@ $<
+
+$(MEASURE_BIN): measure/rando_measure.c $(MEASURE_OBJ) $(RANDO_HDR) $(HOST_HDR)
+	@mkdir -p $(@D)
+	$(CC) $(MEASURE_CFLAGS) -D_POSIX_C_SOURCE=200809L $(INCLUDES) -pthread -o $@ $< $(MEASURE_OBJ)
 
 $(BUILD):
 	mkdir -p $@
