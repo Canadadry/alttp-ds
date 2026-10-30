@@ -9,6 +9,7 @@ endif
 GAME_TITLE     := Legend of Zelda
 GAME_SUBTITLE1 := A Link to the Past
 GAME_SUBTITLE2 := Nintendo
+GAME_CODE      := ZLTP
 
 ifeq ($(origin LTTP_ROOT),undefined)
   LTTP_ROOT := $(CURDIR)
@@ -145,6 +146,8 @@ else
 #---------------------------------------------------------------------------------
 
 $(OUTPUT).nds: $(OUTPUT).elf $(GAME_ICON) $(ARM7_ELF)
+	$(SILENTCMD)ndstool -c $@ -9 $< $(_ARM7_ELF) -b $(GAME_ICON) "$(GAME_TITLE);$(GAME_SUBTITLE1);$(GAME_SUBTITLE2)" $(_ADDFILES) -g $(GAME_CODE)
+	$(SILENTMSG) built ... $(notdir $@)
 $(OUTPUT).elf: $(OFILES)
 
 ifeq ($(suffix $(ICON)),.png)

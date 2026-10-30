@@ -1,5 +1,6 @@
 - [ ] Phase 1 — The ROM exposes an EEPROM
   - [ ] 1.1 ndstool writes game code ZLTP
+    - [x] Makefile passes -g ZLTP to ndstool
   - [ ] 1.2 The ARM9 reaches the EEPROM (probe)
 - [ ] Phase 2 — Save through the EEPROM only
   - [ ] 2.1 Rewrite zelda_save.c for the EEPROM
