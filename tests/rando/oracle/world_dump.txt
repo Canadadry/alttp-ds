@@ -727,3 +727,266 @@ location	open	Turtle Rock Medallion	Medallions	Location\Medallion	-
 location	open	Misery Mire Medallion	Medallions	Location\Medallion	-
 location	open	Waterfall Bottle	Fountains	Location\Fountain	-
 location	open	Pyramid Bottle	Fountains	Location\Fountain	-
+region	inverted	North East Light World	Light World	Region\Inverted\LightWorld\NorthEast	Ganon	-	-
+region	inverted	North West Light World	Light World	Region\Inverted\LightWorld\NorthWest	-	-	-
+region	inverted	South Light World	Light World	Region\Inverted\LightWorld\South	-	-	-
+region	inverted	Escape	Hyrule Castle	Region\Inverted\HyruleCastleEscape	Zelda	-	BigKey|BigKeyH2|Compass|CompassH2|Key|KeyH2|Map|MapH2
+region	inverted	Eastern Palace	Eastern Palace	Region\Inverted\EasternPalace	Eastern Palace - Prize	boss=Armos Knights	BigKey|BigKeyP1|Compass|CompassP1|Key|KeyP1|Map|MapP1|PendantOfWisdom
+region	inverted	Desert Palace	Desert Palace	Region\Inverted\DesertPalace	Desert Palace - Prize	boss=Lanmolas	BigKey|BigKeyP2|Compass|CompassP2|Key|KeyP2|Map|MapP2|MapP2|PendantOfPower
+region	inverted	West Death Mountain	Death Mountain	Region\Inverted\LightWorld\DeathMountain\West	-	-	-
+region	inverted	East Death Mountain	Death Mountain	Region\Inverted\LightWorld\DeathMountain\East	-	-	-
+region	inverted	Tower of Hera	Tower Of Hera	Region\Inverted\TowerOfHera	Tower of Hera - Prize	boss=Moldorm	BigKey|BigKeyP3|Compass|CompassP3|Key|KeyP3|Map|MapP3|PendantOfWisdom
+region	inverted	Hyrule Castle Tower	Castle Tower	Region\Inverted\HyruleCastleTower	Agahnim	-	BigKey|BigKeyA1|Compass|CompassA1|Key|KeyA1|Map|MapA1
+region	inverted	East Dark World Death Mountain	Dark World	Region\Inverted\DarkWorld\DeathMountain\East	-	-	-
+region	inverted	West Dark World Death Mountain	Dark World	Region\Inverted\DarkWorld\DeathMountain\West	-	-	-
+region	inverted	North East Dark World	Dark World	Region\Inverted\DarkWorld\NorthEast	Ganon	-	-
+region	inverted	North West Dark World	Dark World	Region\Inverted\DarkWorld\NorthWest	-	-	-
+region	inverted	South Dark World	Dark World	Region\Inverted\DarkWorld\South	-	-	-
+region	inverted	Mire	Dark World	Region\Inverted\DarkWorld\Mire	-	-	-
+region	inverted	Palace of Darkness	Dark Palace	Region\Inverted\PalaceOfDarkness	Palace of Darkness - Prize	boss=Helmasaur King	BigKey|BigKeyD1|Compass|CompassD1|Key|KeyD1|Map|MapD1|Crystal1
+region	inverted	Swamp Palace	Swamp Palace	Region\Inverted\SwampPalace	Swamp Palace - Prize	boss=Arrghus	BigKey|BigKeyD2|Compass|CompassD2|Key|KeyD2|Map|MapD2|Crystal2
+region	inverted	Skull Woods	Skull Woods	Region\Inverted\SkullWoods	Skull Woods - Prize	boss=Mothula	BigKey|BigKeyD3|Compass|CompassD3|Key|KeyD3|Map|MapD3|Crystal3
+region	inverted	Thieves Town	Thieves Town	Region\Inverted\ThievesTown	Thieves' Town - Prize	boss=Blind	BigKey|BigKeyD4|Compass|CompassD4|Key|KeyD4|Map|MapD4|Crystal4
+region	inverted	Ice Palace	Ice Palace	Region\Inverted\IcePalace	Ice Palace - Prize	boss=Kholdstare	BigKey|BigKeyD5|Compass|CompassD5|Key|KeyD5|Map|MapD5|Crystal5
+region	inverted	Misery Mire	Misery Mire	Region\Inverted\MiseryMire	Misery Mire - Prize	boss=Vitreous	BigKey|BigKeyD6|Compass|CompassD6|Key|KeyD6|Map|MapD6|Crystal6
+region	inverted	Turtle Rock	Turtle Rock	Region\Inverted\TurtleRock	Turtle Rock - Prize	boss=Trinexx	BigKey|BigKeyD7|Compass|CompassD7|Key|KeyD7|Map|MapD7|Crystal7
+region	inverted	Ganons Tower	Ganons Tower	Region\Inverted\GanonsTower	Agahnim 2	boss=Agahnim2|top=Moldorm|middle=Lanmolas|bottom=Armos Knights	BigKey|BigKeyA2|Compass|CompassA2|Key|KeyA2|Map|MapA2
+region	inverted	Medallions	Special	Region\Standard\Medallions	-	-	-
+region	inverted	Fountains	Special	Region\Standard\Fountains	-	-	-
+location	inverted	Sahasrahla's Hut - Left	North East Light World	Location\Chest	-
+location	inverted	Sahasrahla's Hut - Middle	North East Light World	Location\Chest	-
+location	inverted	Sahasrahla's Hut - Right	North East Light World	Location\Chest	-
+location	inverted	Sahasrahla	North East Light World	Location\Npc	-
+location	inverted	King Zora	North East Light World	Location\Npc\Zora	-
+location	inverted	Potion Shop	North East Light World	Location\Npc\Witch	-
+location	inverted	Zora's Ledge	North East Light World	Location\Standing	-
+location	inverted	Waterfall Fairy - Left	North East Light World	Location\Chest	-
+location	inverted	Waterfall Fairy - Right	North East Light World	Location\Chest	-
+location	inverted	Ganon	North East Light World	Location\Prize\Event	DefeatGanon
+location	inverted	Master Sword Pedestal	North West Light World	Location\Pedestal	-
+location	inverted	King's Tomb	North West Light World	Location\Chest	-
+location	inverted	Kakariko Tavern	North West Light World	Location\Chest	-
+location	inverted	Chicken House	North West Light World	Location\Chest	-
+location	inverted	Kakariko Well - Top	North West Light World	Location\Chest	-
+location	inverted	Kakariko Well - Left	North West Light World	Location\Chest	-
+location	inverted	Kakariko Well - Middle	North West Light World	Location\Chest	-
+location	inverted	Kakariko Well - Right	North West Light World	Location\Chest	-
+location	inverted	Kakariko Well - Bottom	North West Light World	Location\Chest	-
+location	inverted	Blind's Hideout - Top	North West Light World	Location\Chest	-
+location	inverted	Blind's Hideout - Left	North West Light World	Location\Chest	-
+location	inverted	Blind's Hideout - Right	North West Light World	Location\Chest	-
+location	inverted	Blind's Hideout - Far Left	North West Light World	Location\Chest	-
+location	inverted	Blind's Hideout - Far Right	North West Light World	Location\Chest	-
+location	inverted	Pegasus Rocks	North West Light World	Location\Chest	-
+location	inverted	Bottle Merchant	North West Light World	Location\Npc	-
+location	inverted	Magic Bat	North West Light World	Location\Npc	-
+location	inverted	Sick Kid	North West Light World	Location\Npc\BugCatchingKid	-
+location	inverted	Lost Woods Hideout	North West Light World	Location\Standing	-
+location	inverted	Lumberjack Tree	North West Light World	Location\Standing	-
+location	inverted	Graveyard Ledge	North West Light World	Location\Standing	-
+location	inverted	Mushroom	North West Light World	Location\Standing	-
+location	inverted	Floodgate Chest	South Light World	Location\Chest	-
+location	inverted	Aginah's Cave	South Light World	Location\Chest	-
+location	inverted	Mini Moldorm Cave - Far Left	South Light World	Location\Chest	-
+location	inverted	Mini Moldorm Cave - Left	South Light World	Location\Chest	-
+location	inverted	Mini Moldorm Cave - Right	South Light World	Location\Chest	-
+location	inverted	Mini Moldorm Cave - Far Right	South Light World	Location\Chest	-
+location	inverted	Ice Rod Cave	South Light World	Location\Chest	-
+location	inverted	Hobo	South Light World	Location\Npc	-
+location	inverted	Bombos Tablet	South Light World	Location\Drop\Bombos	-
+location	inverted	Cave 45	South Light World	Location\Standing	-
+location	inverted	Checkerboard Cave	South Light World	Location\Standing	-
+location	inverted	Mini Moldorm Cave - NPC	South Light World	Location\Npc	-
+location	inverted	Library	South Light World	Location\Dash	-
+location	inverted	Maze Race	South Light World	Location\Standing	-
+location	inverted	Desert Ledge	South Light World	Location\Standing	-
+location	inverted	Lake Hylia Island	South Light World	Location\Standing	-
+location	inverted	Sunken Treasure	South Light World	Location\Standing	-
+location	inverted	Flute Spot	South Light World	Location\Dig\HauntedGrove	-
+location	inverted	Bomb Merchant	South Light World	Location\Prize\Event	BigRedBomb
+location	inverted	Sanctuary	Escape	Location\Chest	-
+location	inverted	Sewers - Secret Room - Left	Escape	Location\Chest	-
+location	inverted	Sewers - Secret Room - Middle	Escape	Location\Chest	-
+location	inverted	Sewers - Secret Room - Right	Escape	Location\Chest	-
+location	inverted	Sewers - Dark Cross	Escape	Location\Chest	-
+location	inverted	Hyrule Castle - Boomerang Chest	Escape	Location\Chest	-
+location	inverted	Hyrule Castle - Map Chest	Escape	Location\Chest	-
+location	inverted	Hyrule Castle - Zelda's Cell	Escape	Location\Chest	-
+location	inverted	Link's Uncle	Escape	Location\Npc\Uncle	-
+location	inverted	Secret Passage	Escape	Location\Chest	-
+location	inverted	Zelda	Escape	Location\Prize\Event	RescueZelda
+location	inverted	Eastern Palace - Compass Chest	Eastern Palace	Location\Chest	-
+location	inverted	Eastern Palace - Big Chest	Eastern Palace	Location\BigChest	-
+location	inverted	Eastern Palace - Cannonball Chest	Eastern Palace	Location\Chest	-
+location	inverted	Eastern Palace - Big Key Chest	Eastern Palace	Location\Chest	-
+location	inverted	Eastern Palace - Map Chest	Eastern Palace	Location\Chest	-
+location	inverted	Eastern Palace - Boss	Eastern Palace	Location\Drop	-
+location	inverted	Eastern Palace - Prize	Eastern Palace	Location\Prize\Pendant	-
+location	inverted	Desert Palace - Big Chest	Desert Palace	Location\BigChest	-
+location	inverted	Desert Palace - Map Chest	Desert Palace	Location\Chest	-
+location	inverted	Desert Palace - Torch	Desert Palace	Location\Dash	-
+location	inverted	Desert Palace - Big Key Chest	Desert Palace	Location\Chest	-
+location	inverted	Desert Palace - Compass Chest	Desert Palace	Location\Chest	-
+location	inverted	Desert Palace - Boss	Desert Palace	Location\Drop	-
+location	inverted	Desert Palace - Prize	Desert Palace	Location\Prize\Pendant	-
+location	inverted	Old Man	West Death Mountain	Location\Npc	-
+location	inverted	Spectacle Rock Cave	West Death Mountain	Location\Standing	-
+location	inverted	Spiral Cave	East Death Mountain	Location\Chest	-
+location	inverted	Mimic Cave	East Death Mountain	Location\Chest	-
+location	inverted	Paradox Cave Lower - Far Left	East Death Mountain	Location\Chest	-
+location	inverted	Paradox Cave Lower - Left	East Death Mountain	Location\Chest	-
+location	inverted	Paradox Cave Lower - Right	East Death Mountain	Location\Chest	-
+location	inverted	Paradox Cave Lower - Far Right	East Death Mountain	Location\Chest	-
+location	inverted	Paradox Cave Lower - Middle	East Death Mountain	Location\Chest	-
+location	inverted	Paradox Cave Upper - Left	East Death Mountain	Location\Chest	-
+location	inverted	Paradox Cave Upper - Right	East Death Mountain	Location\Chest	-
+location	inverted	Floating Island	East Death Mountain	Location\Standing	-
+location	inverted	Ether Tablet	East Death Mountain	Location\Drop\Ether	-
+location	inverted	Spectacle Rock	East Death Mountain	Location\Standing	-
+location	inverted	Tower of Hera - Big Key Chest	Tower of Hera	Location\Chest	-
+location	inverted	Tower of Hera - Basement Cage	Tower of Hera	Location\Standing\HeraBasement	-
+location	inverted	Tower of Hera - Map Chest	Tower of Hera	Location\Chest	-
+location	inverted	Tower of Hera - Compass Chest	Tower of Hera	Location\Chest	-
+location	inverted	Tower of Hera - Big Chest	Tower of Hera	Location\BigChest	-
+location	inverted	Tower of Hera - Boss	Tower of Hera	Location\Drop	-
+location	inverted	Tower of Hera - Prize	Tower of Hera	Location\Prize\Pendant	-
+location	inverted	Castle Tower - Room 03	Hyrule Castle Tower	Location\Chest	-
+location	inverted	Castle Tower - Dark Maze	Hyrule Castle Tower	Location\Chest	-
+location	inverted	Agahnim	Hyrule Castle Tower	Location\Prize\Event	DefeatAgahnim
+location	inverted	Superbunny Cave - Top	East Dark World Death Mountain	Location\Chest	-
+location	inverted	Superbunny Cave - Bottom	East Dark World Death Mountain	Location\Chest	-
+location	inverted	Hookshot Cave - Top Right	East Dark World Death Mountain	Location\Chest	-
+location	inverted	Hookshot Cave - Top Left	East Dark World Death Mountain	Location\Chest	-
+location	inverted	Hookshot Cave - Bottom Left	East Dark World Death Mountain	Location\Chest	-
+location	inverted	Hookshot Cave - Bottom Right	East Dark World Death Mountain	Location\Chest	-
+location	inverted	Spike Cave	West Dark World Death Mountain	Location\Chest	-
+location	inverted	Catfish	North East Dark World	Location\Standing	-
+location	inverted	Pyramid	North East Dark World	Location\Standing	-
+location	inverted	Pyramid Fairy - Sword	North East Dark World	Location\Trade	L1Sword
+location	inverted	Pyramid Fairy - Bow	North East Dark World	Location\Trade	Bow
+location	inverted	Pyramid Fairy - Left	North East Dark World	Location\Chest	-
+location	inverted	Pyramid Fairy - Right	North East Dark World	Location\Chest	-
+location	inverted	Brewery	North West Dark World	Location\Chest	-
+location	inverted	C-Shaped House	North West Dark World	Location\Chest	-
+location	inverted	Chest Game	North West Dark World	Location\Chest	-
+location	inverted	Hammer Pegs	North West Dark World	Location\Standing	-
+location	inverted	Bumper Cave	North West Dark World	Location\Standing	-
+location	inverted	Blacksmith	North West Dark World	Location\Npc	-
+location	inverted	Purple Chest	North West Dark World	Location\Npc	-
+location	inverted	Hype Cave - Top	South Dark World	Location\Chest	-
+location	inverted	Hype Cave - Middle Right	South Dark World	Location\Chest	-
+location	inverted	Hype Cave - Middle Left	South Dark World	Location\Chest	-
+location	inverted	Hype Cave - Bottom	South Dark World	Location\Chest	-
+location	inverted	Stumpy	South Dark World	Location\Npc	-
+location	inverted	Hype Cave - NPC	South Dark World	Location\Npc	-
+location	inverted	Digging Game	South Dark World	Location\Dig	-
+location	inverted	Link's House	South Dark World	Location\Chest	-
+location	inverted	Mire Shed - Left	Mire	Location\Chest	-
+location	inverted	Mire Shed - Right	Mire	Location\Chest	-
+location	inverted	Palace of Darkness - Shooter Room	Palace of Darkness	Location\Chest	-
+location	inverted	Palace of Darkness - Big Key Chest	Palace of Darkness	Location\Chest	-
+location	inverted	Palace of Darkness - The Arena - Ledge	Palace of Darkness	Location\Chest	-
+location	inverted	Palace of Darkness - The Arena - Bridge	Palace of Darkness	Location\Chest	-
+location	inverted	Palace of Darkness - Stalfos Basement	Palace of Darkness	Location\Chest	-
+location	inverted	Palace of Darkness - Map Chest	Palace of Darkness	Location\Chest	-
+location	inverted	Palace of Darkness - Big Chest	Palace of Darkness	Location\BigChest	-
+location	inverted	Palace of Darkness - Compass Chest	Palace of Darkness	Location\Chest	-
+location	inverted	Palace of Darkness - Harmless Hellway	Palace of Darkness	Location\Chest	-
+location	inverted	Palace of Darkness - Dark Basement - Left	Palace of Darkness	Location\Chest	-
+location	inverted	Palace of Darkness - Dark Basement - Right	Palace of Darkness	Location\Chest	-
+location	inverted	Palace of Darkness - Dark Maze - Top	Palace of Darkness	Location\Chest	-
+location	inverted	Palace of Darkness - Dark Maze - Bottom	Palace of Darkness	Location\Chest	-
+location	inverted	Palace of Darkness - Boss	Palace of Darkness	Location\Drop	-
+location	inverted	Palace of Darkness - Prize	Palace of Darkness	Location\Prize\Crystal	-
+location	inverted	Swamp Palace - Entrance	Swamp Palace	Location\Chest	-
+location	inverted	Swamp Palace - Big Chest	Swamp Palace	Location\BigChest	-
+location	inverted	Swamp Palace - Big Key Chest	Swamp Palace	Location\Chest	-
+location	inverted	Swamp Palace - Map Chest	Swamp Palace	Location\Chest	-
+location	inverted	Swamp Palace - West Chest	Swamp Palace	Location\Chest	-
+location	inverted	Swamp Palace - Compass Chest	Swamp Palace	Location\Chest	-
+location	inverted	Swamp Palace - Flooded Room - Left	Swamp Palace	Location\Chest	-
+location	inverted	Swamp Palace - Flooded Room - Right	Swamp Palace	Location\Chest	-
+location	inverted	Swamp Palace - Waterfall Room	Swamp Palace	Location\Chest	-
+location	inverted	Swamp Palace - Boss	Swamp Palace	Location\Drop	-
+location	inverted	Swamp Palace - Prize	Swamp Palace	Location\Prize\Crystal	-
+location	inverted	Skull Woods - Big Chest	Skull Woods	Location\BigChest	-
+location	inverted	Skull Woods - Big Key Chest	Skull Woods	Location\Chest	-
+location	inverted	Skull Woods - Compass Chest	Skull Woods	Location\Chest	-
+location	inverted	Skull Woods - Map Chest	Skull Woods	Location\Chest	-
+location	inverted	Skull Woods - Bridge Room	Skull Woods	Location\Chest	-
+location	inverted	Skull Woods - Pot Prison	Skull Woods	Location\Chest	-
+location	inverted	Skull Woods - Pinball Room	Skull Woods	Location\Chest	-
+location	inverted	Skull Woods - Boss	Skull Woods	Location\Drop	-
+location	inverted	Skull Woods - Prize	Skull Woods	Location\Prize\Crystal	-
+location	inverted	Thieves' Town - Attic	Thieves Town	Location\Chest	-
+location	inverted	Thieves' Town - Big Key Chest	Thieves Town	Location\Chest	-
+location	inverted	Thieves' Town - Map Chest	Thieves Town	Location\Chest	-
+location	inverted	Thieves' Town - Compass Chest	Thieves Town	Location\Chest	-
+location	inverted	Thieves' Town - Ambush Chest	Thieves Town	Location\Chest	-
+location	inverted	Thieves' Town - Big Chest	Thieves Town	Location\BigChest	-
+location	inverted	Thieves' Town - Blind's Cell	Thieves Town	Location\Chest	-
+location	inverted	Thieves' Town - Boss	Thieves Town	Location\Drop	-
+location	inverted	Thieves' Town - Prize	Thieves Town	Location\Prize\Crystal	-
+location	inverted	Ice Palace - Big Key Chest	Ice Palace	Location\Chest	-
+location	inverted	Ice Palace - Compass Chest	Ice Palace	Location\Chest	-
+location	inverted	Ice Palace - Map Chest	Ice Palace	Location\Chest	-
+location	inverted	Ice Palace - Spike Room	Ice Palace	Location\Chest	-
+location	inverted	Ice Palace - Freezor Chest	Ice Palace	Location\Chest	-
+location	inverted	Ice Palace - Iced T Room	Ice Palace	Location\Chest	-
+location	inverted	Ice Palace - Big Chest	Ice Palace	Location\BigChest	-
+location	inverted	Ice Palace - Boss	Ice Palace	Location\Drop	-
+location	inverted	Ice Palace - Prize	Ice Palace	Location\Prize\Crystal	-
+location	inverted	Misery Mire - Big Chest	Misery Mire	Location\BigChest	-
+location	inverted	Misery Mire - Main Lobby	Misery Mire	Location\Chest	-
+location	inverted	Misery Mire - Big Key Chest	Misery Mire	Location\Chest	-
+location	inverted	Misery Mire - Compass Chest	Misery Mire	Location\Chest	-
+location	inverted	Misery Mire - Bridge Chest	Misery Mire	Location\Chest	-
+location	inverted	Misery Mire - Map Chest	Misery Mire	Location\Chest	-
+location	inverted	Misery Mire - Spike Chest	Misery Mire	Location\Chest	-
+location	inverted	Misery Mire - Boss	Misery Mire	Location\Drop	-
+location	inverted	Misery Mire - Prize	Misery Mire	Location\Prize\Crystal	-
+location	inverted	Turtle Rock - Chain Chomps	Turtle Rock	Location\Chest	-
+location	inverted	Turtle Rock - Compass Chest	Turtle Rock	Location\Chest	-
+location	inverted	Turtle Rock - Roller Room - Left	Turtle Rock	Location\Chest	-
+location	inverted	Turtle Rock - Roller Room - Right	Turtle Rock	Location\Chest	-
+location	inverted	Turtle Rock - Big Chest	Turtle Rock	Location\BigChest	-
+location	inverted	Turtle Rock - Big Key Chest	Turtle Rock	Location\Chest	-
+location	inverted	Turtle Rock - Crystaroller Room	Turtle Rock	Location\Chest	-
+location	inverted	Turtle Rock - Eye Bridge - Bottom Left	Turtle Rock	Location\Chest	-
+location	inverted	Turtle Rock - Eye Bridge - Bottom Right	Turtle Rock	Location\Chest	-
+location	inverted	Turtle Rock - Eye Bridge - Top Left	Turtle Rock	Location\Chest	-
+location	inverted	Turtle Rock - Eye Bridge - Top Right	Turtle Rock	Location\Chest	-
+location	inverted	Turtle Rock - Boss	Turtle Rock	Location\Drop	-
+location	inverted	Turtle Rock - Prize	Turtle Rock	Location\Prize\Crystal	-
+location	inverted	Ganon's Tower - Bob's Torch	Ganons Tower	Location\Dash	-
+location	inverted	Ganon's Tower - DMs Room - Top Left	Ganons Tower	Location\Chest	-
+location	inverted	Ganon's Tower - DMs Room - Top Right	Ganons Tower	Location\Chest	-
+location	inverted	Ganon's Tower - DMs Room - Bottom Left	Ganons Tower	Location\Chest	-
+location	inverted	Ganon's Tower - DMs Room - Bottom Right	Ganons Tower	Location\Chest	-
+location	inverted	Ganon's Tower - Randomizer Room - Top Left	Ganons Tower	Location\Chest	-
+location	inverted	Ganon's Tower - Randomizer Room - Top Right	Ganons Tower	Location\Chest	-
+location	inverted	Ganon's Tower - Randomizer Room - Bottom Left	Ganons Tower	Location\Chest	-
+location	inverted	Ganon's Tower - Randomizer Room - Bottom Right	Ganons Tower	Location\Chest	-
+location	inverted	Ganon's Tower - Firesnake Room	Ganons Tower	Location\Chest	-
+location	inverted	Ganon's Tower - Map Chest	Ganons Tower	Location\Chest	-
+location	inverted	Ganon's Tower - Big Chest	Ganons Tower	Location\BigChest	-
+location	inverted	Ganon's Tower - Hope Room - Left	Ganons Tower	Location\Chest	-
+location	inverted	Ganon's Tower - Hope Room - Right	Ganons Tower	Location\Chest	-
+location	inverted	Ganon's Tower - Bob's Chest	Ganons Tower	Location\Chest	-
+location	inverted	Ganon's Tower - Tile Room	Ganons Tower	Location\Chest	-
+location	inverted	Ganon's Tower - Compass Room - Top Left	Ganons Tower	Location\Chest	-
+location	inverted	Ganon's Tower - Compass Room - Top Right	Ganons Tower	Location\Chest	-
+location	inverted	Ganon's Tower - Compass Room - Bottom Left	Ganons Tower	Location\Chest	-
+location	inverted	Ganon's Tower - Compass Room - Bottom Right	Ganons Tower	Location\Chest	-
+location	inverted	Ganon's Tower - Big Key Chest	Ganons Tower	Location\Chest	-
+location	inverted	Ganon's Tower - Big Key Room - Left	Ganons Tower	Location\Chest	-
+location	inverted	Ganon's Tower - Big Key Room - Right	Ganons Tower	Location\Chest	-
+location	inverted	Ganon's Tower - Mini Helmasaur Room - Left	Ganons Tower	Location\Chest	-
+location	inverted	Ganon's Tower - Mini Helmasaur Room - Right	Ganons Tower	Location\Chest	-
+location	inverted	Ganon's Tower - Pre-Moldorm Chest	Ganons Tower	Location\Chest	-
+location	inverted	Ganon's Tower - Moldorm Chest	Ganons Tower	Location\Chest	-
+location	inverted	Agahnim 2	Ganons Tower	Location\Prize\Event	DefeatAgahnim2
+location	inverted	Turtle Rock Medallion	Medallions	Location\Medallion	-
+location	inverted	Misery Mire Medallion	Medallions	Location\Medallion	-
+location	inverted	Waterfall Bottle	Fountains	Location\Fountain	-
+location	inverted	Pyramid Bottle	Fountains	Location\Fountain	-

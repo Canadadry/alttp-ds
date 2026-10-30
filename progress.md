@@ -103,3 +103,12 @@
   - [x] Chunk 1: MajorGlitches fixture
   - [x] Chunk 2: C replay and derivation case
 - [x] Step 3.4: NoLogic rules and claim
+- [ ] Step 3.12 chunks
+  - [x] Chunk 1: Inverted oracle fixtures
+  - [ ] Chunk 2: per-variant layout refactor
+  - [ ] Chunk 3: Inverted world
+  - [ ] Chunk 4: overworld and dungeon entries
+  - [ ] Chunk 5: Light World dungeons, Swamp, Skull
+  - [ ] Chunk 6: Turtle Rock
+  - [ ] Chunk 7: Ganon's Tower, every row replayed
+  - [ ] Chunk 8: generator claim at all

@@ -44,20 +44,24 @@ const ROW_TREES = [
     'NoGlitches' => 'noglitches_rows.txt',
     'OverworldGlitches' => 'overworld_glitches_rows.txt',
     'MajorGlitches' => 'major_glitches_rows.txt',
+    'Inverted' => 'inverted_rows.txt',
+    'InvertedOverworldGlitches' => 'inverted_overworld_glitches_rows.txt',
+    'InvertedMajorGlitches' => 'inverted_major_glitches_rows.txt',
 ];
-const VARIANTS = ['standard', 'open'];
-// Every key read by the ported files: Region/Standard, Region/Open, Region, Location*, Boss, ItemCollection.
+const VARIANTS = ['standard', 'open', 'inverted'];
+// Every key read by the ported files: Region/Standard, Region/Open, Region/Inverted, Region, Location*, Boss,
+// ItemCollection.
 const CONFIG_KEYS = [
     'accessibility', 'canBootsClip', 'canBunnyRevive', 'canBunnySurf', 'canDungeonRevive', 'canFakeFlipper',
     'canMirrorClip', 'canMirrorWrap', 'canOWYBA', 'canOneFrameClipOW', 'canOneFrameClipUW', 'canSuperBunny',
-    'canSuperSpeed', 'canTransitionWrapped', 'canWaterWalk', 'crystals.ganon', 'crystals.tower', 'dungeonItems',
+    'canSuperSpeed', 'canTransitionWrapped', 'canWaterWalk', 'cantTakeDamage', 'crystals.ganon', 'crystals.tower', 'dungeonItems',
     'enemizer.enemyHealth', 'goal', 'ignoreCanKillEscapeThings', 'item.Goal.Required',
     'item.overflow.count.Shield', 'item.require.Lamp', 'itemPlacement', 'logic', 'mode.state', 'mode.weapons',
     'region.bossNormalLocation', 'region.cantTakeDamage', 'region.forceSkullWoodsKey',
     'region.requireBetterBow', 'region.requireBetterSword', 'region.swordsInPool', 'region.wildBigKeys',
     'region.wildCompasses', 'region.wildKeys', 'region.wildMaps', 'rom.BottleFill.Magic',
     'rom.CatchableFairies', 'rom.genericKeys', 'rom.mapOnPickup', 'rom.rupeeBow', 'rom.vanillaBigKeys',
-    'rom.vanillaCompasses', 'rom.vanillaKeys', 'rom.vanillaMaps',
+    'rom.vanillaCompasses', 'rom.vanillaKeys', 'rom.vanillaMaps', 'turtlerock.wastekey',
 ];
 
 // The baseline case's World::factory() call in gen_case.php, its crystal counts still strings.
@@ -79,6 +83,7 @@ function vector_configs(): array
         'basic_swordless' => ['open', array_merge(BASELINE_CONFIG, [
             'itemPlacement' => 'basic', 'mode.weapons' => 'swordless', 'item.functionality' => 'expert',
         ])],
+        'inverted' => ['inverted', TEST_CONFIG],
     ];
 }
 
@@ -344,6 +349,7 @@ abstract class TestCase
             'actual' => $actual,
             'items' => $items ? encode_items($items, $world) : ['E', 'E'],
             'locations' => $locations,
+            'bosses' => region_bosses($world),
             'config' => prop($world, World::class, 'config'),
             'variant' => $world->config('mode.state'),
         ];
@@ -358,6 +364,18 @@ abstract class TestCase
     {
         $this->assertEquals(false, $condition, $message);
     }
+}
+
+/** @return array<string, string> region world key => name of its getBoss('') boss, for regions that have one */
+function region_bosses(World $world): array
+{
+    $bosses = [];
+    foreach ($world->getRegions() as $key => $region) {
+        if ($region->getBoss('') !== null) {
+            $bosses[$key] = $region->getBoss('')->getName();
+        }
+    }
+    return $bosses;
 }
 
 function region_keys(World $world): array
@@ -631,6 +649,18 @@ function collect_scenarios(): array
                 ['collect', ['PegasusBoots']],
             ],
         ],
+        'inverted_merchant' => [
+            'variant' => 'inverted',
+            'placements' => ["Link's House" => 'MoonPearl'],
+            'precollected' => [],
+            'steps' => [
+                ['collect', null],
+                ['reset'],
+                ['collect', ['DefeatAgahnim', 'Crystal5', 'Crystal6']],
+                ['reset'],
+                ['collect', ['DefeatAgahnim', 'Crystal5']],
+            ],
+        ],
     ];
 }
 
@@ -722,6 +752,7 @@ const METHOD_KINDS = [
     'testCanEnterWithEverything' => ['enter', 'built', null, null],
     'testCapeOrUpgradedSwordRequiredToEnter' => ['enter', 'built', null, null],
     'testSwordRequiredToComplete' => ['complete', 'built', null, null],
+    'testComplete' => ['complete', 'collected', null, null],
     'testSetVanillaDungeonItems' => ['vanilla_dungeon_items', 'collected', null, null],
 ];
 const SKIPPED_METHODS = ['testDungeonItemWrite'];
@@ -788,6 +819,14 @@ function scenario_from_capture(array $c, string $query, string $arg1, string $ar
             fail("location $name emptied by a test");
         }
         $preset[] = "$name=$now";
+    }
+    foreach (region_bosses($ref) as $key => $boss) {
+        if (!array_key_exists($key, $c['bosses'])) {
+            fail("region $key lost its boss in a test");
+        }
+        if ($c['bosses'][$key] !== $boss) {
+            $preset[] = 'boss:' . check_name($key) . '=' . check_name($c['bosses'][$key]);
+        }
     }
     return [
         'variant' => $c['variant'],
@@ -862,8 +901,13 @@ function replay(array $s): bool
     }
     if ($s['preset'] !== '-') {
         foreach (explode('|', $s['preset']) as $entry) {
-            [$location, $item] = explode('=', $entry);
-            $world->getLocation($location)->setItem(Item::get($item, $world));
+            [$target, $value] = explode('=', $entry);
+            if (str_starts_with($target, 'boss:')) {
+                $all = Boss::all($world);
+                $world->getRegion(substr($target, 5))->setBoss(isset($all[$value]) ? $all[$value] : new Boss($value));
+            } else {
+                $world->getLocation($target)->setItem(Item::get($value, $world));
+            }
         }
     }
     $items = decode_items($s['counts'], $s['values'], $world);
@@ -1024,6 +1068,7 @@ $headers = [
         '# vector_config <config> <variant>, then config <config> <key> <JSON of World::config(key), no default>',
         '#   test: the NoGlitches tests\' Standard world; baseline: the baseline case; basic_swordless: baseline',
         '#   with itemPlacement basic, mode.weapons swordless and item.functionality expert',
+        '#   inverted: the test config on an Inverted world',
         '# columns <predicate>|...: the order of the values of every pred line; (w) passes the config\'s world',
         '# multiset <index> <label> <counts view> <values view>: built with VT operations (views as in world_dump.txt)',
         '# pred <index> <config> <values, space-separated>: 1/0 for booleans, integers otherwise (heartCount in quarter hearts)',
@@ -1073,6 +1118,45 @@ $headers = [
         '#   queries: access (Location::canAccess), fill (Location::fill), region_can_fill (Region::canFill),',
         '#   enter (Region::canEnter), complete (Region::canComplete); the C port must return the VT answer',
     ],
+    'inverted_rows.txt' => [
+        "# VT's tests/Inverted rows run inside VT, written by extract_logic.php (run by gen_golden.sh).",
+        '# Each row was replayed by VT from its record alone; test_regions --fixtures checks the C port.',
+        '# Fields are tab-separated; views as in world_dump.txt.',
+        '# row <test file under tests/Inverted> <method> <provider or -> <index> <variant> <config overrides or -> <preset items or ->',
+        '#   <counts view> <values view> <query> <location or region> <item or -> <test expectation> <VT answer>',
+        '#   config overrides: <key>=<JSON>,... applied with World::testSetConfig on the World::factory test world',
+        '#   preset items: <location>=<item>|... set with Location::setItem before the query',
+        '#     or boss:<region world key>=<boss>, set with Region::setBoss (a name outside Boss::all: a Boss with no rule)',
+        '#   queries: access (Location::canAccess), fill (Location::fill), region_can_fill (Region::canFill),',
+        '#   enter (Region::canEnter), complete (Region::canComplete); the C port must return the VT answer',
+    ],
+    'inverted_overworld_glitches_rows.txt' => [
+        "# VT's tests/InvertedOverworldGlitches rows run inside VT, written by extract_logic.php (run by gen_golden.sh).",
+        '# Each row was replayed by VT from its record alone; test_regions --fixtures checks the C port.',
+        '# Fields are tab-separated; views as in world_dump.txt.',
+        '# row <test file under tests/InvertedOverworldGlitches> <method> <provider or -> <index> <variant> <config overrides or -> <preset items or ->',
+        '#   <counts view> <values view> <query> <location or region> <item or -> <test expectation> <VT answer>',
+        '#   config overrides: <key>=<JSON>,... applied with World::testSetConfig on the World::factory test world',
+        '#   a logic override is also passed to World::factory with the test config, before the testSetConfig calls',
+        '#   preset items: <location>=<item>|... set with Location::setItem before the query',
+        '#     or boss:<region world key>=<boss>, set with Region::setBoss (a name outside Boss::all: a Boss with no rule)',
+        '#   queries: access (Location::canAccess), fill (Location::fill), region_can_fill (Region::canFill),',
+        '#   enter (Region::canEnter), complete (Region::canComplete); the C port must return the VT answer',
+    ],
+    'inverted_major_glitches_rows.txt' => [
+        "# VT's tests/InvertedMajorGlitches rows run inside VT, written by extract_logic.php (run by gen_golden.sh).",
+        '# Each row was replayed by VT from its record alone; test_regions --fixtures checks the C port.',
+        '# Fields are tab-separated; views as in world_dump.txt.',
+        '# row <test file under tests/InvertedMajorGlitches> <method> <provider or -> <index> <variant> <config overrides or -> <preset items or ->',
+        '#   <counts view> <values view> <query> <location or region> <item or -> <test expectation> <VT answer>',
+        '#   config overrides: <key>=<JSON>,... applied with World::testSetConfig on the World::factory test world',
+        '#   a logic override is also passed to World::factory with the test config, before the testSetConfig calls',
+        '#   rom.freeItemMenu is ROM-only (VT\'s constructor derives it from glitched logic); a replay may ignore it',
+        '#   preset items: <location>=<item>|... set with Location::setItem before the query',
+        '#     or boss:<region world key>=<boss>, set with Region::setBoss (a name outside Boss::all: a Boss with no rule)',
+        '#   queries: access (Location::canAccess), fill (Location::fill), region_can_fill (Region::canFill),',
+        '#   enter (Region::canEnter), complete (Region::canComplete); the C port must return the VT answer',
+    ],
 ];
 $bodies = [
     'world_dump.txt' => $world_lines,
@@ -1092,7 +1176,10 @@ foreach ($mismatches as $tree => $lines) {
         fwrite(STDERR, "extract_logic: VT disagrees with its $tree test: $line\n");
     }
 }
-printf("extract_logic: %d world records, %d predicate records, %d NoGlitches rows (%d VT answers differ from the test), %d OverworldGlitches rows (%d differ), %d MajorGlitches rows (%d differ), %d collect records\n",
-    count($world_lines), count($predicate_lines), count($row_lines['NoGlitches']), count($mismatches['NoGlitches']),
-    count($row_lines['OverworldGlitches']), count($mismatches['OverworldGlitches']),
-    count($row_lines['MajorGlitches']), count($mismatches['MajorGlitches']), count($collect_lines));
+$summary = [];
+foreach (array_keys(ROW_TREES) as $tree) {
+    $summary[] = sprintf('%d %s rows (%d VT answers differ from the test)', count($row_lines[$tree]), $tree,
+        count($mismatches[$tree]));
+}
+printf("extract_logic: %d world records, %d predicate records, %s, %d collect records\n", count($world_lines),
+    count($predicate_lines), implode(', ', $summary), count($collect_lines));

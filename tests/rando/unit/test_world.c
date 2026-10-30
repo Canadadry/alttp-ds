@@ -712,6 +712,9 @@ static int check_world_dump(void)
 
 	fixture_open(&fx, FIXTURE_WORLD_DUMP);
 	while (fixture_next(&fx)) {
+		/* TODO: replay the inverted records once the C port has the Inverted world (step 3.12). */
+		if (fx.nfields > 1 && strcmp(fx.field[1], "inverted") == 0)
+			continue;
 		if (strcmp(fx.field[0], "region") == 0) {
 			v = variant_of(&fx, fx.field[1]);
 			check_region_record(&fx, (RandoVariant)v, regions[v]++);
@@ -845,16 +848,21 @@ static int check_collect_vectors(void)
 {
 	RandoWorld world;
 	Fixture fx;
-	int steps = 0, scenario = 0;
+	int steps = 0, scenario = 0, skipped = 0;
 
 	fixture_open(&fx, FIXTURE_NOGLITCHES_ROWS);
 	while (fixture_next(&fx)) {
 		if (strcmp(fx.field[0], "collect_scenario") == 0) {
-			collect_scenario(&fx, &world);
+			/* TODO: replay it once the C port has the Inverted world (step 3.12). */
+			skipped = strcmp(fx.field[1], "inverted_merchant") == 0;
+			if (!skipped)
+				collect_scenario(&fx, &world);
 			scenario = 1;
 		} else if (strcmp(fx.field[0], "collect_step") == 0) {
 			if (!scenario)
 				fixture_fail(&fx, "collect step before any scenario");
+			if (skipped)
+				continue;
 			collect_step(&fx, &world);
 			steps++;
 		}
