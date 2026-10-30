@@ -497,6 +497,8 @@ static int replay_row(Fixture *fx)
 		variant = RANDO_VARIANT_STANDARD;
 	else if (strcmp(fx->field[ROW_VARIANT], "open") == 0)
 		variant = RANDO_VARIANT_OPEN;
+	else if (strcmp(fx->field[ROW_VARIANT], "inverted") == 0)
+		variant = RANDO_VARIANT_INVERTED;
 	else
 		fixture_fail(fx, "unknown variant");
 	rando_config_init(&config);
@@ -522,6 +524,13 @@ static int replay_row(Fixture *fx)
 	for (i = 0; i < n; i++) {
 		char *item = value_of(fx, parts[i]);
 
+		if (strncmp(parts[i], "boss:", 5) == 0) {
+			RandoBossId boss = rando_boss_find(item);
+
+			rando_world_set_boss(&world, region_named(fx, parts[i] + 5), RANDO_BOSS_SLOT_BOSS,
+					     boss == RANDO_BOSS_NONE ? RANDO_BOSS_RULELESS : boss);
+			continue;
+		}
 		if (!rando_world_set_item(&world, location_named(fx, parts[i]), item_named(fx, item)))
 			fixture_fail(fx, "preset item refused by its location");
 	}

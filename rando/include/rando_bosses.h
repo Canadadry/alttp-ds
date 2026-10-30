@@ -22,13 +22,15 @@ typedef enum RandoBossId {
 	RANDO_BOSS_AGAHNIM2,
 	RANDO_BOSS_COUNT,
 	RANDO_BOSS_NONE = RANDO_BOSS_COUNT,
+	/* VT's Boss with no rule (a name outside Boss::all): beaten with anything. Only tests set one. */
+	RANDO_BOSS_RULELESS,
 } RandoBossId;
 
 /* Asserts id < RANDO_BOSS_COUNT. */
 const char *rando_boss_name(RandoBossId id);
 /* RANDO_BOSS_NONE when unknown. */
 RandoBossId rando_boss_find(const char *name);
-/* Boss::canBeat; VT also passes the locations, which no boss reads. */
+/* Boss::canBeat, also for RANDO_BOSS_RULELESS; VT also passes the locations, which no boss reads. */
 bool rando_boss_can_beat(RandoBossId id, const RandoConfig *config, const RandoItems *items);
 
 #endif

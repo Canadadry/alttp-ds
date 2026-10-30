@@ -45,7 +45,7 @@ static bool boss(const RandoWorld *world, const RandoWorld *locations, const Ran
 {
 	const RandoConfig *c = &world->config;
 
-	return enter(world, locations, items)
+	return can_enter(world, locations, RANDO_REGION_DESERT_PALACE, items)
 		&& (rando_items_can_lift_rocks(items)
 		    || (c->can_boots_clip && has(items, RANDO_ITEM_PegasusBoots))
 		    || (c->can_super_speed && rando_items_can_spin_speed(items))
@@ -87,4 +87,46 @@ static const RandoLocationRules locations[NLOCATIONS] = {
 
 const RandoRegionRules rando_rules_desert_palace = {
 	"Region\\Standard\\DesertPalace", enter, complete, locations, NULL,
+};
+
+static bool inverted_main(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
+{
+	return has(items, RANDO_ITEM_BookOfMudora) && can_enter(world, locations, RANDO_REGION_SOUTH_LIGHT_WORLD, items);
+}
+
+static bool inverted_side(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
+{
+	const RandoConfig *c = &world->config;
+
+	return c->can_one_frame_clip_ow
+		|| ((has(items, RANDO_ITEM_MoonPearl)
+		     || (c->can_owyba && rando_items_has_a_bottle(items))
+		     || (c->can_bunny_revive && rando_items_can_bunny_revive(items, c)))
+		    && (c->can_boots_clip && has(items, RANDO_ITEM_PegasusBoots))
+		    && can_enter(world, locations, RANDO_REGION_SOUTH_LIGHT_WORLD, items));
+}
+
+static bool inverted_thieves(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
+{
+	return can_enter(world, locations, RANDO_REGION_THIEVES_TOWN, items)
+		&& has(items, RANDO_ITEM_KeyD4) && has(items, RANDO_ITEM_BigKeyD4)
+		&& world->config.can_one_frame_clip_uw;
+}
+
+/* TODO: Region\Inverted\DesertPalace's location overrides (step 3.12, chunk 5). */
+static bool inverted_enter(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
+{
+	const RandoConfig *c = &world->config;
+
+	return (c->can_dungeon_revive
+		|| (c->can_super_bunny && has(items, RANDO_ITEM_MagicMirror))
+		|| (c->can_bunny_revive && rando_items_can_bunny_revive(items, c))
+		|| (c->can_owyba && rando_items_has_a_bottle(items))
+		|| has(items, RANDO_ITEM_MoonPearl))
+		&& (inverted_main(world, locations, items) || inverted_side(world, locations, items)
+		    || inverted_thieves(world, locations, items));
+}
+
+const RandoRegionRules rando_rules_inverted_desert_palace = {
+	"Region\\Inverted\\DesertPalace", inverted_enter, complete, locations, NULL,
 };

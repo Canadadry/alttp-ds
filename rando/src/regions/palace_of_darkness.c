@@ -100,7 +100,7 @@ static bool enter(const RandoWorld *world, const RandoWorld *locations, const Ra
 
 static bool boss(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
-	return enter(world, locations, items)
+	return can_enter(world, locations, RANDO_REGION_PALACE_OF_DARKNESS, items)
 		&& boss_can_beat(world, RANDO_REGION_PALACE_OF_DARKNESS, items)
 		&& has(items, RANDO_ITEM_Hammer) && has_lamp(world, items) && arrows(world, locations, items)
 		&& has(items, RANDO_ITEM_BigKeyD1) && has_n(items, RANDO_ITEM_KeyD1, 6)
@@ -147,4 +147,21 @@ static const RandoLocationRules locations[NLOCATIONS] = {
 
 const RandoRegionRules rando_rules_palace_of_darkness = {
 	"Region\\Standard\\PalaceOfDarkness", enter, complete, locations, NULL,
+};
+
+static bool inverted_enter(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
+{
+	const RandoConfig *c = &world->config;
+	/* VT tests getRegion('West Death Mountain') itself, an object: always true. */
+	const bool west_death_mountain = true;
+
+	return (c->item_placement != RANDO_PLACEMENT_BASIC
+		|| ((c->mode_weapons == RANDO_WEAPONS_SWORDLESS || rando_items_has_sword(items, 1))
+		    && rando_items_has_health(items, 7) && rando_items_has_a_bottle(items)))
+		&& (can_enter(world, locations, RANDO_REGION_NORTH_EAST_DARK_WORLD, items)
+		    || (c->can_one_frame_clip_ow && west_death_mountain));
+}
+
+const RandoRegionRules rando_rules_inverted_palace_of_darkness = {
+	"Region\\Inverted\\PalaceOfDarkness", inverted_enter, complete, locations, NULL,
 };

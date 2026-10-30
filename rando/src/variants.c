@@ -38,40 +38,40 @@ NO_RULES(fountains, "Region\\Standard\\Fountains");
 static const RandoRegionRules *const variants[RANDO_VARIANT_COUNT][RANDO_REGION_COUNT] = {
 	[RANDO_VARIANT_STANDARD] = {SHARED_REGIONS, [RANDO_REGION_ESCAPE] = &rando_rules_standard_escape},
 	[RANDO_VARIANT_OPEN] = {SHARED_REGIONS, [RANDO_REGION_ESCAPE] = &rando_rules_open_escape},
-	[RANDO_VARIANT_INVERTED] = {[RANDO_REGION_MEDALLIONS] = &medallions, [RANDO_REGION_FOUNTAINS] = &fountains},
-};
-
-/* TODO: goes with the NULL-slot assert once every Inverted region is ported (step 3.12, chunk 7). */
-static const char *const unported_inverted_classes[RANDO_REGION_COUNT] = {
-	"Region\\Inverted\\LightWorld\\NorthEast",
-	"Region\\Inverted\\LightWorld\\NorthWest",
-	"Region\\Inverted\\LightWorld\\South",
-	"Region\\Inverted\\HyruleCastleEscape",
-	"Region\\Inverted\\EasternPalace",
-	"Region\\Inverted\\DesertPalace",
-	"Region\\Inverted\\LightWorld\\DeathMountain\\West",
-	"Region\\Inverted\\LightWorld\\DeathMountain\\East",
-	"Region\\Inverted\\TowerOfHera",
-	"Region\\Inverted\\HyruleCastleTower",
-	"Region\\Inverted\\DarkWorld\\DeathMountain\\East",
-	"Region\\Inverted\\DarkWorld\\DeathMountain\\West",
-	"Region\\Inverted\\DarkWorld\\NorthEast",
-	"Region\\Inverted\\DarkWorld\\NorthWest",
-	"Region\\Inverted\\DarkWorld\\South",
-	"Region\\Inverted\\DarkWorld\\Mire",
-	"Region\\Inverted\\PalaceOfDarkness",
-	"Region\\Inverted\\SwampPalace",
-	"Region\\Inverted\\SkullWoods",
-	"Region\\Inverted\\ThievesTown",
-	"Region\\Inverted\\IcePalace",
-	"Region\\Inverted\\MiseryMire",
-	"Region\\Inverted\\TurtleRock",
-	"Region\\Inverted\\GanonsTower",
+	[RANDO_VARIANT_INVERTED] = {
+		[RANDO_REGION_NORTH_EAST_LIGHT_WORLD] = &rando_rules_inverted_north_east_light_world,
+		[RANDO_REGION_NORTH_WEST_LIGHT_WORLD] = &rando_rules_inverted_north_west_light_world,
+		[RANDO_REGION_SOUTH_LIGHT_WORLD] = &rando_rules_inverted_south_light_world,
+		[RANDO_REGION_ESCAPE] = &rando_rules_inverted_escape,
+		[RANDO_REGION_EASTERN_PALACE] = &rando_rules_inverted_eastern_palace,
+		[RANDO_REGION_DESERT_PALACE] = &rando_rules_inverted_desert_palace,
+		[RANDO_REGION_WEST_DEATH_MOUNTAIN] = &rando_rules_inverted_west_death_mountain,
+		[RANDO_REGION_EAST_DEATH_MOUNTAIN] = &rando_rules_inverted_east_death_mountain,
+		[RANDO_REGION_TOWER_OF_HERA] = &rando_rules_inverted_tower_of_hera,
+		[RANDO_REGION_HYRULE_CASTLE_TOWER] = &rando_rules_inverted_hyrule_castle_tower,
+		[RANDO_REGION_EAST_DARK_WORLD_DEATH_MOUNTAIN] = &rando_rules_inverted_east_dark_world_death_mountain,
+		[RANDO_REGION_WEST_DARK_WORLD_DEATH_MOUNTAIN] = &rando_rules_inverted_west_dark_world_death_mountain,
+		[RANDO_REGION_NORTH_EAST_DARK_WORLD] = &rando_rules_inverted_north_east_dark_world,
+		[RANDO_REGION_NORTH_WEST_DARK_WORLD] = &rando_rules_inverted_north_west_dark_world,
+		[RANDO_REGION_SOUTH_DARK_WORLD] = &rando_rules_inverted_south_dark_world,
+		[RANDO_REGION_MIRE] = &rando_rules_inverted_mire,
+		[RANDO_REGION_PALACE_OF_DARKNESS] = &rando_rules_inverted_palace_of_darkness,
+		[RANDO_REGION_SWAMP_PALACE] = &rando_rules_inverted_swamp_palace,
+		[RANDO_REGION_SKULL_WOODS] = &rando_rules_inverted_skull_woods,
+		[RANDO_REGION_THIEVES_TOWN] = &rando_rules_inverted_thieves_town,
+		[RANDO_REGION_ICE_PALACE] = &rando_rules_inverted_ice_palace,
+		[RANDO_REGION_MISERY_MIRE] = &rando_rules_inverted_misery_mire,
+		[RANDO_REGION_TURTLE_ROCK] = &rando_rules_inverted_turtle_rock,
+		[RANDO_REGION_GANONS_TOWER] = &rando_rules_inverted_ganons_tower,
+		[RANDO_REGION_MEDALLIONS] = &medallions,
+		[RANDO_REGION_FOUNTAINS] = &fountains,
+	},
 };
 
 const RandoRegionRules *rando_region_rules(RandoVariant variant, RandoRegionId region)
 {
 	assert(variant < RANDO_VARIANT_COUNT && region < RANDO_REGION_COUNT);
+	/* TODO: goes once every Inverted region has all its rules (step 3.12, chunk 7). */
 	assert(variants[variant][region] && "this Inverted region is not ported yet: no fallback to Standard");
 	return variants[variant][region];
 }
@@ -79,7 +79,5 @@ const RandoRegionRules *rando_region_rules(RandoVariant variant, RandoRegionId r
 const char *rando_region_vt_class(RandoVariant variant, RandoRegionId region)
 {
 	assert(variant < RANDO_VARIANT_COUNT && region < RANDO_REGION_COUNT);
-	if (variant == RANDO_VARIANT_INVERTED && !variants[variant][region])
-		return unported_inverted_classes[region];
 	return rando_region_rules(variant, region)->vt_class;
 }

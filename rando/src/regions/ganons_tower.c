@@ -251,7 +251,7 @@ static bool moldorm_chest_fill(RandoWorld *world, RandoItemId item, const RandoI
 
 static bool complete(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
-	return enter(world, locations, items)
+	return can_enter(world, locations, RANDO_REGION_GANONS_TOWER, items)
 		&& rando_world_can_access(world, RANDO_LOC_GANONS_TOWER_MOLDORM_CHEST, items)
 		&& beats(world, RANDO_BOSS_SLOT_BOSS, items);
 }
@@ -287,4 +287,27 @@ static const RandoLocationRules locations[NLOCATIONS] = {
 
 const RandoRegionRules rando_rules_ganons_tower = {
 	"Region\\Standard\\GanonsTower", enter, complete, locations, NULL,
+};
+
+/* TODO: Region\Inverted\GanonsTower's location overrides and completion (step 3.12, chunk 7). */
+static bool inverted_enter(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
+{
+	const RandoConfig *c = &world->config;
+
+	return (c->item_placement != RANDO_PLACEMENT_BASIC
+		|| ((c->mode_weapons == RANDO_WEAPONS_SWORDLESS || rando_items_has_sword(items, 2))
+		    && rando_items_has_health(items, 12)
+		    && (rando_items_has_bottle(items, 2) || rando_items_has_armor(items, 1))))
+		&& (c->can_dungeon_revive
+		    || (c->can_super_bunny && has(items, RANDO_ITEM_MagicMirror))
+		    || has(items, RANDO_ITEM_MoonPearl)
+		    || ((c->can_one_frame_clip_ow || (c->can_boots_clip && has(items, RANDO_ITEM_PegasusBoots)))
+			&& ((c->can_bunny_revive && rando_items_can_bunny_revive(items, c))
+			    || (c->can_owyba && rando_items_has_a_bottle(items)))))
+		&& crystals(items) >= c->crystals_tower
+		&& can_enter(world, locations, RANDO_REGION_NORTH_EAST_LIGHT_WORLD, items);
+}
+
+const RandoRegionRules rando_rules_inverted_ganons_tower = {
+	"Region\\Inverted\\GanonsTower", inverted_enter, complete, locations, NULL,
 };

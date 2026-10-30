@@ -69,6 +69,30 @@ extern const RandoRegionRules rando_rules_ice_palace;
 extern const RandoRegionRules rando_rules_misery_mire;
 extern const RandoRegionRules rando_rules_turtle_rock;
 extern const RandoRegionRules rando_rules_ganons_tower;
+extern const RandoRegionRules rando_rules_inverted_north_east_light_world;
+extern const RandoRegionRules rando_rules_inverted_north_west_light_world;
+extern const RandoRegionRules rando_rules_inverted_south_light_world;
+extern const RandoRegionRules rando_rules_inverted_escape;
+extern const RandoRegionRules rando_rules_inverted_eastern_palace;
+extern const RandoRegionRules rando_rules_inverted_desert_palace;
+extern const RandoRegionRules rando_rules_inverted_west_death_mountain;
+extern const RandoRegionRules rando_rules_inverted_east_death_mountain;
+extern const RandoRegionRules rando_rules_inverted_tower_of_hera;
+extern const RandoRegionRules rando_rules_inverted_hyrule_castle_tower;
+extern const RandoRegionRules rando_rules_inverted_east_dark_world_death_mountain;
+extern const RandoRegionRules rando_rules_inverted_west_dark_world_death_mountain;
+extern const RandoRegionRules rando_rules_inverted_north_east_dark_world;
+extern const RandoRegionRules rando_rules_inverted_north_west_dark_world;
+extern const RandoRegionRules rando_rules_inverted_south_dark_world;
+extern const RandoRegionRules rando_rules_inverted_mire;
+extern const RandoRegionRules rando_rules_inverted_palace_of_darkness;
+extern const RandoRegionRules rando_rules_inverted_swamp_palace;
+extern const RandoRegionRules rando_rules_inverted_skull_woods;
+extern const RandoRegionRules rando_rules_inverted_thieves_town;
+extern const RandoRegionRules rando_rules_inverted_ice_palace;
+extern const RandoRegionRules rando_rules_inverted_misery_mire;
+extern const RandoRegionRules rando_rules_inverted_turtle_rock;
+extern const RandoRegionRules rando_rules_inverted_ganons_tower;
 
 static inline bool has(const RandoItems *items, RandoItemId id)
 {
@@ -83,6 +107,8 @@ static inline bool has_n(const RandoItems *items, RandoItemId id, int at_least)
 bool rando_world_region_can_enter_with(const RandoWorld *world, const RandoWorld *locations, RandoRegionId region,
 				      const RandoItems *items);
 
+/* A region's own rules call it for VT's $this->canEnter, never their file's enter: Inverted reuses
+ * those rules under another entry rule. */
 static inline bool can_enter(const RandoWorld *world, const RandoWorld *locations, RandoRegionId region,
 			     const RandoItems *items)
 {

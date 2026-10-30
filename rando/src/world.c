@@ -4,7 +4,7 @@
 #include <string.h>
 
 typedef char item_id_fits_uint8[RANDO_ITEM_NONE <= UINT8_MAX ? 1 : -1];
-typedef char boss_id_fits_uint8[RANDO_BOSS_NONE <= UINT8_MAX ? 1 : -1];
+typedef char boss_id_fits_uint8[RANDO_BOSS_RULELESS <= UINT8_MAX ? 1 : -1];
 
 static void apply_logic_glitches(RandoConfig *c)
 {
@@ -217,7 +217,8 @@ RandoBossId rando_world_boss(const RandoWorld *world, RandoRegionId region, Rand
 
 void rando_world_set_boss(RandoWorld *world, RandoRegionId region, RandoBossSlot slot, RandoBossId boss)
 {
-	assert(region < RANDO_REGION_COUNT && slot < RANDO_BOSS_SLOT_COUNT && boss < RANDO_BOSS_COUNT);
+	assert(region < RANDO_REGION_COUNT && slot < RANDO_BOSS_SLOT_COUNT
+	       && (boss < RANDO_BOSS_COUNT || boss == RANDO_BOSS_RULELESS));
 	assert((slot == RANDO_BOSS_SLOT_BOSS || region == RANDO_REGION_GANONS_TOWER)
 	       && "only Ganon's Tower has boss levels");
 	world->bosses[region][slot] = (uint8_t)boss;

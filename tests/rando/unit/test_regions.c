@@ -2,6 +2,7 @@
 #include "support.h"
 
 #include <stdio.h>
+#include <string.h>
 
 #define TEST "test_regions"
 
@@ -51,6 +52,19 @@ static void check_can_enter_tower_of_hera_with_everything(void)
 	RandoItems items;
 
 	standard_world(&world);
+	all_items_except(&items, NULL, 0);
+	CHECK(rando_world_region_can_enter(&world, RANDO_REGION_TOWER_OF_HERA, &items));
+}
+
+/* Inverted TowerOfHeraTest::testCanEnterWithEverything. */
+static void check_can_enter_inverted_tower_of_hera_with_everything(void)
+{
+	RandoConfig config;
+	RandoWorld world;
+	RandoItems items;
+
+	rando_config_init(&config);
+	rando_world_init(&world, RANDO_VARIANT_INVERTED, &config);
 	all_items_except(&items, NULL, 0);
 	CHECK(rando_world_region_can_enter(&world, RANDO_REGION_TOWER_OF_HERA, &items));
 }
@@ -676,12 +690,49 @@ static void replay_every_row(const char *path)
 	printf(TEST ": all %d rows of %s replayed\n", rows, path);
 }
 
+/* TODO: the Inverted files whose rows are replayed whole, in all three trees; step 3.12's chunks 5
+ * and 6 add theirs, and chunk 7 removes both lists. */
+static const char *const inverted_enabled_files[] = {
+	"LightWorldTest.php", "HyruleCastleEscapeTest.php",
+	"DeathMountain/EastTest.php", "DeathMountain/WestTest.php",
+	"DarkWorld/NorthEastTest.php", "DarkWorld/NorthWestTest.php", "DarkWorld/SouthTest.php", "DarkWorld/MireTest.php",
+	"DarkWorld/DeathMountain/EastTest.php", "DarkWorld/DeathMountain/WestTest.php",
+	"HyruleCastleTowerTest.php", "PalaceOfDarknessTest.php", "ThievesTownTest.php", "IcePalaceTest.php",
+	"MiseryMireTest.php", NULL,
+};
+
+static const char *const inverted_enabled_methods[] = {"testEntry", "testCanEnterWithEverything", NULL};
+
+static int listed(const char *const *list, const char *name)
+{
+	for (; *list; list++)
+		if (strcmp(*list, name) == 0)
+			return 1;
+	return 0;
+}
+
+static int inverted_enabled(const char *file, const char *method)
+{
+	return listed(inverted_enabled_files, file) || listed(inverted_enabled_methods, method);
+}
+
+static void replay_inverted_rows(const char *path)
+{
+	int total, rows = fixture_replay_rows(TEST, path, inverted_enabled, &total);
+
+	if (rows == 0)
+		test_fail(TEST, "%s: no row replayed", path);
+	printf(TEST ": %d of %d rows of %s replayed, %d left to step 3.12's chunks 5-7\n", rows, total, path,
+	       total - rows);
+}
+
 int main(int argc, char **argv)
 {
 	int fixtures = test_fixtures_mode(TEST, argc, argv);
 
 	check_nothing_required_to_enter_eastern_palace();
 	check_can_enter_tower_of_hera_with_everything();
+	check_can_enter_inverted_tower_of_hera_with_everything();
 	check_cape_or_upgraded_sword_required_to_enter_castle_tower();
 	check_sword_required_to_complete_castle_tower();
 	check_boss_normal_location_decides_dungeon_items_on_bosses();
@@ -712,5 +763,8 @@ int main(int argc, char **argv)
 	replay_every_row(FIXTURE_NOGLITCHES_ROWS);
 	replay_every_row(FIXTURE_OVERWORLD_GLITCHES_ROWS);
 	replay_every_row(FIXTURE_MAJOR_GLITCHES_ROWS);
+	replay_inverted_rows(FIXTURE_INVERTED_ROWS);
+	replay_inverted_rows(FIXTURE_INVERTED_OVERWORLD_GLITCHES_ROWS);
+	replay_inverted_rows(FIXTURE_INVERTED_MAJOR_GLITCHES_ROWS);
 	return 0;
 }

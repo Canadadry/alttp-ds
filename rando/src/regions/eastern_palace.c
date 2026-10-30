@@ -63,3 +63,20 @@ static const RandoLocationRules locations[NLOCATIONS] = {
 const RandoRegionRules rando_rules_eastern_palace = {
 	"Region\\Standard\\EasternPalace", enter, complete, locations, NULL,
 };
+
+/* TODO: Region\Inverted\EasternPalace's location overrides (step 3.12, chunk 5). */
+static bool inverted_enter(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
+{
+	const RandoConfig *c = &world->config;
+
+	return (c->can_dungeon_revive
+		|| (c->can_super_bunny && has(items, RANDO_ITEM_MagicMirror))
+		|| (c->can_bunny_revive && rando_items_can_bunny_revive(items, c))
+		|| (c->can_owyba && rando_items_has_a_bottle(items))
+		|| has(items, RANDO_ITEM_MoonPearl))
+		&& can_enter(world, locations, RANDO_REGION_NORTH_EAST_LIGHT_WORLD, items);
+}
+
+const RandoRegionRules rando_rules_inverted_eastern_palace = {
+	"Region\\Inverted\\EasternPalace", inverted_enter, complete, locations, NULL,
+};

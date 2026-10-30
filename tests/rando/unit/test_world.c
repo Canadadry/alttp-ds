@@ -939,21 +939,16 @@ static int check_collect_vectors(void)
 {
 	RandoWorld world;
 	Fixture fx;
-	int steps = 0, scenario = 0, skipped = 0;
+	int steps = 0, scenario = 0;
 
 	fixture_open(&fx, FIXTURE_NOGLITCHES_ROWS);
 	while (fixture_next(&fx)) {
 		if (strcmp(fx.field[0], "collect_scenario") == 0) {
-			/* TODO: replay it once every Inverted region has its rules (step 3.12, chunk 4). */
-			skipped = strcmp(fx.field[1], "inverted_merchant") == 0;
-			if (!skipped)
-				collect_scenario(&fx, &world);
+			collect_scenario(&fx, &world);
 			scenario = 1;
 		} else if (strcmp(fx.field[0], "collect_step") == 0) {
 			if (!scenario)
 				fixture_fail(&fx, "collect step before any scenario");
-			if (skipped)
-				continue;
 			collect_step(&fx, &world);
 			steps++;
 		}

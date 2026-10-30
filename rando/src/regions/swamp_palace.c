@@ -121,3 +121,41 @@ static const RandoLocationRules locations[NLOCATIONS] = {
 const RandoRegionRules rando_rules_swamp_palace = {
 	"Region\\Standard\\SwampPalace", enter, complete, locations, NULL,
 };
+
+static bool inverted_mire(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
+{
+	return world->config.can_one_frame_clip_uw
+		&& (((rando_world_has_item(locations, RANDO_LOC_MISERY_MIRE_COMPASS_CHEST, RANDO_ITEM_BigKeyD6)
+		      || rando_world_has_item(locations, RANDO_LOC_MISERY_MIRE_BIG_KEY_CHEST, RANDO_ITEM_BigKeyD6))
+		     && has_n(items, RANDO_ITEM_KeyD6, 2))
+		    || has_n(items, RANDO_ITEM_KeyD6, 3))
+		&& can_enter(world, locations, RANDO_REGION_MISERY_MIRE, items);
+}
+
+/* TODO: Region\Inverted\SwampPalace's location overrides (step 3.12, chunk 5). */
+static bool inverted_enter(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
+{
+	const RandoConfig *c = &world->config;
+
+	return has(items, RANDO_ITEM_Flippers)
+		&& (c->item_placement != RANDO_PLACEMENT_BASIC
+		    || ((c->mode_weapons == RANDO_WEAPONS_SWORDLESS || rando_items_has_sword(items, 1))
+			&& rando_items_has_health(items, 7) && rando_items_has_bottle(items, 1)))
+		&& ((has(items, RANDO_ITEM_MoonPearl)
+		     || (c->can_owyba && rando_items_has_a_bottle(items))
+		     || (c->can_bunny_revive && rando_items_can_bunny_revive(items, c)))
+		    || (c->can_super_bunny && has(items, RANDO_ITEM_MagicMirror)))
+		&& (has(items, RANDO_ITEM_MagicMirror)
+		    || (c->can_one_frame_clip_uw && has(items, RANDO_ITEM_MoonPearl)
+			&& (has(items, RANDO_ITEM_BigKeyP3) || has(items, RANDO_ITEM_BigKeyD6))
+			&& inverted_mire(world, locations, items)
+			&& rando_world_can_access(locations, RANDO_LOC_OLD_MAN, items)
+			&& ((has(items, RANDO_ITEM_PegasusBoots) && c->can_boots_clip)
+			    || (c->can_super_speed && rando_items_can_spin_speed(items))
+			    || c->can_one_frame_clip_ow)))
+		&& can_enter(world, locations, RANDO_REGION_SOUTH_LIGHT_WORLD, items);
+}
+
+const RandoRegionRules rando_rules_inverted_swamp_palace = {
+	"Region\\Inverted\\SwampPalace", inverted_enter, complete, locations, NULL,
+};

@@ -72,7 +72,7 @@ static bool boss(const RandoWorld *world, const RandoWorld *locations, const Ran
 {
 	const RandoConfig *c = &world->config;
 
-	return enter(world, locations, items)
+	return can_enter(world, locations, RANDO_REGION_ICE_PALACE, items)
 		&& has(items, RANDO_ITEM_Hammer) && rando_items_can_lift_rocks(items)
 		&& boss_can_beat(world, RANDO_REGION_ICE_PALACE, items)
 		&& has(items, RANDO_ITEM_BigKeyD5)
@@ -114,4 +114,30 @@ static const RandoLocationRules locations[NLOCATIONS] = {
 
 const RandoRegionRules rando_rules_ice_palace = {
 	"Region\\Standard\\IcePalace", enter, complete, locations, NULL,
+};
+
+static bool inverted_enter(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
+{
+	const RandoConfig *c = &world->config;
+
+	return (c->item_placement != RANDO_PLACEMENT_BASIC
+		|| ((c->mode_weapons == RANDO_WEAPONS_SWORDLESS || rando_items_has_sword(items, 2))
+		    && rando_items_has_health(items, 12)
+		    && (rando_items_has_bottle(items, 2) || rando_items_has_armor(items, 1))))
+		&& (rando_items_can_melt_things(items, c) || c->can_one_frame_clip_uw)
+		&& ((has(items, RANDO_ITEM_Flippers)
+		     || (c->can_fake_flipper
+			 && (c->can_bunny_revive
+			     || (!c->region_cant_take_damage
+				 && can_enter(world, locations, RANDO_REGION_NORTH_WEST_DARK_WORLD, items))
+			     || rando_items_can_fly(items, c)
+			     || (can_enter(world, locations, RANDO_REGION_NORTH_WEST_DARK_WORLD, items)
+				 && (has(items, RANDO_ITEM_Hammer) || rando_items_can_lift_rocks(items))))))
+		    || (c->can_boots_clip && has(items, RANDO_ITEM_PegasusBoots))
+		    || c->can_one_frame_clip_ow
+		    || (c->can_super_speed && rando_items_can_spin_speed(items)));
+}
+
+const RandoRegionRules rando_rules_inverted_ice_palace = {
+	"Region\\Inverted\\IcePalace", inverted_enter, complete, locations, NULL,
 };

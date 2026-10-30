@@ -53,7 +53,7 @@ static bool enter(const RandoWorld *world, const RandoWorld *locations, const Ra
 
 static bool boss(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
-	return enter(world, locations, items)
+	return can_enter(world, locations, RANDO_REGION_THIEVES_TOWN, items)
 		&& attic(world, locations, items)
 		&& boss_can_beat(world, RANDO_REGION_THIEVES_TOWN, items)
 		&& boss_has_wild_compass_and_map(world, RANDO_LOC_THIEVES_TOWN_BOSS, RANDO_ITEM_CompassD4,
@@ -88,4 +88,18 @@ static const RandoLocationRules locations[NLOCATIONS] = {
 
 const RandoRegionRules rando_rules_thieves_town = {
 	"Region\\Standard\\ThievesTown", enter, complete, locations, NULL,
+};
+
+static bool inverted_enter(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
+{
+	const RandoConfig *c = &world->config;
+
+	return (c->item_placement != RANDO_PLACEMENT_BASIC
+		|| ((c->mode_weapons == RANDO_WEAPONS_SWORDLESS || rando_items_has_sword(items, 1))
+		    && rando_items_has_health(items, 7) && rando_items_has_a_bottle(items)))
+		&& can_enter(world, locations, RANDO_REGION_NORTH_WEST_DARK_WORLD, items);
+}
+
+const RandoRegionRules rando_rules_inverted_thieves_town = {
+	"Region\\Inverted\\ThievesTown", inverted_enter, complete, locations, NULL,
 };

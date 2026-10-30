@@ -12,6 +12,9 @@
 #define FIXTURE_NOGLITCHES_ROWS "oracle/noglitches_rows.txt"
 #define FIXTURE_OVERWORLD_GLITCHES_ROWS "oracle/overworld_glitches_rows.txt"
 #define FIXTURE_MAJOR_GLITCHES_ROWS "oracle/major_glitches_rows.txt"
+#define FIXTURE_INVERTED_ROWS "oracle/inverted_rows.txt"
+#define FIXTURE_INVERTED_OVERWORLD_GLITCHES_ROWS "oracle/inverted_overworld_glitches_rows.txt"
+#define FIXTURE_INVERTED_MAJOR_GLITCHES_ROWS "oracle/inverted_major_glitches_rows.txt"
 #define FIXTURE_POOL_LISTS "oracle/pool_lists.txt"
 #define FIXTURE_PREPARED_POOLS "oracle/prepared_pools.txt"
 
@@ -75,8 +78,8 @@ typedef int (*RowFilter)(const char *file, const char *method);
 
 /* Replays every row record of the fixture at path the filter accepts: a fresh world of the row's
  * variant, built from a config holding only the row's logic override (so world init derives that
- * logic's glitch flags, as VT resolves them lazily), then all its config overrides and preset items,
- * then its query on its two-view item multiset; vanilla_dungeon_items applies every override to the
+ * logic's glitch flags, as VT resolves them lazily), then all its config overrides and preset items
+ * and bosses (a boss name outside Boss::all sets RANDO_BOSS_RULELESS), then its query on its two-view item multiset; vanilla_dungeon_items applies every override to the
  * config the world is built from instead. On the first answer that differs from VT's, prints the
  * row's origin, query, expected and actual and exits 1. Returns the number of rows replayed and
  * stores the number of row records in *total. */

@@ -111,6 +111,17 @@ static void check_trinexx_magic(void)
 	CHECK(rando_boss_can_beat(RANDO_BOSS_TRINEXX, &config, &items));
 }
 
+/* Boss::canBeat of `new Boss("Dummy Boss")`, which VT's Inverted ThievesTown tests set. */
+static void check_ruleless_boss_beaten_with_nothing(void)
+{
+	RandoConfig config;
+	RandoItems items;
+
+	rando_config_init(&config);
+	rando_items_clear(&items);
+	CHECK(rando_boss_can_beat(RANDO_BOSS_RULELESS, &config, &items));
+}
+
 /* Returns the number of boss records checked. */
 static int check_world_dump(void)
 {
@@ -143,6 +154,7 @@ int main(int argc, char **argv)
 
 	check_can_beat();
 	check_trinexx_magic();
+	check_ruleless_boss_beaten_with_nothing();
 	printf(TEST ": hand-written cases passed\n");
 	if (!fixtures)
 		return 0;

@@ -169,6 +169,8 @@ RandoBossId rando_boss_find(const char *name)
 
 bool rando_boss_can_beat(RandoBossId id, const RandoConfig *config, const RandoItems *items)
 {
+	if (id == RANDO_BOSS_RULELESS)
+		return true;
 	assert(id < RANDO_BOSS_COUNT && "rando_boss_can_beat: not a boss id");
 	return boss_table[id].can_beat(config, items);
 }

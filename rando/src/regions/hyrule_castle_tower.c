@@ -21,7 +21,7 @@ static bool dark_maze(const RandoWorld *world, const RandoWorld *locations, cons
 
 static bool complete(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
-	return enter(world, locations, items) && has_n(items, RANDO_ITEM_KeyA1, 2)
+	return can_enter(world, locations, RANDO_REGION_HYRULE_CASTLE_TOWER, items) && has_n(items, RANDO_ITEM_KeyA1, 2)
 		&& has_lamp(world, items)
 		&& (rando_items_has_sword(items, 1)
 		    || (world->config.mode_weapons == RANDO_WEAPONS_SWORDLESS
@@ -35,4 +35,14 @@ static const RandoLocationRules locations[NLOCATIONS] = {
 
 const RandoRegionRules rando_rules_hyrule_castle_tower = {
 	"Region\\Standard\\HyruleCastleTower", enter, complete, locations, NULL,
+};
+
+static bool inverted_enter(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
+{
+	return rando_items_can_kill_most_things(items, &world->config, 8)
+		&& can_enter(world, locations, RANDO_REGION_WEST_DARK_WORLD_DEATH_MOUNTAIN, items);
+}
+
+const RandoRegionRules rando_rules_inverted_hyrule_castle_tower = {
+	"Region\\Inverted\\HyruleCastleTower", inverted_enter, complete, locations, NULL,
 };

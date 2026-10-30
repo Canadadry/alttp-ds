@@ -70,7 +70,7 @@ static bool enter(const RandoWorld *world, const RandoWorld *locations, const Ra
 
 static bool boss(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
-	return enter(world, locations, items)
+	return can_enter(world, locations, RANDO_REGION_MISERY_MIRE, items)
 		&& has(items, RANDO_ITEM_CaneOfSomaria) && has_lamp(world, items)
 		&& has(items, RANDO_ITEM_BigKeyD6)
 		&& boss_can_beat(world, RANDO_REGION_MISERY_MIRE, items)
@@ -109,4 +109,28 @@ static const RandoLocationRules locations[NLOCATIONS] = {
 
 const RandoRegionRules rando_rules_misery_mire = {
 	"Region\\Standard\\MiseryMire", enter, complete, locations, NULL,
+};
+
+static bool inverted_enter(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
+{
+	const RandoConfig *c = &world->config;
+
+	return (c->item_placement != RANDO_PLACEMENT_BASIC
+		|| ((c->mode_weapons == RANDO_WEAPONS_SWORDLESS || rando_items_has_sword(items, 2))
+		    && rando_items_has_health(items, 12)
+		    && (rando_items_has_bottle(items, 2) || rando_items_has_armor(items, 1))))
+		&& ((rando_world_has_item(locations, RANDO_LOC_MISERY_MIRE_MEDALLION, RANDO_ITEM_Bombos)
+		     && has(items, RANDO_ITEM_Bombos))
+		    || (rando_world_has_item(locations, RANDO_LOC_MISERY_MIRE_MEDALLION, RANDO_ITEM_Ether)
+			&& has(items, RANDO_ITEM_Ether))
+		    || (rando_world_has_item(locations, RANDO_LOC_MISERY_MIRE_MEDALLION, RANDO_ITEM_Quake)
+			&& has(items, RANDO_ITEM_Quake)))
+		&& (c->mode_weapons == RANDO_WEAPONS_SWORDLESS || rando_items_has_sword(items, 1))
+		&& (has(items, RANDO_ITEM_PegasusBoots) || has(items, RANDO_ITEM_Hookshot))
+		&& rando_items_can_kill_most_things(items, c, 8)
+		&& can_enter(world, locations, RANDO_REGION_MIRE, items);
+}
+
+const RandoRegionRules rando_rules_inverted_misery_mire = {
+	"Region\\Inverted\\MiseryMire", inverted_enter, complete, locations, NULL,
 };

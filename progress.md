@@ -107,7 +107,7 @@
   - [x] Chunk 1: Inverted oracle fixtures
   - [x] Chunk 2: per-variant layout refactor
   - [x] Chunk 3: Inverted world
-  - [ ] Chunk 4: overworld and dungeon entries
+  - [x] Chunk 4: overworld and dungeon entries
   - [ ] Chunk 5: Light World dungeons, Swamp, Skull
   - [ ] Chunk 6: Turtle Rock
   - [ ] Chunk 7: Ganon's Tower, every row replayed
