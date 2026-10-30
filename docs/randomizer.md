@@ -609,3 +609,18 @@ None.
 - `make measure`: ARM code+rodata 112.5 KB (80.6 KB at step 3.4; A-2's 128 KB leaves 18.5 KB),
   host -O2 127.9 KB, stack peak 6 328 B, max case 18 ms (`item_placement-basic`, still over A-3);
   `make test` ~88 ms, `logic` ~0.38 s, e2e ~0.19 s.
+
+### Step 3.13
+
+- Extractor: `RetroBowTest::testLocation` (32 rows, VT agrees), the `retro` world dump and
+  predicate config; goldens byte-identical.
+- `RANDO_VARIANT_RETRO`: classic layout, Open's rules; world init forces rupee bow, generic keys,
+  take-any caves and wild keys, then VT's per-pool key and `TwentyRupees2` counts.
+- `rando_set_shops(world, prng)`: VT's random path (take-any caves, old man's sword or 300 rupees,
+  shop arrows and keys, Capacity Upgrade); no option returns `RANDO_UNSUPPORTED` any more.
+- Host: under generic keys the region sections and `pool.txt` write `Key` with no suffix; a placed
+  `ShopKey` is VT's `ItemAlias` and keeps `KeyGK:1`.
+- `state-retro` claimed at `all`: every case of the matrix passes, 44 pass, 0 pending.
+- `make measure`: ARM code+rodata 113.6 KB (17.4 KB left of A-2), stack peak 6 328 B, max case
+  17.5 ms (`item_placement-basic`, still over A-3), sweep max 19.3 ms, 0 retries;
+  `make test` ~85 ms, `logic` ~0.36 s, e2e ~0.2 s.
