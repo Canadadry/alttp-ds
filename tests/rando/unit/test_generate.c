@@ -14,7 +14,7 @@
 			test_fail(TEST, "%s:%d: %s", __FILE__, __LINE__, #cond); \
 	} while (0)
 
-#define TRACE_MAX 4096
+#define TRACE_MAX 16384
 #define STAGE_TABLE "stages.txt"
 
 /* The hook's draws in trace.txt's format. */
@@ -50,27 +50,57 @@ static RandoStatus generate(const char *key, const char *value, uint32_t seed, T
 	return rando_generate(&gen, &options, seed, 1, record, trace);
 }
 
-static void check_trace(const char *what, const Trace *trace, const char *expected)
+/* The C draws must be the first lines of the case's golden trace. */
+static void check_golden_prefix(const char *name, const Trace *trace)
 {
-	if (strcmp(trace->text, expected) != 0)
-		test_fail(TEST, "%s: trace\n%s\nexpected\n%s", what, trace->text, expected);
+	char path[256], golden[TRACE_MAX];
+	size_t len = 0;
+	int lines = 0;
+	FILE *f;
+
+	snprintf(path, sizeof path, "cases/%s/trace.txt", name);
+	f = fopen(path, "r");
+	if (!f)
+		test_fail(TEST, "%s: cannot open", path);
+	while (lines < trace->lines && fgets(golden + len, (int)(sizeof golden - len), f)) {
+		len += strlen(golden + len);
+		lines++;
+	}
+	fclose(f);
+	golden[len] = '\0';
+	if (strcmp(trace->text, golden) != 0)
+		test_fail(TEST, "%s: C draws\n%s\ndiffer from the golden's first %d lines\n%s", name, trace->text,
+			  trace->lines, golden);
 }
 
-/* tests/rando/cases/baseline/trace.txt through placeBosses, which draws nothing; fillPrizes is not ported yet. */
+static const struct {
+	RandoLocationId location;
+	RandoItemId prize;
+} baseline_prizes[] = {
+	{RANDO_LOC_EASTERN_PALACE_PRIZE, RANDO_ITEM_Crystal6},
+	{RANDO_LOC_DESERT_PALACE_PRIZE, RANDO_ITEM_Crystal1},
+	{RANDO_LOC_TOWER_OF_HERA_PRIZE, RANDO_ITEM_Crystal3},
+	{RANDO_LOC_PALACE_OF_DARKNESS_PRIZE, RANDO_ITEM_Crystal4},
+	{RANDO_LOC_SWAMP_PALACE_PRIZE, RANDO_ITEM_PendantOfCourage},
+	{RANDO_LOC_SKULL_WOODS_PRIZE, RANDO_ITEM_Crystal7},
+	{RANDO_LOC_THIEVES_TOWN_PRIZE, RANDO_ITEM_PendantOfWisdom},
+	{RANDO_LOC_ICE_PALACE_PRIZE, RANDO_ITEM_Crystal5},
+	{RANDO_LOC_MISERY_MIRE_PRIZE, RANDO_ITEM_PendantOfPower},
+	{RANDO_LOC_TURTLE_ROCK_PRIZE, RANDO_ITEM_Crystal2},
+};
+
+/* tests/rando/cases/baseline: its trace through fillPrizes, and its ten "- Prize:1" entries. */
 static void check_baseline(void)
 {
 	Trace trace;
+	size_t p;
 	int i;
 
 	CHECK(generate(NULL, NULL, 1, &trace) == RANDO_INCOMPLETE);
 	CHECK(gen.attempt == 0);
-	check_trace("baseline", &trace,
-		    "0 1 getAdvancementItems 0 6 -> 3\n"
-		    "0 2 getAdvancementItems 0 6 -> 4\n"
-		    "0 3 getAdvancementItems 0 6 -> 6\n"
-		    "0 4 getAdvancementItems 0 6 -> 1\n"
-		    "0 5 setMedallions 0 2 -> 0\n"
-		    "0 6 setMedallions 0 2 -> 0\n");
+	CHECK(trace.lines == 70);
+	check_golden_prefix("baseline", &trace);
+	CHECK(strstr(trace.text, "0 6 setMedallions 0 2 -> 0\n0 7 fillPrizes 0 13 -> 12\n") != NULL);
 	CHECK(rando_world_item(&gen.world, RANDO_LOC_TURTLE_ROCK_MEDALLION) == RANDO_ITEM_Ether);
 	CHECK(rando_world_item(&gen.world, RANDO_LOC_MISERY_MIRE_MEDALLION) == RANDO_ITEM_Ether);
 	for (i = 0; i < RANDO_SHOP_COUNT; i++)
@@ -79,6 +109,8 @@ static void check_baseline(void)
 	CHECK(rando_world_item(&gen.world, RANDO_LOC_GANON) == RANDO_ITEM_Triforce);
 	CHECK(rando_items_has(&gen.world.pre_collected, RANDO_ITEM_RescueZelda));
 	CHECK(rando_world_boss(&gen.world, RANDO_REGION_HYRULE_CASTLE_TOWER, RANDO_BOSS_SLOT_BOSS) == RANDO_BOSS_AGAHNIM);
+	for (p = 0; p < sizeof baseline_prizes / sizeof baseline_prizes[0]; p++)
+		CHECK(rando_world_item(&gen.world, baseline_prizes[p].location) == baseline_prizes[p].prize);
 }
 
 /* tests/rando/cases/crystals_ganon-random/trace.txt. */
@@ -87,14 +119,8 @@ static void check_random_ganon(void)
 	Trace trace;
 
 	CHECK(generate("crystals_ganon", "random", 1, &trace) == RANDO_INCOMPLETE);
-	check_trace("crystals_ganon-random", &trace,
-		    "0 1 crystals 0 7 -> 5\n"
-		    "0 2 getAdvancementItems 0 6 -> 4\n"
-		    "0 3 getAdvancementItems 0 6 -> 6\n"
-		    "0 4 getAdvancementItems 0 6 -> 1\n"
-		    "0 5 getAdvancementItems 0 6 -> 1\n"
-		    "0 6 setMedallions 0 2 -> 0\n"
-		    "0 7 setMedallions 0 2 -> 2\n");
+	CHECK(trace.lines == 71);
+	check_golden_prefix("crystals_ganon-random", &trace);
 }
 
 /* tests/rando/cases/crystals_tower-random/trace.txt. */
@@ -103,14 +129,9 @@ static void check_random_crystals(void)
 	Trace trace;
 
 	CHECK(generate("crystals_tower", "random", 1, &trace) == RANDO_INCOMPLETE);
-	check_trace("crystals_tower-random", &trace,
-		    "0 1 crystals 0 7 -> 5\n"
-		    "0 2 getAdvancementItems 0 6 -> 4\n"
-		    "0 3 getAdvancementItems 0 6 -> 6\n"
-		    "0 4 getAdvancementItems 0 6 -> 1\n"
-		    "0 5 getAdvancementItems 0 6 -> 1\n"
-		    "0 6 setMedallions 0 2 -> 0\n"
-		    "0 7 setMedallions 0 2 -> 2\n");
+	CHECK(trace.lines == 71);
+	check_golden_prefix("crystals_tower-random", &trace);
+	CHECK(strncmp(trace.text, "0 1 crystals 0 7 -> 5\n", 22) == 0);
 	CHECK(gen.world.config.crystals_tower == 5);
 	CHECK(gen.world.config.crystals_ganon == 7);
 }
@@ -126,7 +147,7 @@ static void check_crystals_order(void)
 	CHECK(rando_options_set(&options, "crystals_tower", "random"));
 	memset(&trace, 0, sizeof trace);
 	CHECK(rando_generate(&gen, &options, 1, 1, record, &trace) == RANDO_INCOMPLETE);
-	CHECK(trace.lines == 8);
+	CHECK(trace.lines == 72);
 	CHECK(strncmp(trace.text, "0 1 crystals 0 7 -> 5\n0 2 crystals 0 7 -> ", 42) == 0);
 	CHECK(gen.world.config.crystals_ganon == 5);
 	CHECK(gen.world.config.crystals_tower == trace.text[42] - '0');
@@ -144,7 +165,7 @@ static void check_states(void)
 	CHECK(generate("state", "standard", 1, &trace) == RANDO_INCOMPLETE);
 	CHECK(gen.world.variant == RANDO_VARIANT_STANDARD);
 	CHECK(gen.world.config.mode_state == RANDO_STATE_STANDARD);
-	CHECK(trace.lines == 6);
+	CHECK(trace.lines == 70);
 	CHECK(!rando_items_has(&gen.world.pre_collected, RANDO_ITEM_RescueZelda));
 	CHECK(generate(NULL, NULL, 1, &trace) == RANDO_INCOMPLETE);
 	CHECK(gen.world.variant == RANDO_VARIANT_OPEN);
@@ -171,13 +192,13 @@ static void check_reseed(uint32_t seed)
 	prng.observe_ctx = &expected;
 	rando_random_int(&prng, 0, 6);
 	CHECK(generate(NULL, NULL, seed, &trace) == RANDO_INCOMPLETE);
-	CHECK(trace.lines == 6);
+	CHECK(trace.lines == 70);
 	CHECK(trace.text[strlen("0 1 getAdvancementItems 0 6 -> ")] - '0' == expected);
 
 	rando_options_init(&options);
 	CHECK(rando_generate(&gen, &options, seed, 0, NULL, NULL) == RANDO_INCOMPLETE);
 	CHECK(gen.attempt == 0);
-	CHECK(gen.draw == 6);
+	CHECK(gen.draw == 70);
 }
 
 /* The gate labels claims with stages.txt's names: a renamed or reordered stage fails here. */
@@ -220,29 +241,6 @@ static int skipped_index(const char *name)
 		if (strcmp(name, skipped_cases[i]) == 0)
 			return i;
 	return -1;
-}
-
-/* The C draws must be the first lines of the case's golden trace. */
-static void check_golden_prefix(const char *name, const Trace *trace)
-{
-	char path[256], golden[TRACE_MAX];
-	size_t len = 0;
-	int lines = 0;
-	FILE *f;
-
-	snprintf(path, sizeof path, "cases/%s/trace.txt", name);
-	f = fopen(path, "r");
-	if (!f)
-		test_fail(TEST, "%s: cannot open", path);
-	while (lines < trace->lines && fgets(golden + len, (int)(sizeof golden - len), f)) {
-		len += strlen(golden + len);
-		lines++;
-	}
-	fclose(f);
-	golden[len] = '\0';
-	if (strcmp(trace->text, golden) != 0)
-		test_fail(TEST, "%s: C draws\n%s\ndiffer from the golden's first %d lines\n%s", name, trace->text,
-			  trace->lines, golden);
 }
 
 static void check_list(Fixture *fx, const char *name, RandoPoolList list)
@@ -300,7 +298,7 @@ static int check_pool_lists(void)
 		if (skip < 0) {
 			memset(&trace, 0, sizeof trace);
 			if (rando_generate(&gen, &options, (uint32_t)seed, 1, record, &trace) != RANDO_INCOMPLETE)
-				fixture_fail(&fx, "generation did not stop incomplete after setMedallions");
+				fixture_fail(&fx, "generation did not stop incomplete after fillPrizes");
 			check_golden_prefix(name, &trace);
 			cases++;
 		} else {

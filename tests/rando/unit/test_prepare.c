@@ -1,3 +1,4 @@
+#include "rando_pool.h"
 #include "rando_prepare.h"
 #include "support.h"
 
@@ -193,6 +194,26 @@ static void check_medallion_preset(void)
 	CHECK(rando_world_item(&world, RANDO_LOC_TURTLE_ROCK_MEDALLION) == by_index[rando_random_int(&twin, 0, 2)]);
 }
 
+/* Randomizer::__construct: three hearts, ten bombs and thirty arrows, only into an empty collection. */
+static void check_start_equipment(void)
+{
+	RandoWorld world;
+
+	open_world(&world, RANDO_ITEM_POOL_NORMAL);
+	rando_prepare_start_equipment(&world);
+	CHECK(rando_items_count(&world.pre_collected) == 7);
+	CHECK(world.pre_collected.counts[RANDO_ITEM_BossHeartContainer] == 3);
+	CHECK(world.pre_collected.values[RANDO_ITEM_BossHeartContainer] == 3);
+	CHECK(world.pre_collected.counts[RANDO_ITEM_BombUpgrade10] == 1);
+	CHECK(world.pre_collected.counts[RANDO_ITEM_ArrowUpgrade10] == 3);
+	CHECK(rando_items_has_health(&world.pre_collected, 3));
+
+	open_world(&world, RANDO_ITEM_POOL_NORMAL);
+	rando_items_add(&world.pre_collected, RANDO_ITEM_PegasusBoots);
+	rando_prepare_start_equipment(&world);
+	CHECK(rando_items_count(&world.pre_collected) == 1);
+}
+
 static void goal_world(RandoWorld *world, RandoGoal goal)
 {
 	RandoConfig config;
@@ -319,6 +340,119 @@ static void check_place_bosses(RandoWeapons weapons)
 		CHECK(rando_world_boss(&world, placed_bosses[i].region, placed_bosses[i].slot) == placed_bosses[i].boss);
 }
 
+static const RandoItemId prizes[] = {
+	RANDO_ITEM_Crystal1, RANDO_ITEM_Crystal2, RANDO_ITEM_Crystal3, RANDO_ITEM_Crystal4, RANDO_ITEM_Crystal5,
+	RANDO_ITEM_Crystal6, RANDO_ITEM_Crystal7, RANDO_ITEM_PendantOfCourage, RANDO_ITEM_PendantOfPower,
+	RANDO_ITEM_PendantOfWisdom,
+};
+
+/* The generator's open world just before fillPrizes, with the given item.count entries at 0. */
+static void prize_world(RandoWorld *world, RandoPrng *prng, const RandoItemId *zeroed, size_t nzeroed)
+{
+	RandoConfig config;
+	size_t i;
+
+	rando_config_init(&config);
+	for (i = 0; i < nzeroed; i++)
+		config.item_count[zeroed[i]] = 0;
+	rando_world_init(world, RANDO_VARIANT_OPEN, &config);
+	rando_prepare_start_equipment(world);
+	rando_prepare_goal(world);
+	rando_prepare_pre_collect(world);
+	rando_set_shops(world);
+	seeded(prng, 1, 0);
+	rando_set_medallions(world, prng);
+	rando_place_bosses(world);
+}
+
+/* fillPrizes' assumed collection with all ten prizes still to place. */
+static void assume_all(RandoWorld *world, RandoPrng *prng, RandoItems *assumed)
+{
+	RandoItems start;
+	size_t i;
+
+	rando_world_reset_collected(world);
+	rando_items_clear(&start);
+	rando_pool_add_items(world, prng, RANDO_POOL_DUNGEON, &start);
+	rando_pool_add_items(world, prng, RANDO_POOL_ADVANCEMENT, &start);
+	for (i = 0; i < sizeof prizes / sizeof prizes[0]; i++)
+		rando_items_add(&start, prizes[i]);
+	rando_world_collect_items(world, &start, assumed);
+}
+
+static void count_location_order(void *ctx, int64_t min, int64_t max, int64_t r)
+{
+	(void)r;
+	if (min == 0 && max == 13)
+		++*(int *)ctx;
+}
+
+static bool holds_prize(const RandoWorld *world, RandoLocationId location)
+{
+	size_t i;
+
+	for (i = 0; i < sizeof prizes / sizeof prizes[0]; i++)
+		if (rando_world_has_item(world, location, prizes[i]))
+			return true;
+	return false;
+}
+
+/* No candidate reaches Turtle Rock without CaneOfSomaria: six passes (VT's $attempts 5 down to 0), each
+ * opened by its randomCollection draw over 14 locations, then Cannot Place Prize. */
+static void check_fill_prizes_all_refused(void)
+{
+	static const RandoItemId zeroed[] = {RANDO_ITEM_CaneOfSomaria};
+	RandoWorld world;
+	RandoPrng prng;
+	RandoItems assumed;
+	int passes = 0;
+
+	prize_world(&world, &prng, zeroed, 1);
+	assume_all(&world, &prng, &assumed);
+	CHECK(!rando_world_can_access(&world, RANDO_LOC_TURTLE_ROCK_PRIZE, &assumed));
+
+	prng.observe = count_location_order;
+	prng.observe_ctx = &passes;
+	CHECK(!rando_fill_prizes(&world, &prng));
+	CHECK(passes == 6);
+	CHECK(!rando_world_has_item(&world, RANDO_LOC_TURTLE_ROCK_PRIZE, RANDO_ITEM_NONE));
+}
+
+static const RandoLocationId crystal_locations[] = {
+	RANDO_LOC_PALACE_OF_DARKNESS_PRIZE, RANDO_LOC_SWAMP_PALACE_PRIZE, RANDO_LOC_SKULL_WOODS_PRIZE,
+	RANDO_LOC_THIEVES_TOWN_PRIZE, RANDO_LOC_ICE_PALACE_PRIZE, RANDO_LOC_MISERY_MIRE_PRIZE,
+	RANDO_LOC_TURTLE_ROCK_PRIZE,
+};
+
+/* Without BigKeyP2, Desert Palace (a Prize\Pendant) stays empty: each pendant-phase reset clears only the
+ * pendant locations, so the crystal locations keep their prizes to the end. */
+static void check_fill_prizes_pendant_failure(void)
+{
+	static const RandoItemId zeroed[] = {RANDO_ITEM_BigKeyP2};
+	RandoWorld world;
+	RandoPrng prng;
+	RandoItems assumed;
+	size_t i;
+	int passes = 0;
+
+	prize_world(&world, &prng, zeroed, 1);
+	assume_all(&world, &prng, &assumed);
+	CHECK(!rando_world_can_access(&world, RANDO_LOC_DESERT_PALACE_PRIZE, &assumed));
+	for (i = 0; i < sizeof crystal_locations / sizeof crystal_locations[0]; i++)
+		CHECK(rando_world_can_access(&world, crystal_locations[i], &assumed));
+	CHECK(rando_world_check_win_condition(&world, &assumed));
+
+	prng.observe = count_location_order;
+	prng.observe_ctx = &passes;
+	CHECK(!rando_fill_prizes(&world, &prng));
+	CHECK(passes == 6);
+	for (i = 0; i < sizeof crystal_locations / sizeof crystal_locations[0]; i++)
+		CHECK(holds_prize(&world, crystal_locations[i]));
+	CHECK(!rando_world_has_item(&world, RANDO_LOC_DESERT_PALACE_PRIZE, RANDO_ITEM_NONE));
+	CHECK(!rando_world_has_item(&world, RANDO_LOC_EASTERN_PALACE_PRIZE, RANDO_ITEM_NONE));
+	CHECK(!rando_world_has_item(&world, RANDO_LOC_TOWER_OF_HERA_PRIZE, RANDO_ITEM_NONE));
+}
+
 int main(int argc, char **argv)
 {
 	test_fixtures_mode(TEST, argc, argv);
@@ -330,11 +464,14 @@ int main(int argc, char **argv)
 	check_medallions_golden();
 	check_medallion_index();
 	check_medallion_preset();
+	check_start_equipment();
 	check_goal_triforce();
 	check_goal_accessibility();
 	check_pre_collect();
 	check_place_bosses(RANDO_WEAPONS_RANDOMIZED);
 	check_place_bosses(RANDO_WEAPONS_SWORDLESS);
+	check_fill_prizes_all_refused();
+	check_fill_prizes_pendant_failure();
 	printf(TEST ": hand-written cases passed\n");
 	return 0;
 }

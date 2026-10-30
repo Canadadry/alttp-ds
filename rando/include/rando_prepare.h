@@ -4,6 +4,11 @@
 #include "rando_prng.h"
 #include "rando_world.h"
 
+#include <stdbool.h>
+
+/* Randomizer::__construct: the default pre-collected items, only when the world has none. */
+void rando_prepare_start_equipment(RandoWorld *world);
+
 /* prepareWorld before its pool getters: completionist's accessibility switch and the goal's Triforce. */
 void rando_prepare_goal(RandoWorld *world);
 
@@ -19,5 +24,9 @@ void rando_set_medallions(RandoWorld *world, RandoPrng *prng);
 
 /* Randomizer::placeBosses with enemizer.bossShuffle none, the only path the matrix reaches: it draws nothing. */
 void rando_place_bosses(RandoWorld *world);
+
+/* Randomizer::fillPrizes with VT's five resets. False where VT throws Cannot Place Prize: the attempt
+ * failed, and the world holds whatever the last pass left. */
+bool rando_fill_prizes(RandoWorld *world, RandoPrng *prng);
 
 #endif
