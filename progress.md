@@ -42,7 +42,7 @@
       - [x] Chunk 2: library support
       - [x] Chunk 3: prologue and placeBosses
       - [x] Chunk 4: fillPrizes and stop point
-      - [ ] Chunk 5: Bosses writer, check lines and claims
+      - [x] Chunk 5: Bosses writer, check lines and claims
     - [ ] 2.3.4 setFountains
     - [ ] 2.3.5 shufflePrizePacks
     - [ ] 2.3.6 prepareWorld item pool and shuffles

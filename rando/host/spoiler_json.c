@@ -4,7 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* TODO: Bosses (step 2.3.3), Equipped, meta and playthrough (step 2.4). */
+/* TODO: Equipped, meta and playthrough (step 2.4). */
 
 #define KEY_MAX 96
 #define WORLD_SUFFIX ":1"
@@ -166,10 +166,63 @@ static void write_shops(FILE *out, const RandoWorld *world)
 	fputc(']', out);
 }
 
+typedef struct BossKey {
+	const char *key;
+	RandoRegionId region;
+	RandoBossSlot slot;
+	const char *literal;
+} BossKey;
+
+/* VT's getSpoiler Bosses keys, already in strcmp order. Hyrule Castle, Ganons Tower and Ganon are
+ * literals in VT, not world reads. */
+static const BossKey boss_keys[] = {
+	{"Desert Palace", RANDO_REGION_DESERT_PALACE, RANDO_BOSS_SLOT_BOSS, NULL},
+	{"Eastern Palace", RANDO_REGION_EASTERN_PALACE, RANDO_BOSS_SLOT_BOSS, NULL},
+	{"Ganon", RANDO_REGION_NONE, RANDO_BOSS_SLOT_BOSS, "Ganon"},
+	{"Ganons Tower", RANDO_REGION_NONE, RANDO_BOSS_SLOT_BOSS, "Agahnim 2"},
+	{"Ganons Tower Basement", RANDO_REGION_GANONS_TOWER, RANDO_BOSS_SLOT_BOTTOM, NULL},
+	{"Ganons Tower Middle", RANDO_REGION_GANONS_TOWER, RANDO_BOSS_SLOT_MIDDLE, NULL},
+	{"Ganons Tower Top", RANDO_REGION_GANONS_TOWER, RANDO_BOSS_SLOT_TOP, NULL},
+	{"Hyrule Castle", RANDO_REGION_NONE, RANDO_BOSS_SLOT_BOSS, "Agahnim"},
+	{"Ice Palace", RANDO_REGION_ICE_PALACE, RANDO_BOSS_SLOT_BOSS, NULL},
+	{"Misery Mire", RANDO_REGION_MISERY_MIRE, RANDO_BOSS_SLOT_BOSS, NULL},
+	{"Palace Of Darkness", RANDO_REGION_PALACE_OF_DARKNESS, RANDO_BOSS_SLOT_BOSS, NULL},
+	{"Skull Woods", RANDO_REGION_SKULL_WOODS, RANDO_BOSS_SLOT_BOSS, NULL},
+	{"Swamp Palace", RANDO_REGION_SWAMP_PALACE, RANDO_BOSS_SLOT_BOSS, NULL},
+	{"Thieves Town", RANDO_REGION_THIEVES_TOWN, RANDO_BOSS_SLOT_BOSS, NULL},
+	{"Tower Of Hera", RANDO_REGION_TOWER_OF_HERA, RANDO_BOSS_SLOT_BOSS, NULL},
+	{"Turtle Rock", RANDO_REGION_TURTLE_ROCK, RANDO_BOSS_SLOT_BOSS, NULL},
+};
+
+static const char *boss_key_name(const RandoWorld *world, const BossKey *k)
+{
+	RandoBossId boss;
+
+	if (k->region == RANDO_REGION_NONE)
+		return k->literal;
+	boss = rando_world_boss(world, k->region, k->slot);
+	assert(boss != RANDO_BOSS_NONE && "spoiler: Bosses written before placeBosses filled every slot");
+	return rando_boss_name(boss);
+}
+
+static void write_bosses(FILE *out, const RandoWorld *world)
+{
+	size_t i, n = sizeof boss_keys / sizeof boss_keys[0];
+
+	fputs("{\n", out);
+	for (i = 0; i < n; i++) {
+		key(out, 2, boss_keys[i].key);
+		string(out, boss_key_name(world, &boss_keys[i]), "");
+		fputs(i + 1 < n ? ",\n" : "\n", out);
+	}
+	indent(out, 1);
+	fputc('}', out);
+}
+
 bool rando_spoiler_write_json(FILE *out, const RandoWorld *world)
 {
-	static const char shops[] = "Shops";
-	const char *sections[RANDO_REGION_COUNT + 1];
+	static const char shops[] = "Shops", bosses[] = "Bosses";
+	const char *sections[RANDO_REGION_COUNT + 2];
 	int n = 0, r, i;
 
 	for (r = 0; r < RANDO_REGION_COUNT; r++) {
@@ -182,6 +235,7 @@ bool rando_spoiler_write_json(FILE *out, const RandoWorld *world)
 	}
 	if (any_shop_active(world))
 		sections[n++] = shops;
+	sections[n++] = bosses;
 	qsort(sections, (size_t)n, sizeof sections[0], name_cmp);
 
 	fputs("{\n", out);
@@ -189,6 +243,8 @@ bool rando_spoiler_write_json(FILE *out, const RandoWorld *world)
 		key(out, 1, sections[i]);
 		if (sections[i] == shops)
 			write_shops(out, world);
+		else if (sections[i] == bosses)
+			write_bosses(out, world);
 		else
 			write_region_section(out, world, sections[i]);
 		fputs(i + 1 < n ? ",\n" : "\n", out);

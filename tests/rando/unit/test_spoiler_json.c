@@ -151,6 +151,35 @@ static void check_region_layout(const char *case_dir)
 	}
 }
 
+/* placeBosses decided the Bosses block and fillPrizes the ten dungeon prizes: both equal the golden's. */
+static void check_bosses_and_prizes(const char *case_dir)
+{
+	const char *p;
+	int n = 0;
+
+	write_case(case_dir);
+	read_golden(case_dir);
+	check_section(case_dir, "Bosses");
+	for (p = golden; (p = strstr(p, " - Prize:1\": ")) != NULL; p++) {
+		const char *start = p, *end = strchr(p, '\n');
+		char line[256];
+
+		while (start > golden && start[-1] != '\n')
+			start--;
+		if (strncmp(start, "        \"", 9) != 0 || start[9] == ' ')
+			continue;
+		CHECK((size_t)(end - start) < sizeof line);
+		memcpy(line, start, (size_t)(end - start));
+		line[end - start] = '\0';
+		if (line[end - start - 1] == ',')
+			line[end - start - 1] = '\0';
+		if (!strstr(spoiler, line))
+			test_fail(TEST, "%s: prize entry missing in C spoiler: %s", case_dir, line);
+		n++;
+	}
+	CHECK(n == 10);
+}
+
 /* setMedallions decided both medallions (golden lines); setFountains has not run. */
 static void check_special(void)
 {
@@ -174,7 +203,7 @@ static void check_file_layout(void)
 
 	write_case("cases/baseline");
 	len = strlen(spoiler);
-	CHECK(strncmp(spoiler, "{\n    \"Castle Tower\": {\n", 24) == 0);
+	CHECK(strncmp(spoiler, "{\n    \"Bosses\": {\n", 18) == 0);
 	CHECK(len >= 3 && strcmp(spoiler + len - 3, "\n}\n") == 0);
 	CHECK(strstr(spoiler, "\n    \"Shops\": [\n") < strstr(spoiler, "\n    \"Skull Woods\": {\n"));
 	CHECK(strstr(spoiler, "\n    \"Skull Woods\": {\n") < strstr(spoiler, "\n    \"Special\": {\n"));
@@ -238,6 +267,8 @@ int main(void)
 	check_shops("cases/baseline");
 	check_shops("cases/item_pool-hard");
 	check_special();
+	check_bosses_and_prizes("cases/baseline");
+	check_bosses_and_prizes("cases/crystals_ganon-random");
 	check_region_layout("cases/baseline");
 	check_file_layout();
 	check_alias_names();
