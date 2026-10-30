@@ -284,6 +284,7 @@ function all_items_except(World $world, array $remove_items): ItemCollection
 abstract class TestCase
 {
     public $world;
+    public $region;
     public $world_free_items;
     public $collected;
     public string $collection_source = 'collected';
@@ -317,21 +318,28 @@ abstract class TestCase
         return $this->last_built = all_items_except($this->world, $remove_items);
     }
 
+    // RegionTest has a region but no world.
+    public function worldUnderTest(): World
+    {
+        return $this->world ?? $this->region->getWorld();
+    }
+
     public function assertEquals($expected, $actual, string $message = ''): void
     {
         $items = $this->collection_source === 'built' ? $this->last_built : $this->collected;
+        $world = $this->worldUnderTest();
         $locations = [];
-        foreach ($this->world->getLocations() as $location) {
+        foreach ($world->getLocations() as $location) {
             $item = $location->getItem();
             $locations[(string) $location] = $item ? $item->getRawName() : null;
         }
         $this->captures[] = [
             'expected' => $expected,
             'actual' => $actual,
-            'items' => $items ? encode_items($items, $this->world) : ['E', 'E'],
+            'items' => $items ? encode_items($items, $world) : ['E', 'E'],
             'locations' => $locations,
-            'config' => prop($this->world, World::class, 'config'),
-            'variant' => $this->world->config('mode.state'),
+            'config' => prop($world, World::class, 'config'),
+            'variant' => $world->config('mode.state'),
         ];
     }
 
@@ -708,8 +716,17 @@ const METHOD_KINDS = [
     'testCanEnterWithEverything' => ['enter', 'built', null, null],
     'testCapeOrUpgradedSwordRequiredToEnter' => ['enter', 'built', null, null],
     'testSwordRequiredToComplete' => ['complete', 'built', null, null],
+    'testSetVanillaDungeonItems' => ['vanilla_dungeon_items', 'collected', null, null],
 ];
 const SKIPPED_METHODS = ['testDungeonItemWrite'];
+// Test file under tests/ => the only methods run => region, for a region-scoped query whose region the source
+// does not name with getRegion.
+const TOP_LEVEL_METHODS = [
+    'RegionTest.php' => ['testRegionLockedItems' => 'Region'],
+    'WorldTest.php' => ['testSetVanillaDungeonItems' => null],
+];
+const VANILLA_KEYS = ['rom.vanillaKeys', 'rom.vanillaBigKeys', 'rom.vanillaCompasses', 'rom.vanillaMaps'];
+const WILD_KEYS = ['region.wildKeys', 'region.wildBigKeys', 'region.wildCompasses', 'region.wildMaps'];
 
 function method_region(ReflectionMethod $m): string
 {
@@ -778,20 +795,62 @@ function scenario_from_capture(array $c, string $query, string $arg1, string $ar
     ];
 }
 
+// WorldTest::testSetVanillaDungeonItems's World::factory config, less what TEST_CONFIG already holds.
+function vanilla_scenario(array $named): array
+{
+    $config = ['logic' => $named['logic']];
+    foreach (WILD_KEYS as $key) {
+        $config[$key] = $named['free'];
+    }
+    $overrides = [];
+    foreach ($config as $key => $value) {
+        if ((TEST_CONFIG[$key] ?? null) !== $value) {
+            $overrides[] = check_name($key) . '=' . config_value_string($value);
+        }
+    }
+    return [
+        'variant' => 'standard',
+        'config' => $overrides ? implode(',', $overrides) : '-',
+        'preset' => '-',
+        'counts' => 'E',
+        'values' => 'E',
+        'query' => 'vanilla_dungeon_items',
+        'arg1' => '-',
+        'arg2' => '-',
+    ];
+}
+
 function parse_config_value(string $s)
 {
     return json_decode($s, false, 512, JSON_THROW_ON_ERROR);
 }
 
+function parse_overrides(string $config): array
+{
+    $overrides = [];
+    if ($config !== '-') {
+        foreach (explode(',', $config) as $entry) {
+            [$key, $value] = explode('=', $entry, 2);
+            $overrides[$key] = parse_config_value($value);
+        }
+    }
+    return $overrides;
+}
+
 function replay(array $s): bool
 {
     reset_vt();
-    $world = new_world($s['variant']);
-    if ($s['config'] !== '-') {
-        foreach (explode(',', $s['config']) as $entry) {
-            [$key, $value] = explode('=', $entry, 2);
-            $world->testSetConfig($key, parse_config_value($value));
+    if ($s['query'] === 'vanilla_dungeon_items') {
+        $world = World::factory($s['variant'], array_merge(TEST_CONFIG, parse_overrides($s['config'])));
+        $flags = array_map(fn ($key) => $world->config($key), VANILLA_KEYS);
+        if (count(array_unique($flags, SORT_REGULAR)) !== 1 || !is_bool($flags[0])) {
+            fail('the four rom.vanilla* keys differ or are not booleans: ' . json_encode($flags));
         }
+        return $flags[0];
+    }
+    $world = new_world($s['variant']);
+    foreach (parse_overrides($s['config']) as $key => $value) {
+        $world->testSetConfig($key, $value);
     }
     if ($s['preset'] !== '-') {
         foreach (explode('|', $s['preset']) as $entry) {
@@ -806,7 +865,8 @@ function replay(array $s): bool
         case 'fill':
             return $world->getLocation($s['arg1'])->fill(Item::get($s['arg2'], $world), $items);
         case 'region_can_fill':
-            return $world->getRegion($s['arg1'])->canFill(Item::get($s['arg2'], $world));
+            $region = $s['arg1'] === 'Region' ? new Region($world) : $world->getRegion($s['arg1']);
+            return $region->canFill(Item::get($s['arg2'], $world));
         case 'enter':
             return $world->getRegion($s['arg1'])->canEnter($world->getLocations(), $items);
         case 'complete':
@@ -815,7 +875,20 @@ function replay(array $s): bool
     fail("unknown query {$s['query']}");
 }
 
-function test_classes(string $vt_dir): array
+function load_test_class(string $dir, string $file): string
+{
+    $before = get_declared_classes();
+    require_once "$dir/$file";
+    $new = array_values(array_filter(array_diff(get_declared_classes(), $before),
+        fn ($c) => is_subclass_of($c, TestCase::class)));
+    if (count($new) !== 1) {
+        fail("$file declares " . count($new) . ' test classes');
+    }
+    return $new[0];
+}
+
+/** @return list<array{0: string, 1: string, 2: ?array<string, ?string>}> file, class, methods run (null: all) */
+function test_sources(string $vt_dir): array
 {
     $dir = "$vt_dir/tests/NoGlitches";
     $files = [];
@@ -826,35 +899,35 @@ function test_classes(string $vt_dir): array
         }
     }
     sort($files, SORT_STRING);
-    $classes = [];
+    $sources = [];
     foreach ($files as $file) {
-        $before = get_declared_classes();
-        require_once "$dir/$file";
-        $new = array_values(array_filter(array_diff(get_declared_classes(), $before),
-            fn ($c) => is_subclass_of($c, TestCase::class)));
-        if (count($new) !== 1) {
-            fail("$file declares " . count($new) . ' test classes');
+        if (array_key_exists($file, TOP_LEVEL_METHODS)) {
+            fail("tests/NoGlitches/$file has the name of a top-level test file");
         }
-        $classes[$file] = $new[0];
+        $sources[] = [$file, load_test_class($dir, $file), null];
     }
-    return $classes;
+    foreach (TOP_LEVEL_METHODS as $file => $methods) {
+        $sources[] = [$file, load_test_class("$vt_dir/tests", $file), $methods];
+    }
+    return $sources;
 }
 
 function dump_rows(string $vt_dir, array &$mismatches): array
 {
     $lines = [];
-    foreach (test_classes($vt_dir) as $file => $class) {
+    foreach (test_sources($vt_dir) as [$file, $class, $only]) {
         $refl = new ReflectionClass($class);
         foreach ($refl->getMethods(ReflectionMethod::IS_PUBLIC) as $m) {
             if ($m->class !== $class || !str_starts_with($m->name, 'test')) {
                 continue;
             }
-            if (in_array($m->name, SKIPPED_METHODS, true)) {
+            if (in_array($m->name, SKIPPED_METHODS, true) || ($only !== null && !array_key_exists($m->name, $only))) {
                 continue;
             }
             $kind = METHOD_KINDS[$m->name] ?? fail("$class::{$m->name}: unknown test method");
             [$query, $source, $location_param, $item_param] = $kind;
-            $region = in_array($query, ['region_can_fill', 'enter', 'complete'], true) ? method_region($m) : null;
+            $region = in_array($query, ['region_can_fill', 'enter', 'complete'], true)
+                ? ($only[$m->name] ?? method_region($m)) : null;
             $provider = preg_match('/@dataProvider\s+(\w+)/', (string) $m->getDocComment(), $pm) ? $pm[1] : null;
             if ($provider === null && $m->getNumberOfParameters() > 0) {
                 fail("$class::{$m->name}: parameters without a data provider");
@@ -867,20 +940,31 @@ function dump_rows(string $vt_dir, array &$mismatches): array
                 $test->collection_source = $source ?? 'collected';
                 $test->setUp();
                 $test->{$m->name}(...$row);
-                if (count($test->captures) !== 1) {
+                $assertions = $query === 'vanilla_dungeon_items' ? count(VANILLA_KEYS) : 1;
+                if (count($test->captures) !== $assertions) {
                     fail("$class::{$m->name} row $index: " . count($test->captures) . ' assertions');
                 }
                 $c = $test->captures[0];
+                foreach ($test->captures as $other) {
+                    if ($other['expected'] !== $c['expected'] || $other['actual'] !== $c['actual']) {
+                        fail("$class::{$m->name} row $index: assertions with different values");
+                    }
+                }
                 $named = [];
                 foreach ($params as $i => $p) {
                     $named[$p] = array_key_exists($i, $row) ? $row[$i] : null;
                 }
-                $arg1 = $region ?? $named[$location_param];
-                $arg2 = $item_param === null ? '-' : Item::get($named[$item_param], $test->world)->getRawName();
                 if (!is_bool($c['actual']) || !is_bool($c['expected'])) {
                     fail("$class::{$m->name} row $index: non-boolean assertion");
                 }
-                $s = scenario_from_capture($c, $query, check_name($arg1), check_name($arg2));
+                if ($query === 'vanilla_dungeon_items') {
+                    $s = vanilla_scenario($named);
+                } else {
+                    $arg1 = $region ?? $named[$location_param];
+                    $arg2 = $item_param === null ? '-'
+                        : Item::get($named[$item_param], $test->worldUnderTest())->getRawName();
+                    $s = scenario_from_capture($c, $query, check_name($arg1), check_name($arg2));
+                }
                 if (replay($s) !== $c['actual']) {
                     fail("$class::{$m->name} row $index: the recorded scenario does not replay VT's answer");
                 }
@@ -940,6 +1024,9 @@ $headers = [
         '#   preset items: <location>=<item>|... set with Location::setItem before the query',
         '#   queries: access (Location::canAccess), fill (Location::fill), region_can_fill (Region::canFill),',
         '#   enter (Region::canEnter), complete (Region::canComplete); the C port must return the VT answer',
+        '#   RegionTest.php and WorldTest.php are under tests/, not tests/NoGlitches; region Region is a bare Region',
+        '#   vanilla_dungeon_items: World::factory with the config overrides added to the test config; the answer is',
+        '#   the value all four rom.vanilla* keys share',
         '# collect_scenario <id> <variant> <placements or -> <pre-collected counts> <pre-collected values>',
         '# collect_step <id> <n> <op> <a> <b> <answer or -> <counts or -> <values or -> <collected locations or ->',
         '#   collect: collectItems(start), a/b the start views or - for none, counts/values its result',

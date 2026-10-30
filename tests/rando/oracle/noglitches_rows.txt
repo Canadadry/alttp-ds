@@ -7,6 +7,9 @@
 #   preset items: <location>=<item>|... set with Location::setItem before the query
 #   queries: access (Location::canAccess), fill (Location::fill), region_can_fill (Region::canFill),
 #   enter (Region::canEnter), complete (Region::canComplete); the C port must return the VT answer
+#   RegionTest.php and WorldTest.php are under tests/, not tests/NoGlitches; region Region is a bare Region
+#   vanilla_dungeon_items: World::factory with the config overrides added to the test config; the answer is
+#   the value all four rom.vanilla* keys share
 # collect_scenario <id> <variant> <placements or -> <pre-collected counts> <pre-collected values>
 # collect_step <id> <n> <op> <a> <b> <answer or -> <counts or -> <values or -> <collected locations or ->
 #   collect: collectItems(start), a/b the start views or - for none, counts/values its result
@@ -2982,6 +2985,104 @@ row	TurtleRockTest.php	testFillLocation	fillPool	9	standard	-	Turtle Rock Medall
 row	TurtleRockTest.php	testFillLocation	fillPool	10	standard	-	Turtle Rock Medallion=Quake	A:Key=0|BigKey=0|BigKeyD7=0|ShopKey=0	A	fill	Turtle Rock - Eye Bridge - Top Right	BigKeyD7	0	0
 row	TurtleRockTest.php	testFillLocation	fillPool	11	standard	-	Turtle Rock Medallion=Quake	A:Key=0|BigKey=0|BigKeyD7=0|ShopKey=0	A	fill	Turtle Rock - Boss	BigKeyD7	0	0
 row	TurtleRockTest.php	testFillLocation	fillPool	12	standard	-	Turtle Rock Medallion=Quake	A:Key=0|BigKey=0|KeyD7=0|ShopKey=0	A	fill	Turtle Rock - Boss	KeyD7	0	0
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	0	standard	-	-	E	E	region_can_fill	Region	Key	0	0
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	1	standard	-	-	E	E	region_can_fill	Region	KeyH2	0	0
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	2	standard	-	-	E	E	region_can_fill	Region	KeyH1	0	0
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	3	standard	-	-	E	E	region_can_fill	Region	KeyP1	0	0
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	4	standard	-	-	E	E	region_can_fill	Region	KeyP2	0	0
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	5	standard	-	-	E	E	region_can_fill	Region	KeyA1	0	0
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	6	standard	-	-	E	E	region_can_fill	Region	KeyD2	0	0
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	7	standard	-	-	E	E	region_can_fill	Region	KeyD1	0	0
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	8	standard	-	-	E	E	region_can_fill	Region	KeyD6	0	0
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	9	standard	-	-	E	E	region_can_fill	Region	KeyD3	0	0
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	10	standard	-	-	E	E	region_can_fill	Region	KeyD5	0	0
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	11	standard	-	-	E	E	region_can_fill	Region	KeyP3	0	0
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	12	standard	-	-	E	E	region_can_fill	Region	KeyD4	0	0
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	13	standard	-	-	E	E	region_can_fill	Region	KeyD7	0	0
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	14	standard	-	-	E	E	region_can_fill	Region	KeyA2	0	0
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	15	standard	-	-	E	E	region_can_fill	Region	BigKey	0	0
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	16	standard	-	-	E	E	region_can_fill	Region	BigKeyH2	0	0
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	17	standard	-	-	E	E	region_can_fill	Region	BigKeyH1	0	0
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	18	standard	-	-	E	E	region_can_fill	Region	BigKeyP1	0	0
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	19	standard	-	-	E	E	region_can_fill	Region	BigKeyP2	0	0
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	20	standard	-	-	E	E	region_can_fill	Region	BigKeyA1	0	0
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	21	standard	-	-	E	E	region_can_fill	Region	BigKeyD2	0	0
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	22	standard	-	-	E	E	region_can_fill	Region	BigKeyD1	0	0
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	23	standard	-	-	E	E	region_can_fill	Region	BigKeyD6	0	0
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	24	standard	-	-	E	E	region_can_fill	Region	BigKeyD3	0	0
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	25	standard	-	-	E	E	region_can_fill	Region	BigKeyD5	0	0
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	26	standard	-	-	E	E	region_can_fill	Region	BigKeyP3	0	0
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	27	standard	-	-	E	E	region_can_fill	Region	BigKeyD4	0	0
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	28	standard	-	-	E	E	region_can_fill	Region	BigKeyD7	0	0
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	29	standard	-	-	E	E	region_can_fill	Region	BigKeyA2	0	0
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	30	standard	region.wildMaps=false	-	E	E	region_can_fill	Region	Map	0	0
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	31	standard	region.wildMaps=true	-	E	E	region_can_fill	Region	Map	1	1
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	32	standard	region.wildMaps=false	-	E	E	region_can_fill	Region	MapH2	0	0
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	33	standard	region.wildMaps=true	-	E	E	region_can_fill	Region	MapH2	1	1
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	34	standard	region.wildMaps=false	-	E	E	region_can_fill	Region	MapH1	0	0
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	35	standard	region.wildMaps=true	-	E	E	region_can_fill	Region	MapH1	1	1
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	36	standard	region.wildMaps=false	-	E	E	region_can_fill	Region	MapP1	0	0
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	37	standard	region.wildMaps=true	-	E	E	region_can_fill	Region	MapP1	1	1
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	38	standard	region.wildMaps=false	-	E	E	region_can_fill	Region	MapP2	0	0
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	39	standard	region.wildMaps=true	-	E	E	region_can_fill	Region	MapP2	1	1
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	40	standard	region.wildMaps=false	-	E	E	region_can_fill	Region	MapA1	0	0
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	41	standard	region.wildMaps=true	-	E	E	region_can_fill	Region	MapA1	1	1
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	42	standard	region.wildMaps=false	-	E	E	region_can_fill	Region	MapD2	0	0
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	43	standard	region.wildMaps=true	-	E	E	region_can_fill	Region	MapD2	1	1
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	44	standard	region.wildMaps=false	-	E	E	region_can_fill	Region	MapD1	0	0
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	45	standard	region.wildMaps=true	-	E	E	region_can_fill	Region	MapD1	1	1
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	46	standard	region.wildMaps=false	-	E	E	region_can_fill	Region	MapD6	0	0
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	47	standard	region.wildMaps=true	-	E	E	region_can_fill	Region	MapD6	1	1
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	48	standard	region.wildMaps=false	-	E	E	region_can_fill	Region	MapD3	0	0
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	49	standard	region.wildMaps=true	-	E	E	region_can_fill	Region	MapD3	1	1
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	50	standard	region.wildMaps=false	-	E	E	region_can_fill	Region	MapD5	0	0
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	51	standard	region.wildMaps=true	-	E	E	region_can_fill	Region	MapD5	1	1
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	52	standard	region.wildMaps=false	-	E	E	region_can_fill	Region	MapP3	0	0
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	53	standard	region.wildMaps=true	-	E	E	region_can_fill	Region	MapP3	1	1
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	54	standard	region.wildMaps=false	-	E	E	region_can_fill	Region	MapD4	0	0
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	55	standard	region.wildMaps=true	-	E	E	region_can_fill	Region	MapD4	1	1
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	56	standard	region.wildMaps=false	-	E	E	region_can_fill	Region	MapD7	0	0
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	57	standard	region.wildMaps=true	-	E	E	region_can_fill	Region	MapD7	1	1
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	58	standard	region.wildMaps=false	-	E	E	region_can_fill	Region	MapA2	0	0
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	59	standard	region.wildMaps=true	-	E	E	region_can_fill	Region	MapA2	1	1
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	60	standard	region.wildCompasses=false	-	E	E	region_can_fill	Region	Compass	0	0
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	61	standard	region.wildCompasses=true	-	E	E	region_can_fill	Region	Compass	1	1
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	62	standard	region.wildCompasses=false	-	E	E	region_can_fill	Region	CompassH2	0	0
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	63	standard	region.wildCompasses=true	-	E	E	region_can_fill	Region	CompassH2	1	1
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	64	standard	region.wildCompasses=false	-	E	E	region_can_fill	Region	CompassH1	0	0
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	65	standard	region.wildCompasses=true	-	E	E	region_can_fill	Region	CompassH1	1	1
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	66	standard	region.wildCompasses=false	-	E	E	region_can_fill	Region	CompassP1	0	0
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	67	standard	region.wildCompasses=true	-	E	E	region_can_fill	Region	CompassP1	1	1
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	68	standard	region.wildCompasses=false	-	E	E	region_can_fill	Region	CompassP2	0	0
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	69	standard	region.wildCompasses=true	-	E	E	region_can_fill	Region	CompassP2	1	1
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	70	standard	region.wildCompasses=false	-	E	E	region_can_fill	Region	CompassA1	0	0
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	71	standard	region.wildCompasses=true	-	E	E	region_can_fill	Region	CompassA1	1	1
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	72	standard	region.wildCompasses=false	-	E	E	region_can_fill	Region	CompassD2	0	0
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	73	standard	region.wildCompasses=true	-	E	E	region_can_fill	Region	CompassD2	1	1
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	74	standard	region.wildCompasses=false	-	E	E	region_can_fill	Region	CompassD1	0	0
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	75	standard	region.wildCompasses=true	-	E	E	region_can_fill	Region	CompassD1	1	1
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	76	standard	region.wildCompasses=false	-	E	E	region_can_fill	Region	CompassD6	0	0
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	77	standard	region.wildCompasses=true	-	E	E	region_can_fill	Region	CompassD6	1	1
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	78	standard	region.wildCompasses=false	-	E	E	region_can_fill	Region	CompassD3	0	0
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	79	standard	region.wildCompasses=true	-	E	E	region_can_fill	Region	CompassD3	1	1
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	80	standard	region.wildCompasses=false	-	E	E	region_can_fill	Region	CompassD5	0	0
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	81	standard	region.wildCompasses=true	-	E	E	region_can_fill	Region	CompassD5	1	1
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	82	standard	region.wildCompasses=false	-	E	E	region_can_fill	Region	CompassP3	0	0
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	83	standard	region.wildCompasses=true	-	E	E	region_can_fill	Region	CompassP3	1	1
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	84	standard	region.wildCompasses=false	-	E	E	region_can_fill	Region	CompassD4	0	0
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	85	standard	region.wildCompasses=true	-	E	E	region_can_fill	Region	CompassD4	1	1
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	86	standard	region.wildCompasses=false	-	E	E	region_can_fill	Region	CompassD7	0	0
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	87	standard	region.wildCompasses=true	-	E	E	region_can_fill	Region	CompassD7	1	1
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	88	standard	region.wildCompasses=false	-	E	E	region_can_fill	Region	CompassA2	0	0
+row	RegionTest.php	testRegionLockedItems	dungeonItemsPool	89	standard	region.wildCompasses=true	-	E	E	region_can_fill	Region	CompassA2	1	1
+row	WorldTest.php	testSetVanillaDungeonItems	vanillaDungeonItemsPool	0	standard	region.wildKeys=true,region.wildBigKeys=true,region.wildCompasses=true,region.wildMaps=true	-	E	E	vanilla_dungeon_items	-	-	0	0
+row	WorldTest.php	testSetVanillaDungeonItems	vanillaDungeonItemsPool	1	standard	region.wildKeys=false,region.wildBigKeys=false,region.wildCompasses=false,region.wildMaps=false	-	E	E	vanilla_dungeon_items	-	-	0	0
+row	WorldTest.php	testSetVanillaDungeonItems	vanillaDungeonItemsPool	2	standard	logic="MajorGlitches",region.wildKeys=true,region.wildBigKeys=true,region.wildCompasses=true,region.wildMaps=true	-	E	E	vanilla_dungeon_items	-	-	0	0
+row	WorldTest.php	testSetVanillaDungeonItems	vanillaDungeonItemsPool	3	standard	logic="MajorGlitches",region.wildKeys=false,region.wildBigKeys=false,region.wildCompasses=false,region.wildMaps=false	-	E	E	vanilla_dungeon_items	-	-	1	1
+row	WorldTest.php	testSetVanillaDungeonItems	vanillaDungeonItemsPool	4	standard	logic="HybridMajorGlitches",region.wildKeys=true,region.wildBigKeys=true,region.wildCompasses=true,region.wildMaps=true	-	E	E	vanilla_dungeon_items	-	-	0	0
+row	WorldTest.php	testSetVanillaDungeonItems	vanillaDungeonItemsPool	5	standard	logic="HybridMajorGlitches",region.wildKeys=false,region.wildBigKeys=false,region.wildCompasses=false,region.wildMaps=false	-	E	E	vanilla_dungeon_items	-	-	1	1
+row	WorldTest.php	testSetVanillaDungeonItems	vanillaDungeonItemsPool	6	standard	logic="NoLogic",region.wildKeys=true,region.wildBigKeys=true,region.wildCompasses=true,region.wildMaps=true	-	E	E	vanilla_dungeon_items	-	-	0	0
+row	WorldTest.php	testSetVanillaDungeonItems	vanillaDungeonItemsPool	7	standard	logic="NoLogic",region.wildKeys=false,region.wildBigKeys=false,region.wildCompasses=false,region.wildMaps=false	-	E	E	vanilla_dungeon_items	-	-	1	1
 collect_scenario	open_chain	open	Link's Uncle=PegasusBoots|Library=PowerGlove|Link's House=Lamp|King Zora=Flippers|Sewers - Dark Cross=BookOfMudora|Zora's Ledge=Hammer|Desert Ledge=MoonPearl|Ether Tablet=ProgressiveSword|Turtle Rock Medallion=Quake	E:BugCatchingNet=1	E:BugCatchingNet=1
 collect_step	open_chain	0	collect	-	-	-	E:BlueShield=4|RedShield=1|Hammer=1|Bee=1|Lamp=1|PowerGlove=1|BookOfMudora=1|Flippers=1|MoonPearl=1|BugCatchingNet=1|RedPotion=6|TenBombs=6|Heart=2|TenArrows=1|PegasusBoots=1|BombUpgrade5=1|ArrowUpgrade5=1|RescueZelda=1	E:BlueShield=4|RedShield=1|Hammer=1|Bee=1|Lamp=1|PowerGlove=1|BookOfMudora=1|Flippers=1|MoonPearl=1|BugCatchingNet=1|RedPotion=6|TenBombs=6|Heart=2|TenArrows=1|PegasusBoots=1|BombUpgrade5=1|ArrowUpgrade5=1|RescueZelda=1	King Zora|Zora's Ledge|Link's House|Library|Desert Ledge|Sewers - Dark Cross|Link's Uncle|Zelda|Light World Kakariko Shop - 0|Light World Kakariko Shop - 1|Light World Kakariko Shop - 2|Light World Lake Hylia Shop - 0|Light World Lake Hylia Shop - 1|Light World Lake Hylia Shop - 2|Capacity Upgrade - 0|Capacity Upgrade - 1|Dark World Potion Shop - 0|Dark World Potion Shop - 1|Dark World Potion Shop - 2|Dark World Forest Shop - 0|Dark World Forest Shop - 1|Dark World Forest Shop - 2|Dark World Lumberjack Hut Shop - 0|Dark World Lumberjack Hut Shop - 1|Dark World Lumberjack Hut Shop - 2|Dark World Outcasts Shop - 0|Dark World Outcasts Shop - 1|Dark World Outcasts Shop - 2|Dark World Lake Hylia Shop - 0|Dark World Lake Hylia Shop - 1|Dark World Lake Hylia Shop - 2
 collect_step	open_chain	1	collect	-	-	-	E:BugCatchingNet=1	E:BugCatchingNet=1	King Zora|Zora's Ledge|Link's House|Library|Desert Ledge|Sewers - Dark Cross|Link's Uncle|Zelda|Light World Kakariko Shop - 0|Light World Kakariko Shop - 1|Light World Kakariko Shop - 2|Light World Lake Hylia Shop - 0|Light World Lake Hylia Shop - 1|Light World Lake Hylia Shop - 2|Capacity Upgrade - 0|Capacity Upgrade - 1|Dark World Potion Shop - 0|Dark World Potion Shop - 1|Dark World Potion Shop - 2|Dark World Forest Shop - 0|Dark World Forest Shop - 1|Dark World Forest Shop - 2|Dark World Lumberjack Hut Shop - 0|Dark World Lumberjack Hut Shop - 1|Dark World Lumberjack Hut Shop - 2|Dark World Outcasts Shop - 0|Dark World Outcasts Shop - 1|Dark World Outcasts Shop - 2|Dark World Lake Hylia Shop - 0|Dark World Lake Hylia Shop - 1|Dark World Lake Hylia Shop - 2
