@@ -128,3 +128,9 @@ This plan follows the boot fix already on branch `melonds-0.9.5-boot`, commits `
 - None about the decisions. Two facts are unknown: whether Delta's melonDS core has its own save-type database that would override the 8 KB default for an unknown code, and what each flashcart assumes. Only the human test answers these.
 
 ## 6. Step notes
+
+### Step 1.1
+- Root `Makefile`: `GAME_CODE := ZLTP`; the inner `$(OUTPUT).nds` rule got its own recipe (ds_rules' ndstool line + `-g $(GAME_CODE)`). `build.py` unchanged.
+- Header bytes `0x0C..0x0F`: `####` before, `ZLTP` after. Headless melonDS 0.9.5: `Game code: ZLTP`, `SaveMemType=2 homebrew=0` (new printf in the scratch melonDS `NDSCart.cpp` after `ReadROMParams`), `MARK9 main` and `ZeldaHostTick x300` reached.
+- ELF symbols unchanged (`main` 0x02001408, `ZeldaHostTick` 0x02009270), so the hardcoded MARK9 addresses still hold.
+- No `.sav` written yet: expected, nothing writes the EEPROM. No rando tests or e2e exist on this branch (§ 2), so check-e2e was skipped.
