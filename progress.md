@@ -35,7 +35,7 @@
     - [ ] 2.3.2 setMedallions (with setShops baseline path)
       - [x] Chunk 1: shops in the world, HardMode in the config
       - [x] Chunk 2: setShops and setMedallions stages
-      - [ ] Chunk 3: spoiler writer
+      - [x] Chunk 3: spoiler writer
       - [ ] Chunk 4: driver, gate and claims
     - [ ] 2.3.3 fillPrizes (with placeBosses baseline path)
     - [ ] 2.3.4 setFountains
