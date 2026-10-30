@@ -21,6 +21,23 @@ typedef struct RandoLocationRules {
 	RandoAlwaysAllowRule always_allow;
 } RandoLocationRules;
 
+#ifdef RANDO_FAULTS
+/* Host tests only: the location id slot i of a rule table means, ids[i] or first + i. */
+typedef struct RandoRuleSlots {
+	const uint8_t *ids;
+	uint8_t first;
+	uint8_t count;
+} RandoRuleSlots;
+#define RANDO_SLOT_RANGE(first, count) {NULL, (first), (count)},
+#define RANDO_SLOT_LIST(ids) {(ids), 0, sizeof(ids)},
+#else
+#define RANDO_SLOT_RANGE(first, count)
+#define RANDO_SLOT_LIST(ids)
+#endif
+/* For a slot list: SLOTS(RANDO_SLOT_ENUM) numbers the slots, SLOTS(RANDO_SLOT_ID) gives their location ids. */
+#define RANDO_SLOT_ENUM(name) name,
+#define RANDO_SLOT_ID(name) RANDO_LOC_##name,
+
 /* Any rule may be NULL, as in VT. locations is indexed by the location's layout slot and shops from
  * the region's first_shop; either may be NULL when every entry would be. */
 typedef struct RandoRegionRules {
@@ -29,6 +46,9 @@ typedef struct RandoRegionRules {
 	RandoRule can_complete;
 	const RandoLocationRules *locations;
 	const RandoRule *shops;
+#ifdef RANDO_FAULTS
+	RandoRuleSlots slots;
+#endif
 } RandoRegionRules;
 
 const RandoRegionRules *rando_region_rules(RandoVariant variant, RandoRegionId region);
@@ -69,6 +89,8 @@ extern const RandoRegionRules rando_rules_ice_palace;
 extern const RandoRegionRules rando_rules_misery_mire;
 extern const RandoRegionRules rando_rules_turtle_rock;
 extern const RandoRegionRules rando_rules_ganons_tower;
+/* An Inverted class calling VT's parent::initalize() is a second table in the classic region's file, reusing its
+ * static rules; one rewriting every rule has its own inverted_*.c. */
 extern const RandoRegionRules rando_rules_inverted_north_east_light_world;
 extern const RandoRegionRules rando_rules_inverted_north_west_light_world;
 extern const RandoRegionRules rando_rules_inverted_south_light_world;
@@ -118,6 +140,13 @@ static inline bool can_enter(const RandoWorld *world, const RandoWorld *location
 static inline bool has_lamp(const RandoWorld *world, const RandoItems *items)
 {
 	return rando_items_has_n(items, RANDO_ITEM_Lamp, world->config.item_require_lamp);
+}
+
+bool rando_world_pearl_or_bunny_revive_or_owyba(const RandoConfig *c, const RandoItems *items);
+
+static inline bool pearl_or_bunny_revive_or_owyba(const RandoConfig *c, const RandoItems *items)
+{
+	return rando_world_pearl_or_bunny_revive_or_owyba(c, items);
 }
 
 static inline bool wild_or_not_dungeon_item(const RandoConfig *c, RandoItemId item)

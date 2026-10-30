@@ -109,6 +109,7 @@ static const RandoLocationRules locations[NLOCATIONS] = {
 
 const RandoRegionRules rando_rules_misery_mire = {
 	"Region\\Standard\\MiseryMire", enter, complete, locations, NULL,
+	RANDO_SLOT_RANGE(FIRST, NLOCATIONS)
 };
 
 static bool inverted_enter(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
@@ -133,4 +134,5 @@ static bool inverted_enter(const RandoWorld *world, const RandoWorld *locations,
 
 const RandoRegionRules rando_rules_inverted_misery_mire = {
 	"Region\\Inverted\\MiseryMire", inverted_enter, complete, locations, NULL,
+	RANDO_SLOT_RANGE(FIRST, NLOCATIONS)
 };

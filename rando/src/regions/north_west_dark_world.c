@@ -5,23 +5,16 @@
 #define FIRST_SHOP RANDO_SHOP_DARK_WORLD_FOREST_SHOP
 #define NSHOPS (RANDO_SHOP_FORTUNE_TELLER_DARK - FIRST_SHOP + 1)
 
-static bool pearl_or_owyba_or_bunny_revive(const RandoConfig *c, const RandoItems *items)
-{
-	return has(items, RANDO_ITEM_MoonPearl)
-		|| (c->can_owyba && rando_items_has_a_bottle(items))
-		|| (c->can_bunny_revive && rando_items_can_bunny_revive(items, c));
-}
-
 static bool dark_world_outcasts_shop(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
 	(void)locations;
-	return has(items, RANDO_ITEM_Hammer) && pearl_or_owyba_or_bunny_revive(&world->config, items);
+	return has(items, RANDO_ITEM_Hammer) && pearl_or_bunny_revive_or_owyba(&world->config, items);
 }
 
 static bool brewery(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
 	(void)locations;
-	return rando_items_can_bomb_things(items) && pearl_or_owyba_or_bunny_revive(&world->config, items);
+	return rando_items_can_bomb_things(items) && pearl_or_bunny_revive_or_owyba(&world->config, items);
 }
 
 static bool c_shaped_house(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
@@ -39,7 +32,7 @@ static bool hammer_pegs(const RandoWorld *world, const RandoWorld *locations, co
 	const RandoConfig *c = &world->config;
 
 	(void)locations;
-	return has(items, RANDO_ITEM_Hammer) && pearl_or_owyba_or_bunny_revive(c, items)
+	return has(items, RANDO_ITEM_Hammer) && pearl_or_bunny_revive_or_owyba(c, items)
 		&& (rando_items_can_lift_dark_rocks(items)
 		    || (has(items, RANDO_ITEM_MagicMirror) && c->can_mirror_wrap)
 		    || ((c->can_fake_flipper || has(items, RANDO_ITEM_Flippers))
@@ -54,7 +47,7 @@ static bool bumper_cave(const RandoWorld *world, const RandoWorld *locations, co
 
 	(void)locations;
 	return c->can_one_frame_clip_ow
-		|| (pearl_or_owyba_or_bunny_revive(c, items)
+		|| (pearl_or_bunny_revive_or_owyba(c, items)
 		    && ((c->can_boots_clip && has(items, RANDO_ITEM_PegasusBoots))
 			|| ((c->item_placement != RANDO_PLACEMENT_BASIC || has(items, RANDO_ITEM_Hookshot))
 			    && rando_items_can_lift_rocks(items) && has(items, RANDO_ITEM_Cape))));
@@ -66,7 +59,7 @@ static bool blacksmith(const RandoWorld *world, const RandoWorld *locations, con
 
 	(void)locations;
 	return (c->item_placement != RANDO_PLACEMENT_BASIC || has(items, RANDO_ITEM_MagicMirror))
-		&& ((pearl_or_owyba_or_bunny_revive(c, items) && rando_items_can_lift_dark_rocks(items))
+		&& ((pearl_or_bunny_revive_or_owyba(c, items) && rando_items_can_lift_dark_rocks(items))
 		    || ((c->can_owyba && rando_items_has_a_bottle(items))
 			&& (c->can_one_frame_clip_ow
 			    || (c->can_boots_clip && has(items, RANDO_ITEM_PegasusBoots)
@@ -79,7 +72,7 @@ static bool purple_chest(const RandoWorld *world, const RandoWorld *locations, c
 
 	return rando_world_can_access(locations, RANDO_LOC_BLACKSMITH, items)
 		&& ((has(items, RANDO_ITEM_MagicMirror) && c->can_mirror_wrap)
-		    || (pearl_or_owyba_or_bunny_revive(c, items)
+		    || (pearl_or_bunny_revive_or_owyba(c, items)
 			&& (rando_items_can_lift_dark_rocks(items)
 			    || ((c->can_fake_flipper || has(items, RANDO_ITEM_Flippers))
 				&& (c->can_one_frame_clip_ow
@@ -129,4 +122,5 @@ static const RandoRule shops[NSHOPS] = {
 
 const RandoRegionRules rando_rules_north_west_dark_world = {
 	"Region\\Standard\\DarkWorld\\NorthWest", enter, NULL, locations, shops,
+	RANDO_SLOT_RANGE(FIRST, NLOCATIONS)
 };

@@ -1,22 +1,17 @@
 #include "../world_rules.h"
 
 /* Slots in Region\Inverted\LightWorld\South's location order: Link's House left it, the Bomb Merchant came last. */
-enum {
-	FLOODGATE_CHEST, AGINAHS_CAVE, MINI_MOLDORM_CAVE_FAR_LEFT, MINI_MOLDORM_CAVE_LEFT, MINI_MOLDORM_CAVE_RIGHT,
-	MINI_MOLDORM_CAVE_FAR_RIGHT, ICE_ROD_CAVE, HOBO, BOMBOS_TABLET, CAVE_45, CHECKERBOARD_CAVE,
-	MINI_MOLDORM_CAVE_NPC, LIBRARY, MAZE_RACE, DESERT_LEDGE, LAKE_HYLIA_ISLAND, SUNKEN_TREASURE, FLUTE_SPOT,
-	BOMB_MERCHANT, NLOCATIONS
-};
+#define SLOTS(X) X(FLOODGATE_CHEST) X(AGINAHS_CAVE) X(MINI_MOLDORM_CAVE_FAR_LEFT) X(MINI_MOLDORM_CAVE_LEFT) \
+	X(MINI_MOLDORM_CAVE_RIGHT) X(MINI_MOLDORM_CAVE_FAR_RIGHT) X(ICE_ROD_CAVE) X(HOBO) X(BOMBOS_TABLET) \
+	X(CAVE_45) X(CHECKERBOARD_CAVE) X(MINI_MOLDORM_CAVE_NPC) X(LIBRARY) X(MAZE_RACE) X(DESERT_LEDGE) \
+	X(LAKE_HYLIA_ISLAND) X(SUNKEN_TREASURE) X(FLUTE_SPOT) X(BOMB_MERCHANT)
+enum { SLOTS(RANDO_SLOT_ENUM) NLOCATIONS };
+#ifdef RANDO_FAULTS
+static const uint8_t slot_ids[] = {SLOTS(RANDO_SLOT_ID)};
+#endif
 
 #define FIRST_SHOP RANDO_SHOP_LIGHT_WORLD_LAKE_HYLIA_SHOP
 #define NSHOPS (RANDO_SHOP_KAKARIKO_GAMBLE_GAME - FIRST_SHOP + 1)
-
-static bool pearl_or_bunny_revive_or_owyba(const RandoConfig *c, const RandoItems *items)
-{
-	return has(items, RANDO_ITEM_MoonPearl)
-		|| (c->can_bunny_revive && rando_items_can_bunny_revive(items, c))
-		|| (c->can_owyba && rando_items_has_a_bottle(items));
-}
 
 static bool link_state(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
@@ -171,4 +166,5 @@ static const RandoRule shops[NSHOPS] = {
 
 const RandoRegionRules rando_rules_inverted_south_light_world = {
 	"Region\\Inverted\\LightWorld\\South", enter, NULL, locations, shops,
+	RANDO_SLOT_LIST(slot_ids)
 };

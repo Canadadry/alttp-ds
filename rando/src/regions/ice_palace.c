@@ -55,9 +55,7 @@ static bool enter(const RandoWorld *world, const RandoWorld *locations, const Ra
 		     && (has(items, RANDO_ITEM_Flippers) || c->can_fake_flipper)
 		     && rando_items_can_lift_dark_rocks(items))
 		    || (can_enter(world, locations, RANDO_REGION_SOUTH_DARK_WORLD, items)
-			&& (((has(items, RANDO_ITEM_MoonPearl)
-			      || (rando_items_has_a_bottle(items) && c->can_owyba)
-			      || (c->can_bunny_revive && rando_items_can_bunny_revive(items, c)))
+			&& ((pearl_or_bunny_revive_or_owyba(c, items)
 			     && ((c->can_mirror_wrap && has(items, RANDO_ITEM_MagicMirror)
 				  && ((c->can_boots_clip && has(items, RANDO_ITEM_PegasusBoots))
 				      || (c->can_super_speed && rando_items_can_spin_speed(items))))
@@ -114,6 +112,7 @@ static const RandoLocationRules locations[NLOCATIONS] = {
 
 const RandoRegionRules rando_rules_ice_palace = {
 	"Region\\Standard\\IcePalace", enter, complete, locations, NULL,
+	RANDO_SLOT_RANGE(FIRST, NLOCATIONS)
 };
 
 static bool inverted_enter(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
@@ -140,4 +139,5 @@ static bool inverted_enter(const RandoWorld *world, const RandoWorld *locations,
 
 const RandoRegionRules rando_rules_inverted_ice_palace = {
 	"Region\\Inverted\\IcePalace", inverted_enter, complete, locations, NULL,
+	RANDO_SLOT_RANGE(FIRST, NLOCATIONS)
 };

@@ -5,13 +5,6 @@
 #define FIRST_SHOP RANDO_SHOP_DARK_WORLD_POTION_SHOP
 #define NSHOPS (RANDO_SHOP_PALACE_OF_DARKNESS_HINT - FIRST_SHOP + 1)
 
-static bool pearl_or_owyba_or_bunny_revive(const RandoConfig *c, const RandoItems *items)
-{
-	return has(items, RANDO_ITEM_MoonPearl)
-		|| (c->can_owyba && rando_items_has_a_bottle(items))
-		|| (c->can_bunny_revive && rando_items_can_bunny_revive(items, c));
-}
-
 static bool dark_world_potion_shop(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
 	const RandoConfig *c = &world->config;
@@ -28,7 +21,7 @@ static bool dark_world_potion_shop(const RandoWorld *world, const RandoWorld *lo
 static bool dark_world_hint(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
 	(void)locations;
-	return pearl_or_owyba_or_bunny_revive(&world->config, items);
+	return pearl_or_bunny_revive_or_owyba(&world->config, items);
 }
 
 static bool catfish(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
@@ -36,8 +29,7 @@ static bool catfish(const RandoWorld *world, const RandoWorld *locations, const 
 	const RandoConfig *c = &world->config;
 
 	(void)locations;
-	return ((c->can_bunny_revive && rando_items_can_bunny_revive(items, c))
-		|| has(items, RANDO_ITEM_MoonPearl) || (c->can_owyba && rando_items_has_a_bottle(items)))
+	return pearl_or_bunny_revive_or_owyba(c, items)
 		&& (c->can_one_frame_clip_ow
 		    || (c->can_boots_clip && has(items, RANDO_ITEM_PegasusBoots))
 		    || rando_items_can_lift_rocks(items));
@@ -171,4 +163,5 @@ static const RandoRule shops[NSHOPS] = {
 
 const RandoRegionRules rando_rules_north_east_dark_world = {
 	"Region\\Standard\\DarkWorld\\NorthEast", enter, NULL, locations, shops,
+	RANDO_SLOT_RANGE(FIRST, NLOCATIONS)
 };

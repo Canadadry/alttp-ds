@@ -122,3 +122,6 @@
 - [x] Step 3.14 chunks
   - [x] Chunk 1: RandomizerTest sword rows
   - [x] Step note
+- [ ] Step 4.1 chunks
+  - [x] Chunk 1: Phase 3 warn-review refactor
+  - [ ] Chunk 2: measure and note

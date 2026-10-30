@@ -53,4 +53,5 @@ static const RandoLocationRules locations[NLOCATIONS] = {
 
 const RandoRegionRules rando_rules_standard_escape = {
 	"Region\\Standard\\HyruleCastleEscape", NULL, complete, locations, NULL,
+	RANDO_SLOT_RANGE(FIRST, NLOCATIONS)
 };

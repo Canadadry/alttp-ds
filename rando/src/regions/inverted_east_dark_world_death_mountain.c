@@ -50,4 +50,5 @@ static const RandoLocationRules locations[NLOCATIONS] = {
 
 const RandoRegionRules rando_rules_inverted_east_dark_world_death_mountain = {
 	"Region\\Inverted\\DarkWorld\\DeathMountain\\East", enter, NULL, locations, NULL,
+	RANDO_SLOT_RANGE(FIRST, NLOCATIONS)
 };

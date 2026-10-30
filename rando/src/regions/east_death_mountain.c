@@ -66,4 +66,5 @@ static const RandoRule shops[NSHOPS] = {
 
 const RandoRegionRules rando_rules_east_death_mountain = {
 	"Region\\Standard\\LightWorld\\DeathMountain\\East", enter, NULL, locations, shops,
+	RANDO_SLOT_RANGE(FIRST, NLOCATIONS)
 };

@@ -780,6 +780,14 @@ RandoRegionId rando_layout_location_region(RandoVariant variant, RandoLocationId
 	return (RandoRegionId)layout(variant)->locations[location].region;
 }
 
+#ifdef RANDO_FAULTS
+int rando_layout_location_slot(RandoVariant variant, RandoLocationId location)
+{
+	assert(location < RANDO_LOCATION_COUNT);
+	return layout(variant)->locations[location].slot;
+}
+#endif
+
 const RandoLayoutLocation *rando_layout_locations(RandoVariant variant)
 {
 	return layout(variant)->locations;

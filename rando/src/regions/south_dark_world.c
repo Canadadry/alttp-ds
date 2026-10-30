@@ -5,13 +5,6 @@
 #define FIRST_SHOP RANDO_SHOP_DARK_WORLD_LAKE_HYLIA_SHOP
 #define NSHOPS (RANDO_SHOP_DARK_LAKE_HYLIA_LEDGE_SPIKE_CAVE - FIRST_SHOP + 1)
 
-static bool pearl_or_owyba_or_bunny_revive(const RandoConfig *c, const RandoItems *items)
-{
-	return has(items, RANDO_ITEM_MoonPearl)
-		|| (c->can_owyba && rando_items_has_a_bottle(items))
-		|| (c->can_bunny_revive && rando_items_can_bunny_revive(items, c));
-}
-
 static bool ledge_water(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
 	const RandoConfig *c = &world->config;
@@ -25,7 +18,7 @@ static bool ledge_water(const RandoWorld *world, const RandoWorld *locations, co
 static bool hype_cave(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
 	(void)locations;
-	return pearl_or_owyba_or_bunny_revive(&world->config, items);
+	return pearl_or_bunny_revive_or_owyba(&world->config, items);
 }
 
 static bool stumpy(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
@@ -33,14 +26,14 @@ static bool stumpy(const RandoWorld *world, const RandoWorld *locations, const R
 	const RandoConfig *c = &world->config;
 
 	(void)locations;
-	return pearl_or_owyba_or_bunny_revive(c, items)
+	return pearl_or_bunny_revive_or_owyba(c, items)
 		|| (has(items, RANDO_ITEM_MagicMirror) && c->can_mirror_wrap);
 }
 
 static bool bonk_fairy_dark(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
 	(void)locations;
-	return has(items, RANDO_ITEM_PegasusBoots) && pearl_or_owyba_or_bunny_revive(&world->config, items);
+	return has(items, RANDO_ITEM_PegasusBoots) && pearl_or_bunny_revive_or_owyba(&world->config, items);
 }
 
 static bool dark_lake_hylia_ledge_fairy(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
@@ -49,19 +42,19 @@ static bool dark_lake_hylia_ledge_fairy(const RandoWorld *world, const RandoWorl
 
 	return (rando_items_can_bomb_things(items) || (has(items, RANDO_ITEM_PegasusBoots) && c->can_boots_clip))
 		&& ledge_water(world, locations, items)
-		&& pearl_or_owyba_or_bunny_revive(c, items);
+		&& pearl_or_bunny_revive_or_owyba(c, items);
 }
 
 static bool dark_lake_hylia_ledge_hint(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
-	return ledge_water(world, locations, items) && pearl_or_owyba_or_bunny_revive(&world->config, items);
+	return ledge_water(world, locations, items) && pearl_or_bunny_revive_or_owyba(&world->config, items);
 }
 
 static bool dark_lake_hylia_ledge_spike_cave(const RandoWorld *world, const RandoWorld *locations,
 					     const RandoItems *items)
 {
 	return rando_items_can_lift_rocks(items) && ledge_water(world, locations, items)
-		&& pearl_or_owyba_or_bunny_revive(&world->config, items);
+		&& pearl_or_bunny_revive_or_owyba(&world->config, items);
 }
 
 static bool enter(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
@@ -97,4 +90,5 @@ static const RandoRule shops[NSHOPS] = {
 
 const RandoRegionRules rando_rules_south_dark_world = {
 	"Region\\Standard\\DarkWorld\\South", enter, NULL, locations, shops,
+	RANDO_SLOT_RANGE(FIRST, NLOCATIONS)
 };

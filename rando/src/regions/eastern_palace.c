@@ -62,16 +62,14 @@ static const RandoLocationRules locations[NLOCATIONS] = {
 
 const RandoRegionRules rando_rules_eastern_palace = {
 	"Region\\Standard\\EasternPalace", enter, complete, locations, NULL,
+	RANDO_SLOT_RANGE(FIRST, NLOCATIONS)
 };
 
 static bool inverted_not_bunny(const RandoWorld *world, const RandoItems *items)
 {
 	const RandoConfig *c = &world->config;
 
-	return c->can_dungeon_revive
-		|| (c->can_bunny_revive && rando_items_can_bunny_revive(items, c))
-		|| (c->can_owyba && rando_items_has_a_bottle(items))
-		|| has(items, RANDO_ITEM_MoonPearl);
+	return c->can_dungeon_revive || pearl_or_bunny_revive_or_owyba(c, items);
 }
 
 static bool inverted_compass_chest(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
@@ -120,4 +118,5 @@ static const RandoLocationRules inverted_locations[NLOCATIONS] = {
 
 const RandoRegionRules rando_rules_inverted_eastern_palace = {
 	"Region\\Inverted\\EasternPalace", inverted_enter, complete, inverted_locations, NULL,
+	RANDO_SLOT_RANGE(FIRST, NLOCATIONS)
 };

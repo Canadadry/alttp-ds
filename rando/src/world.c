@@ -386,9 +386,15 @@ bool rando_world_region_can_fill(const RandoWorld *world, RandoRegionId region, 
 	return true;
 }
 
+bool rando_world_pearl_or_bunny_revive_or_owyba(const RandoConfig *c, const RandoItems *items)
+{
+	return has(items, RANDO_ITEM_MoonPearl) || (c->can_bunny_revive && rando_items_can_bunny_revive(items, c))
+		|| (c->can_owyba && rando_items_has_a_bottle(items));
+}
+
 static const RandoRegionRules *region_rules(const RandoWorld *world, RandoRegionId region)
 {
-	static const RandoRegionRules no_rules = {NULL, NULL, NULL, NULL, NULL};
+	static const RandoRegionRules no_rules = {NULL, NULL, NULL, NULL, NULL, RANDO_SLOT_RANGE(0, 0)};
 
 	return world->config.logic == RANDO_LOGIC_NO_LOGIC ? &no_rules : rando_region_rules(world->variant, region);
 }

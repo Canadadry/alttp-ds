@@ -487,6 +487,13 @@ RandoRegionId rando_layout_location_region(RandoVariant variant, RandoLocationId
 int rando_layout_region_location_count(RandoVariant variant, RandoRegionId region);
 RandoLocationId rando_layout_region_location(RandoVariant variant, RandoRegionId region, int i);
 RandoLocationId rando_layout_region_prize(RandoVariant variant, RandoRegionId region);
+#ifdef RANDO_FAULTS
+/* The location's index in its region's list; 0 where the variant's world lacks it. */
+int rando_layout_location_slot(RandoVariant variant, RandoLocationId location);
+/* The slots the region's rule table declares, -1 when it has none; the location id it means by slot. */
+int rando_region_rule_slot_count(RandoVariant variant, RandoRegionId region);
+RandoLocationId rando_region_rule_slot_location(RandoVariant variant, RandoRegionId region, int slot);
+#endif
 
 /* Each returns its NONE sentinel when the name is unknown; regions are found by world key. */
 RandoLocationId rando_location_find(const char *name);

@@ -5,13 +5,6 @@
 #define FIRST_SHOP RANDO_SHOP_LIGHT_WORLD_KAKARIKO_SHOP
 #define NSHOPS (RANDO_SHOP_BOMB_HUT - FIRST_SHOP + 1)
 
-static bool pearl_or_bunny_revive_or_owyba(const RandoConfig *c, const RandoItems *items)
-{
-	return has(items, RANDO_ITEM_MoonPearl)
-		|| (c->can_bunny_revive && rando_items_can_bunny_revive(items, c))
-		|| (c->can_owyba && rando_items_has_a_bottle(items));
-}
-
 static bool link_state(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
 	(void)locations;
@@ -147,4 +140,5 @@ static const RandoRule shops[NSHOPS] = {
 
 const RandoRegionRules rando_rules_inverted_north_west_light_world = {
 	"Region\\Inverted\\LightWorld\\NorthWest", enter, NULL, locations, shops,
+	RANDO_SLOT_RANGE(FIRST, NLOCATIONS)
 };

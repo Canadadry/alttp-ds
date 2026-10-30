@@ -13,4 +13,5 @@ static bool enter(const RandoWorld *world, const RandoWorld *locations, const Ra
 
 const RandoRegionRules rando_rules_inverted_mire = {
 	"Region\\Inverted\\DarkWorld\\Mire", enter, NULL, NULL, NULL,
+	RANDO_SLOT_RANGE(0, 0)
 };

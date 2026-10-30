@@ -71,6 +71,48 @@ static void check_inverted_layout(void)
 	CHECK(rando_layout_region_location_count(v, RANDO_REGION_WEST_DEATH_MOUNTAIN) == 2);
 }
 
+/* A location's rule is its region table's entry at the layout slot: the layout's per-region order, each
+ * location's {region, slot} and every region file's slot numbering must name the same location. */
+static void check_layout_agreement(void)
+{
+	RandoVariant v;
+
+	for (v = 0; v < RANDO_VARIANT_COUNT; v++) {
+		int r, l, i, listed = 0, placed = 0;
+
+		for (r = 0; r < RANDO_REGION_COUNT; r++)
+			for (i = 0; i < rando_layout_region_location_count(v, (RandoRegionId)r); i++) {
+				RandoLocationId id = rando_layout_region_location(v, (RandoRegionId)r, i);
+
+				if (rando_layout_location_region(v, id) != (RandoRegionId)r
+				    || rando_layout_location_slot(v, id) != i)
+					test_fail(TEST, "variant %d region %d slot %d: location %d has region %d slot %d", v,
+						  r, i, id, rando_layout_location_region(v, id),
+						  rando_layout_location_slot(v, id));
+				listed++;
+			}
+		for (l = 0; l < RANDO_LOCATION_COUNT; l++)
+			placed += rando_layout_location_region(v, (RandoLocationId)l) != RANDO_REGION_NONE;
+		CHECK(placed == rando_layout_location_count(v));
+		CHECK(listed == placed);
+		for (r = 0; r < RANDO_REGION_COUNT; r++) {
+			int n = rando_region_rule_slot_count(v, (RandoRegionId)r);
+
+			if (n < 0)
+				continue;
+			if (n != rando_layout_region_location_count(v, (RandoRegionId)r))
+				test_fail(TEST, "variant %d region %d: rule table has %d slots, layout %d", v, r, n,
+					  rando_layout_region_location_count(v, (RandoRegionId)r));
+			for (i = 0; i < n; i++)
+				if (rando_region_rule_slot_location(v, (RandoRegionId)r, i)
+				    != rando_layout_region_location(v, (RandoRegionId)r, i))
+					test_fail(TEST, "variant %d region %d slot %d: rules mean location %d, layout %d", v,
+						  r, i, rando_region_rule_slot_location(v, (RandoRegionId)r, i),
+						  rando_layout_region_location(v, (RandoRegionId)r, i));
+		}
+	}
+}
+
 static void check_inverted_init(void)
 {
 	RandoWorld world;
@@ -1206,6 +1248,7 @@ int main(int argc, char **argv)
 
 	check_classic_layout();
 	check_inverted_layout();
+	check_layout_agreement();
 	check_inverted_init();
 	check_retro_init();
 	check_init();

@@ -185,4 +185,5 @@ static const RandoLocationRules locations[NLOCATIONS] = {
 
 const RandoRegionRules rando_rules_inverted_turtle_rock = {
 	"Region\\Inverted\\TurtleRock", enter, complete, locations, NULL,
+	RANDO_SLOT_RANGE(FIRST, NLOCATIONS)
 };

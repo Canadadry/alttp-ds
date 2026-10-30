@@ -90,6 +90,7 @@ static const RandoLocationRules locations[NLOCATIONS] = {
 
 const RandoRegionRules rando_rules_skull_woods = {
 	"Region\\Standard\\SkullWoods", enter, complete, locations, NULL,
+	RANDO_SLOT_RANGE(FIRST, NLOCATIONS)
 };
 
 static bool inverted_enter(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
@@ -130,4 +131,5 @@ static const RandoLocationRules inverted_locations[NLOCATIONS] = {
 
 const RandoRegionRules rando_rules_inverted_skull_woods = {
 	"Region\\Inverted\\SkullWoods", inverted_enter, complete, inverted_locations, NULL,
+	RANDO_SLOT_RANGE(FIRST, NLOCATIONS)
 };

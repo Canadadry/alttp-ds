@@ -1,9 +1,12 @@
 #include "../world_rules.h"
 
 /* Slots in Region\Inverted\DarkWorld\NorthEast's location order: Ganon left it. */
-enum {
-	CATFISH, PYRAMID, PYRAMID_FAIRY_SWORD, PYRAMID_FAIRY_BOW, PYRAMID_FAIRY_LEFT, PYRAMID_FAIRY_RIGHT, NLOCATIONS
-};
+#define SLOTS(X) X(CATFISH) X(PYRAMID) X(PYRAMID_FAIRY_SWORD) X(PYRAMID_FAIRY_BOW) X(PYRAMID_FAIRY_LEFT) \
+	X(PYRAMID_FAIRY_RIGHT)
+enum { SLOTS(RANDO_SLOT_ENUM) NLOCATIONS };
+#ifdef RANDO_FAULTS
+static const uint8_t slot_ids[] = {SLOTS(RANDO_SLOT_ID)};
+#endif
 
 #define FIRST_SHOP RANDO_SHOP_DARK_WORLD_POTION_SHOP
 #define NSHOPS (RANDO_SHOP_PALACE_OF_DARKNESS_HINT - FIRST_SHOP + 1)
@@ -97,4 +100,5 @@ static const RandoRule shops[NSHOPS] = {
 
 const RandoRegionRules rando_rules_inverted_north_east_dark_world = {
 	"Region\\Inverted\\DarkWorld\\NorthEast", enter, NULL, locations, shops,
+	RANDO_SLOT_LIST(slot_ids)
 };

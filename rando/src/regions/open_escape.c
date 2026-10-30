@@ -55,18 +55,12 @@ static const RandoLocationRules locations[NLOCATIONS] = {
 
 const RandoRegionRules rando_rules_open_escape = {
 	"Region\\Open\\HyruleCastleEscape", NULL, NULL, locations, NULL,
+	RANDO_SLOT_RANGE(FIRST, NLOCATIONS)
 };
-
-static bool inverted_link_state(const RandoConfig *c, const RandoItems *items)
-{
-	return (c->can_bunny_revive && rando_items_can_bunny_revive(items, c))
-		|| (c->can_owyba && rando_items_has_a_bottle(items))
-		|| has(items, RANDO_ITEM_MoonPearl);
-}
 
 static bool inverted_fights(const RandoConfig *c, const RandoItems *items)
 {
-	return c->can_dungeon_revive || rando_items_has_sword(items, 1) || inverted_link_state(c, items);
+	return c->can_dungeon_revive || rando_items_has_sword(items, 1) || pearl_or_bunny_revive_or_owyba(c, items);
 }
 
 static bool inverted_sewers_secret_room(const RandoWorld *world, const RandoWorld *locations,
@@ -75,7 +69,7 @@ static bool inverted_sewers_secret_room(const RandoWorld *world, const RandoWorl
 	const RandoConfig *c = &world->config;
 
 	(void)locations;
-	return (rando_items_can_lift_rocks(items) && inverted_link_state(c, items))
+	return (rando_items_can_lift_rocks(items) && pearl_or_bunny_revive_or_owyba(c, items))
 		|| (has_lamp(world, items) && has(items, RANDO_ITEM_KeyH2) && inverted_fights(c, items));
 }
 
@@ -90,7 +84,8 @@ static bool inverted_sanctuary(const RandoWorld *world, const RandoWorld *locati
 	const RandoConfig *c = &world->config;
 
 	return (has(items, RANDO_ITEM_KeyH2) && has_lamp(world, items))
-		|| ((inverted_link_state(c, items) || (c->can_super_bunny && has(items, RANDO_ITEM_MagicMirror)))
+		|| ((pearl_or_bunny_revive_or_owyba(c, items)
+		     || (c->can_super_bunny && has(items, RANDO_ITEM_MagicMirror)))
 		    && can_enter(world, locations, RANDO_REGION_NORTH_WEST_LIGHT_WORLD, items));
 }
 
@@ -111,13 +106,14 @@ static bool inverted_secret_passage(const RandoWorld *world, const RandoWorld *l
 {
 	const RandoConfig *c = &world->config;
 
-	return ((c->can_super_bunny && inverted_mirror_clip(world, locations, items)) || inverted_link_state(c, items))
+	return ((c->can_super_bunny && inverted_mirror_clip(world, locations, items))
+		|| pearl_or_bunny_revive_or_owyba(c, items))
 		&& can_enter(world, locations, RANDO_REGION_NORTH_EAST_LIGHT_WORLD, items);
 }
 
 static bool inverted_links_uncle(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
-	return (inverted_mirror_clip(world, locations, items) || inverted_link_state(&world->config, items))
+	return (inverted_mirror_clip(world, locations, items) || pearl_or_bunny_revive_or_owyba(&world->config, items))
 		&& can_enter(world, locations, RANDO_REGION_NORTH_EAST_LIGHT_WORLD, items);
 }
 
@@ -126,7 +122,7 @@ static bool inverted_enter(const RandoWorld *world, const RandoWorld *locations,
 	const RandoConfig *c = &world->config;
 
 	return (c->can_dungeon_revive || (c->can_super_bunny && has(items, RANDO_ITEM_MagicMirror))
-		|| inverted_link_state(c, items))
+		|| pearl_or_bunny_revive_or_owyba(c, items))
 		&& can_enter(world, locations, RANDO_REGION_NORTH_EAST_LIGHT_WORLD, items);
 }
 
@@ -144,4 +140,5 @@ static const RandoLocationRules inverted_locations[NLOCATIONS] = {
 
 const RandoRegionRules rando_rules_inverted_escape = {
 	"Region\\Inverted\\HyruleCastleEscape", inverted_enter, NULL, inverted_locations, NULL,
+	RANDO_SLOT_RANGE(FIRST, NLOCATIONS)
 };

@@ -32,8 +32,7 @@ static bool kings_tomb(const RandoWorld *world, const RandoWorld *locations, con
 		    || (c->can_super_speed && rando_items_can_spin_speed(items))
 		    || (has(items, RANDO_ITEM_MagicMirror)
 			&& can_enter(world, locations, RANDO_REGION_NORTH_WEST_DARK_WORLD, items)
-			&& (has(items, RANDO_ITEM_MoonPearl) || (rando_items_has_a_bottle(items) && c->can_owyba)
-			    || (c->can_bunny_revive && rando_items_can_bunny_revive(items, c)))));
+			&& pearl_or_bunny_revive_or_owyba(c, items)));
 }
 
 static bool pegasus_rocks(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
@@ -54,8 +53,7 @@ static bool magic_bat(const RandoWorld *world, const RandoWorld *locations, cons
 			 && (has(items, RANDO_ITEM_Flippers) || c->can_fake_flipper)))
 		    || (has(items, RANDO_ITEM_MagicMirror)
 			&& ((c->can_mirror_wrap && can_enter(world, locations, RANDO_REGION_NORTH_WEST_DARK_WORLD, items))
-			    || ((has(items, RANDO_ITEM_MoonPearl) || (rando_items_has_a_bottle(items) && c->can_owyba)
-				 || (c->can_bunny_revive && rando_items_can_bunny_revive(items, c)))
+			    || (pearl_or_bunny_revive_or_owyba(c, items)
 				&& ((rando_items_can_lift_dark_rocks(items)
 				     && can_enter(world, locations, RANDO_REGION_NORTH_WEST_DARK_WORLD, items))
 				    || (c->can_super_speed && rando_items_can_spin_speed(items)
@@ -112,4 +110,5 @@ static const RandoRule shops[NSHOPS] = {
 
 const RandoRegionRules rando_rules_north_west_light_world = {
 	"Region\\Standard\\LightWorld\\NorthWest", enter, NULL, locations, shops,
+	RANDO_SLOT_RANGE(FIRST, NLOCATIONS)
 };

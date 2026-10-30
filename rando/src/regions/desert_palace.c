@@ -87,6 +87,7 @@ static const RandoLocationRules locations[NLOCATIONS] = {
 
 const RandoRegionRules rando_rules_desert_palace = {
 	"Region\\Standard\\DesertPalace", enter, complete, locations, NULL,
+	RANDO_SLOT_RANGE(FIRST, NLOCATIONS)
 };
 
 static bool inverted_main(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
@@ -99,9 +100,7 @@ static bool inverted_side(const RandoWorld *world, const RandoWorld *locations, 
 	const RandoConfig *c = &world->config;
 
 	return c->can_one_frame_clip_ow
-		|| ((has(items, RANDO_ITEM_MoonPearl)
-		     || (c->can_owyba && rando_items_has_a_bottle(items))
-		     || (c->can_bunny_revive && rando_items_can_bunny_revive(items, c)))
+		|| (pearl_or_bunny_revive_or_owyba(c, items)
 		    && (c->can_boots_clip && has(items, RANDO_ITEM_PegasusBoots))
 		    && can_enter(world, locations, RANDO_REGION_SOUTH_LIGHT_WORLD, items));
 }
@@ -119,9 +118,7 @@ static bool inverted_enter(const RandoWorld *world, const RandoWorld *locations,
 
 	return (c->can_dungeon_revive
 		|| (c->can_super_bunny && has(items, RANDO_ITEM_MagicMirror))
-		|| (c->can_bunny_revive && rando_items_can_bunny_revive(items, c))
-		|| (c->can_owyba && rando_items_has_a_bottle(items))
-		|| has(items, RANDO_ITEM_MoonPearl))
+		|| pearl_or_bunny_revive_or_owyba(c, items))
 		&& (inverted_main(world, locations, items) || inverted_side(world, locations, items)
 		    || inverted_thieves(world, locations, items));
 }
@@ -132,10 +129,7 @@ static bool inverted_big_key_chest(const RandoWorld *world, const RandoWorld *lo
 
 	(void)locations;
 	return has(items, RANDO_ITEM_KeyP2) && rando_items_can_kill_most_things(items, c, 5)
-		&& (has(items, RANDO_ITEM_MoonPearl)
-		    || c->can_dungeon_revive
-		    || (c->can_bunny_revive && rando_items_can_bunny_revive(items, c))
-		    || (c->can_owyba && rando_items_has_a_bottle(items))
+		&& (pearl_or_bunny_revive_or_owyba(c, items) || c->can_dungeon_revive
 		    || rando_items_has_sword(items, 1));
 }
 
@@ -144,9 +138,7 @@ static bool inverted_boss(const RandoWorld *world, const RandoWorld *locations, 
 	const RandoConfig *c = &world->config;
 
 	return can_enter(world, locations, RANDO_REGION_DESERT_PALACE, items)
-		&& ((has(items, RANDO_ITEM_MoonPearl)
-		     || (c->can_bunny_revive && rando_items_can_bunny_revive(items, c))
-		     || (c->can_owyba && rando_items_has_a_bottle(items)))
+		&& (pearl_or_bunny_revive_or_owyba(c, items)
 		    || (c->can_one_frame_clip_ow && c->can_dungeon_revive))
 		&& (rando_items_can_lift_rocks(items)
 		    || (c->can_boots_clip && has(items, RANDO_ITEM_PegasusBoots))
@@ -169,4 +161,5 @@ static const RandoLocationRules inverted_locations[NLOCATIONS] = {
 
 const RandoRegionRules rando_rules_inverted_desert_palace = {
 	"Region\\Inverted\\DesertPalace", inverted_enter, complete, inverted_locations, NULL,
+	RANDO_SLOT_RANGE(FIRST, NLOCATIONS)
 };

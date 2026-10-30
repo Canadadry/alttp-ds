@@ -1,17 +1,12 @@
 #include "../world_rules.h"
 
 /* Slots in Region\Inverted\LightWorld\NorthEast's location order. */
-enum {
-	SAHASRAHLAS_HUT_LEFT, SAHASRAHLAS_HUT_MIDDLE, SAHASRAHLAS_HUT_RIGHT, SAHASRAHLA, KING_ZORA, POTION_SHOP,
-	ZORAS_LEDGE, WATERFALL_FAIRY_LEFT, WATERFALL_FAIRY_RIGHT, GANON, NLOCATIONS
-};
-
-static bool pearl_or_bunny_revive_or_owyba(const RandoConfig *c, const RandoItems *items)
-{
-	return has(items, RANDO_ITEM_MoonPearl)
-		|| (c->can_bunny_revive && rando_items_can_bunny_revive(items, c))
-		|| (c->can_owyba && rando_items_has_a_bottle(items));
-}
+#define SLOTS(X) X(SAHASRAHLAS_HUT_LEFT) X(SAHASRAHLAS_HUT_MIDDLE) X(SAHASRAHLAS_HUT_RIGHT) X(SAHASRAHLA) \
+	X(KING_ZORA) X(POTION_SHOP) X(ZORAS_LEDGE) X(WATERFALL_FAIRY_LEFT) X(WATERFALL_FAIRY_RIGHT) X(GANON)
+enum { SLOTS(RANDO_SLOT_ENUM) NLOCATIONS };
+#ifdef RANDO_FAULTS
+static const uint8_t slot_ids[] = {SLOTS(RANDO_SLOT_ID)};
+#endif
 
 static bool sahasrahlas_hut(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
@@ -171,4 +166,5 @@ static const RandoLocationRules locations[NLOCATIONS] = {
 
 const RandoRegionRules rando_rules_inverted_north_east_light_world = {
 	"Region\\Inverted\\LightWorld\\NorthEast", enter, NULL, locations, NULL,
+	RANDO_SLOT_LIST(slot_ids)
 };

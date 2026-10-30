@@ -70,4 +70,5 @@ static const RandoLocationRules locations[NLOCATIONS] = {
 
 const RandoRegionRules rando_rules_north_east_light_world = {
 	"Region\\Standard\\LightWorld\\NorthEast", enter, NULL, locations, NULL,
+	RANDO_SLOT_RANGE(FIRST, NLOCATIONS)
 };

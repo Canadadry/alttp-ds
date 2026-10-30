@@ -62,4 +62,5 @@ static const RandoLocationRules locations[NLOCATIONS] = {
 
 const RandoRegionRules rando_rules_east_dark_world_death_mountain = {
 	"Region\\Standard\\DarkWorld\\DeathMountain\\East", enter, NULL, locations, NULL,
+	RANDO_SLOT_RANGE(FIRST, NLOCATIONS)
 };

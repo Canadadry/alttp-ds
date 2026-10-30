@@ -253,7 +253,17 @@ constants) are left open for the pull request.
 1. **Measure on the host**, outside the fast `test` and `e2e` targets: the size of the whole
    generator state, peak stack use, and the attempts and RNG draws per case (from the goldens
    and traces).
-   Record the figures in the step note, against the ARM9 budget, before roadmap item 2 starts.
+   First, under the `all` claims, one refactor commit (`test`, `logic`, `e2e` unchanged) for
+   Phase 3's warn-review warnings that change code size or guard location ids: one shared copy of
+   the Moon Pearl / bunny revive / OWYBA predicate, one convention for where Inverted rules live
+   (or the note says why not), and a cheap `make test` check that `layouts.c`'s per-region order,
+   each location's `{region, slot}` and the region files' slot enums agree. The other Phase 3
+   warnings (`prepare.c`'s Lake Hylia special case and retro constants, `generate.c`'s
+   state-to-variant mapping, the `support.h` comment) are left open for the pull request.
+   Then record the figures in the step note before roadmap item 2 starts: for each of A-1 to
+   A-4, the figure, the toolchain that produced it (clang ARMv5TE stand-in or host), the margin,
+   and a verdict (within, over, or depends on the stand-in). Roadmap items 2 and 3 recheck the
+   verdicts that are over or depend on the stand-in before anything else.
 
 ## 4. Done when
 

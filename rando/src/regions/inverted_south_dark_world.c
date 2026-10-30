@@ -1,10 +1,12 @@
 #include "../world_rules.h"
 
 /* Slots in Region\Inverted\DarkWorld\South's location order: Link's House came last. */
-enum {
-	HYPE_CAVE_TOP, HYPE_CAVE_MIDDLE_RIGHT, HYPE_CAVE_MIDDLE_LEFT, HYPE_CAVE_BOTTOM, STUMPY, HYPE_CAVE_NPC,
-	DIGGING_GAME, LINKS_HOUSE, NLOCATIONS
-};
+#define SLOTS(X) X(HYPE_CAVE_TOP) X(HYPE_CAVE_MIDDLE_RIGHT) X(HYPE_CAVE_MIDDLE_LEFT) X(HYPE_CAVE_BOTTOM) \
+	X(STUMPY) X(HYPE_CAVE_NPC) X(DIGGING_GAME) X(LINKS_HOUSE)
+enum { SLOTS(RANDO_SLOT_ENUM) NLOCATIONS };
+#ifdef RANDO_FAULTS
+static const uint8_t slot_ids[] = {SLOTS(RANDO_SLOT_ID)};
+#endif
 
 #define FIRST_SHOP RANDO_SHOP_DARK_WORLD_LAKE_HYLIA_SHOP
 #define NSHOPS (RANDO_SHOP_DARK_LAKE_HYLIA_LEDGE_SPIKE_CAVE - FIRST_SHOP + 1)
@@ -67,4 +69,5 @@ static const RandoRule shops[NSHOPS] = {
 /* No entry rule: Region\Inverted\DarkWorld\South sets none. */
 const RandoRegionRules rando_rules_inverted_south_dark_world = {
 	"Region\\Inverted\\DarkWorld\\South", NULL, NULL, locations, shops,
+	RANDO_SLOT_LIST(slot_ids)
 };

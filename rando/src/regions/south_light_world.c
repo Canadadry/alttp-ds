@@ -156,4 +156,5 @@ static const RandoRule shops[NSHOPS] = {
 
 const RandoRegionRules rando_rules_south_light_world = {
 	"Region\\Standard\\LightWorld\\South", enter, NULL, locations, shops,
+	RANDO_SLOT_RANGE(FIRST, NLOCATIONS)
 };

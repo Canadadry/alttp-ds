@@ -287,6 +287,7 @@ static const RandoLocationRules locations[NLOCATIONS] = {
 
 const RandoRegionRules rando_rules_ganons_tower = {
 	"Region\\Standard\\GanonsTower", enter, complete, locations, NULL,
+	RANDO_SLOT_RANGE(FIRST, NLOCATIONS)
 };
 
 static bool inverted_enter(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
@@ -379,4 +380,5 @@ static const RandoLocationRules inverted_locations[NLOCATIONS] = {
 
 const RandoRegionRules rando_rules_inverted_ganons_tower = {
 	"Region\\Inverted\\GanonsTower", inverted_enter, complete, inverted_locations, NULL,
+	RANDO_SLOT_RANGE(FIRST, NLOCATIONS)
 };

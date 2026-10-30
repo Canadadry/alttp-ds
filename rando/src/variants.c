@@ -3,7 +3,7 @@
 #include <assert.h>
 #include <stddef.h>
 
-#define NO_RULES(id, cls) static const RandoRegionRules id = {cls, NULL, NULL, NULL, NULL}
+#define NO_RULES(id, cls) static const RandoRegionRules id = {cls, NULL, NULL, NULL, NULL, RANDO_SLOT_RANGE(0, 0)}
 
 NO_RULES(medallions, "Region\\Standard\\Medallions");
 NO_RULES(fountains, "Region\\Standard\\Fountains");
@@ -80,3 +80,20 @@ const char *rando_region_vt_class(RandoVariant variant, RandoRegionId region)
 	assert(variant < RANDO_VARIANT_COUNT && region < RANDO_REGION_COUNT);
 	return rando_region_rules(variant, region)->vt_class;
 }
+
+#ifdef RANDO_FAULTS
+int rando_region_rule_slot_count(RandoVariant variant, RandoRegionId region)
+{
+	const RandoRegionRules *rules = rando_region_rules(variant, region);
+
+	return rules->locations == NULL ? -1 : rules->slots.count;
+}
+
+RandoLocationId rando_region_rule_slot_location(RandoVariant variant, RandoRegionId region, int slot)
+{
+	const RandoRuleSlots *slots = &rando_region_rules(variant, region)->slots;
+
+	assert(slot >= 0 && slot < slots->count);
+	return (RandoLocationId)(slots->ids != NULL ? slots->ids[slot] : slots->first + slot);
+}
+#endif

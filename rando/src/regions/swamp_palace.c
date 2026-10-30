@@ -120,6 +120,7 @@ static const RandoLocationRules locations[NLOCATIONS] = {
 
 const RandoRegionRules rando_rules_swamp_palace = {
 	"Region\\Standard\\SwampPalace", enter, complete, locations, NULL,
+	RANDO_SLOT_RANGE(FIRST, NLOCATIONS)
 };
 
 static bool inverted_mire(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
@@ -218,4 +219,5 @@ static const RandoLocationRules inverted_locations[NLOCATIONS] = {
 
 const RandoRegionRules rando_rules_inverted_swamp_palace = {
 	"Region\\Inverted\\SwampPalace", inverted_enter, complete, inverted_locations, NULL,
+	RANDO_SLOT_RANGE(FIRST, NLOCATIONS)
 };
