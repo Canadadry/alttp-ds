@@ -3,7 +3,7 @@
 ## The port
 
 - A Nintendo DS port of [snesrev/zelda3](https://github.com/snesrev/zelda3), the C reimplementation of *A Link to the Past*. The game logic is in the `vendor/zelda3` submodule; the DS host (video, HUD, bottom screen, save, audio) is in `platform/nds/`. See `README.md`.
-- A randomizer is being built: a C port of the ALttPR generator (VT), validated against VT itself. The design is in `docs/randomizer.md`.
+- A randomizer is being built: a C port of the ALttPR generator (VT), validated against VT itself: the patched oracle and its goldens are in `tests/rando/oracle/` and `tests/rando/cases/`.
 - **The rando goldens are the source of truth, not the unit tests.** Every case in `tests/rando/cases/` was written by the patched VT oracle; the C port must reproduce it byte for byte. A change that keeps every golden green may break a unit test that froze the old behavior: update that test.
 
 ## Layout and naming
