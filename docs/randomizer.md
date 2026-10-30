@@ -281,3 +281,21 @@ None.
 - Deviation: the gate fixtures run in a separate `make -C tests/rando selftest` (~2 s), not in
   `make test` (kept at ~50 ms, CLAUDE.md). CI (`rando-tests.yml`) runs `test`, `selftest`, `e2e`.
 - No case claimed: e2e is 44 pending.
+
+### Step 2.2
+
+- `tests/rando/oracle/extract_logic.php` runs every `tests/NoGlitches` method inside VT (stub
+  `TestCase`, each row replayed in a fresh VT world before writing) into three committed fixtures:
+  world structure, predicate/`canBeat` vectors under 3 configs, 2 969 rows plus `collectItems`
+  scenarios. VT agrees with its own expected value on every row. `gen_golden.sh` runs it.
+- C: `rando_items.h` (179 items, VT's two views, 24 predicates), `rando_bosses.h`,
+  `rando_config.h`, `rando_world.h` (Standard and Open: 26 regions, 236 locations, 41 shops),
+  every region in `rando/src/regions/`. `RandoWorld` is 1 996 bytes, ids only; the library is
+  85 KB text, 21 KB const data, no bss.
+- `make logic` replays all 2 969 rows, 120 912 predicate and 32 976 `canBeat` values, and all 21
+  `collectItems` steps; `make test` stays under 50 ms with hand-written cases.
+- Deviations: the shops' default inventory and requirements are in world init here, not in
+  2.3.2 (the PRD assumed shops empty; VT's `collectItems` collects them). Kept VT quirks:
+  `heartCount` counts a Piece of Heart as a full heart; Open's escape skips its parent's
+  `initalize`. Turtle Rock's middle/lower paths need glitch flags (untested until Phase 3); two
+  Ganon's Tower boss slots are only distinguishable once `placeBosses` exists (2.3.3).
