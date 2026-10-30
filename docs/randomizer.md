@@ -542,3 +542,17 @@ None.
 
 - `item_functionality-hard`, `-expert` claimed at `all` in 3.0. Owes no VT test:
   `ItemCollectionTest`'s functionality tests are already in `test_items.c`. No PRD.
+
+### Step 3.6
+
+- Access rules take VT's `$locations` as a third parameter (`$locations` reads and region entries
+  read it; `$this->locations` reads and nested `$this->locations[X]->canAccess` read the rule's own
+  world); `rando_world_can_access_with`. The host playthrough checks shadow locations against the
+  real world in the bubbling pass and replay, as VT does; its static state is now a local struct.
+- `dungeon_items-mcs` claimed at `all`: 41 at `all`, `glitches-no_logic` at `prepareWorld`; 42
+  pass, 2 pending.
+- Owed VT tests ported as fixture rows replayed by `make logic`: `RegionTest::testRegionLockedItems`
+  (90 rows, not 91) and `WorldTest::testSetVanillaDungeonItems` (8 rows, new `vanilla_dungeon_items`
+  query); the C port already matched every row.
+- `make measure`: ARM code+rodata 80.4 KB, stack peak 6 328 B, max case 19.8 ms
+  (`item_placement-basic`, still over A-3), sweep max 8.0 ms; `make test` 65–82 ms; e2e ~0.17 s.

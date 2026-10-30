@@ -77,7 +77,7 @@
   - [ ] 3.3 glitches: major_glitches
   - [ ] 3.4 glitches: no_logic
   - [x] 3.5 item_placement
-  - [ ] 3.6 dungeon_items
+  - [x] 3.6 dungeon_items
   - [x] 3.7 accessibility
   - [x] 3.8 goal
   - [x] 3.9 crystals_tower
@@ -90,9 +90,9 @@
   - [x] 3.16 item_functionality
 - [ ] Phase 4 — Fits on the DS
   - [ ] 4.1 Measure on the host
-- [ ] Step 3.6 chunks
+- [x] Step 3.6 chunks
   - [x] Chunk 1: two-world rule shape
   - [x] Chunk 2: playthrough world pairs, mcs at all
-  - [ ] Chunk 3: owed VT tests, measure, note
+  - [x] Chunk 3: owed VT tests, measure, note
   - [x] Owed VT tests: fixture rows
   - [x] Owed VT tests: replay
