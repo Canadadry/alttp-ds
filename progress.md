@@ -109,6 +109,6 @@
   - [x] Chunk 3: Inverted world
   - [x] Chunk 4: overworld and dungeon entries
   - [x] Chunk 5: Light World dungeons, Swamp, Skull
-  - [ ] Chunk 6: Turtle Rock
+  - [x] Chunk 6: Turtle Rock
   - [ ] Chunk 7: Ganon's Tower, every row replayed
   - [ ] Chunk 8: generator claim at all

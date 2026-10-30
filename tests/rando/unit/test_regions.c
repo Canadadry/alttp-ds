@@ -83,6 +83,27 @@ static void check_inverted_skull_woods_bridge_room_needs_only_fire_rod(void)
 	CHECK(rando_world_can_access(&world, RANDO_LOC_SKULL_WOODS_BRIDGE_ROOM, &items));
 }
 
+/* Inverted TurtleRockTest::testLocation's Chain Chomps row entering from the top with two keys. */
+static void check_inverted_turtle_rock_chain_chomps_from_the_top(void)
+{
+	static const RandoItemId collected[] = {
+		RANDO_ITEM_Lamp, RANDO_ITEM_Hookshot, RANDO_ITEM_TitansMitt, RANDO_ITEM_Hammer, RANDO_ITEM_Quake,
+		RANDO_ITEM_UncleSword, RANDO_ITEM_CaneOfSomaria, RANDO_ITEM_KeyD7, RANDO_ITEM_KeyD7,
+	};
+	RandoConfig config;
+	RandoWorld world;
+	RandoItems items;
+	size_t i;
+
+	rando_config_init(&config);
+	rando_world_init(&world, RANDO_VARIANT_INVERTED, &config);
+	CHECK(rando_world_set_item(&world, RANDO_LOC_TURTLE_ROCK_MEDALLION, RANDO_ITEM_Quake));
+	rando_items_clear(&items);
+	for (i = 0; i < sizeof collected / sizeof collected[0]; i++)
+		rando_items_add(&items, collected[i]);
+	CHECK(rando_world_can_access(&world, RANDO_LOC_TURTLE_ROCK_CHAIN_CHOMPS, &items));
+}
+
 /* HyruleCastleTowerTest::testCapeOrUpgradedSwordRequiredToEnter. */
 static void check_cape_or_upgraded_sword_required_to_enter_castle_tower(void)
 {
@@ -704,8 +725,8 @@ static void replay_every_row(const char *path)
 	printf(TEST ": all %d rows of %s replayed\n", rows, path);
 }
 
-/* TODO: the Inverted files whose rows are replayed whole, in all three trees; step 3.12's chunk 6
- * adds Turtle Rock's, and chunk 7 removes both lists. */
+/* TODO: the Inverted files whose rows are replayed whole, in all three trees; step 3.12's chunk 7
+ * removes both lists. */
 static const char *const inverted_enabled_files[] = {
 	"LightWorldTest.php", "HyruleCastleEscapeTest.php",
 	"DeathMountain/EastTest.php", "DeathMountain/WestTest.php",
@@ -713,7 +734,7 @@ static const char *const inverted_enabled_files[] = {
 	"DarkWorld/DeathMountain/EastTest.php", "DarkWorld/DeathMountain/WestTest.php",
 	"HyruleCastleTowerTest.php", "PalaceOfDarknessTest.php", "ThievesTownTest.php", "IcePalaceTest.php",
 	"MiseryMireTest.php", "EasternPalaceTest.php", "DesertPalaceTest.php", "TowerOfHeraTest.php",
-	"SwampPalaceTest.php", "SkullWoodsTest.php", NULL,
+	"SwampPalaceTest.php", "SkullWoodsTest.php", "TurtleRockTest.php", NULL,
 };
 
 static const char *const inverted_enabled_methods[] = {"testEntry", "testCanEnterWithEverything", NULL};
@@ -737,7 +758,7 @@ static void replay_inverted_rows(const char *path)
 
 	if (rows == 0)
 		test_fail(TEST, "%s: no row replayed", path);
-	printf(TEST ": %d of %d rows of %s replayed, %d left to step 3.12's chunks 6-7\n", rows, total, path,
+	printf(TEST ": %d of %d rows of %s replayed, %d left to step 3.12's chunk 7\n", rows, total, path,
 	       total - rows);
 }
 
@@ -749,6 +770,7 @@ int main(int argc, char **argv)
 	check_can_enter_tower_of_hera_with_everything();
 	check_can_enter_inverted_tower_of_hera_with_everything();
 	check_inverted_skull_woods_bridge_room_needs_only_fire_rod();
+	check_inverted_turtle_rock_chain_chomps_from_the_top();
 	check_cape_or_upgraded_sword_required_to_enter_castle_tower();
 	check_sword_required_to_complete_castle_tower();
 	check_boss_normal_location_decides_dungeon_items_on_bosses();
