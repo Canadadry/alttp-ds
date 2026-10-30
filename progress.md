@@ -70,23 +70,23 @@
   - [ ] 3.0 Claim what is green, refactor duplications
     - [x] Chunk 1: parallel e2e gate
     - [x] Chunk 2: claims
-    - [ ] Chunk 3: owed list and closed rows
+    - [x] Chunk 3: owed list and closed rows
     - [ ] Chunk 4: refactor duplications
   - [ ] 3.1 glitches: overworld_glitches
-  - [ ] 3.2 glitches: hybrid_major_glitches
+  - [x] 3.2 glitches: hybrid_major_glitches
   - [ ] 3.3 glitches: major_glitches
   - [ ] 3.4 glitches: no_logic
-  - [ ] 3.5 item_placement
+  - [x] 3.5 item_placement
   - [ ] 3.6 dungeon_items
-  - [ ] 3.7 accessibility
-  - [ ] 3.8 goal
-  - [ ] 3.9 crystals_tower
-  - [ ] 3.10 crystals_ganon
-  - [ ] 3.11 state: standard
+  - [x] 3.7 accessibility
+  - [x] 3.8 goal
+  - [x] 3.9 crystals_tower
+  - [x] 3.10 crystals_ganon
+  - [x] 3.11 state: standard
   - [ ] 3.12 state: inverted
   - [ ] 3.13 state: retro
   - [ ] 3.14 weapons
-  - [ ] 3.15 item_pool
-  - [ ] 3.16 item_functionality
+  - [x] 3.15 item_pool
+  - [x] 3.16 item_functionality
 - [ ] Phase 4 — Fits on the DS
   - [ ] 4.1 Measure on the host

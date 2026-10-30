@@ -453,3 +453,86 @@ None.
   the DS). To look at before roadmap item 2.
 - Thread overhead is the entry frame depth, not a painted empty run (glibc writes below the
   entry frame before the job runs).
+
+### Step 3.0
+
+- Gate: `run_e2e.sh` validates claims first (exit 2 before any generator), builds one per-case
+  plan, creates every output directory with one `mkdir`, launches every claim as one background
+  job (generator then claim awk, outputs per case index), then one awk prints the report in case
+  order with each claim's stderr before its verdict. No job cap. Report, summary and exit status
+  unchanged; `make selftest` adds slow-first-case, two-divergent and generator-stderr fixtures.
+  A 42-claim run: ~0.61 s serial → ~0.18 s.
+- Claims: 40 at `all`, `dungeon_items-mcs` and `glitches-no_logic` (fill diverges at draw 457)
+  at `prepareWorld`, `state-inverted` and `state-retro` pending. 42 pass, 0 divergent, 2
+  pending; e2e ~0.16 s; `make test` ~80 ms (step 2.5: ~80 ms).
+- Owed VT tests per row (an interaction between two rows goes to the later one):
+
+  | Row | Owed | Status |
+  |---|---|---|
+  | 3.1 overworld_glitches | `tests/OverworldGlitches` (23 files, 41 methods) | open |
+  | 3.2 hybrid_major_glitches | none (no VT directory) | closed |
+  | 3.3 major_glitches | `tests/MajorGlitches` (23 files, 41 methods) | open |
+  | 3.4 no_logic | none (no VT directory) | open: case at `prepareWorld` |
+  | 3.5 item_placement | none | closed |
+  | 3.6 dungeon_items | `WorldTest::testSetVanillaDungeonItems` (8 rows), top-level `RegionTest::testRegionLockedItems` | open |
+  | 3.7 accessibility | none | closed |
+  | 3.8 goal | none | closed |
+  | 3.9 crystals_tower | none | closed |
+  | 3.10 crystals_ganon | none | closed |
+  | 3.11 state: standard | none (`tests/NoGlitches`, ported in 2.2) | closed |
+  | 3.12 state: inverted | `tests/Inverted` (22, 43), `tests/InvertedOverworldGlitches` (22, 38), `tests/InvertedMajorGlitches` (22, 40) | open |
+  | 3.13 state: retro | `RetroBowTest::testLocation` (32 rows) | open |
+  | 3.14 weapons | `RandomizerTest::testVanillaSwordsSet`, `::testVanillaSwordsSetWithPedestalGoal` | open |
+  | 3.15 item_pool | none | closed |
+  | 3.16 item_functionality | none (`ItemCollectionTest`'s functionality tests in `test_items.c`) | closed |
+
+- Owed by no row: `tests/NoGlitches` (2.2) and `Support/ItemCollectionTest` (`test_items.c`),
+  already ported; `RandomizerTest`'s `test{Crystals,Pendants}NotRandomizedByConfig*` (vary
+  `prize.shuffle*`, not in the matrix), `*BossShuffle` (enemizer, out of scope),
+  `testCompletionistItemCount` (read only by `writeToRom`); `LightWorldTest`, `RomTest`,
+  `Support/{Flips,Lz2,XXTEA}Test` (ROM and patch formats); `WorldTest::testGetRegionDoesntExist`
+  (PHP exception; C uses ids); `ItemTest` (names, ROM bytes; item table checked by `make logic`);
+  `HelpersTest` (PHP helpers); `Support/CollectionTest` (covered by `test_filler` and the `all`
+  claims); `Unit/Http/…`, `tests/Browser`, `tests/js` (web front end).
+- Nine rows closed below with no PRD. The duplications refactor (chunk 4) follows, with
+  `make measure`'s figure.
+
+### Step 3.2
+
+- `glitches-hybrid_major_glitches` claimed at `all` in 3.0. Owes no VT test: VT has no
+  HybridMajorGlitches directory. No PRD.
+
+### Step 3.5
+
+- `item_placement-basic` claimed at `all` in 3.0 (step 2.4). Owes no VT test. No PRD.
+
+### Step 3.7
+
+- `accessibility-locations`, `-none` claimed at `all` in 3.0. Owes no VT test. No PRD.
+
+### Step 3.8
+
+- All six goal cases claimed at `all` in 3.0. Owes no VT test: `testCompletionistItemCount` is
+  ROM-only, `testVanillaSwordsSetWithPedestalGoal` goes to 3.14. No PRD.
+
+### Step 3.9
+
+- `crystals_tower-0` … `-6`, `-random` claimed at `all` in 3.0. Owes no VT test. No PRD.
+
+### Step 3.10
+
+- `crystals_ganon-0` … `-6`, `-random` claimed at `all` in 3.0. Owes no VT test. No PRD.
+
+### Step 3.11
+
+- `state-standard` claimed at `all` in 3.0. Owes no VT test: the Standard world's tests are
+  `tests/NoGlitches`, ported in 2.2. No PRD.
+
+### Step 3.15
+
+- `item_pool-hard`, `-expert`, `-crowd_control` claimed at `all` in 3.0. Owes no VT test. No PRD.
+
+### Step 3.16
+
+- `item_functionality-hard`, `-expert` claimed at `all` in 3.0. Owes no VT test:
+  `ItemCollectionTest`'s functionality tests are already in `test_items.c`. No PRD.
