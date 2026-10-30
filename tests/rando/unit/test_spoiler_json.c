@@ -38,7 +38,8 @@ static void write_case(const char *case_dir)
 
 	if (!rando_case_read(case_dir, &c, error))
 		test_fail(TEST, "%s rejected: %s", case_dir, error);
-	CHECK(rando_generate(&gen, &c.options, c.seed, 1, NULL, NULL) == RANDO_INCOMPLETE);
+	CHECK(rando_generate_until(&gen, &c.options, c.seed, 1, NULL, NULL, RANDO_STAGE_PREPARE_WORLD) ==
+	      RANDO_INCOMPLETE);
 	f = tmpfile();
 	CHECK(f != NULL);
 	CHECK(rando_spoiler_write_json(f, &gen.world));

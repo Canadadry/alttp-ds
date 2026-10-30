@@ -29,7 +29,7 @@ const char *rando_stage_name(RandoStage stage);
 
 typedef enum RandoStatus {
 	RANDO_COMPLETE,
-	/* Every ported stage ran; the next one is not ported yet. */
+	/* Only from rando_generate_until: its last stage ran. */
 	RANDO_INCOMPLETE,
 	/* The options need a world variant that is not ported. */
 	RANDO_UNSUPPORTED,
@@ -39,6 +39,14 @@ typedef enum RandoStatus {
 /* One call per draw; draw restarts at 1 on every attempt. */
 typedef void (*RandoTraceFn)(void *ctx, uint32_t attempt, uint32_t draw, const char *stage, int64_t min,
 			     int64_t max, int64_t r);
+
+#ifdef RANDO_FAULTS
+typedef enum RandoFault {
+	RANDO_FAULT_NONE,
+	RANDO_FAULT_MID_FILL,
+	RANDO_FAULT_IS_WINNABLE,
+} RandoFault;
+#endif
 
 /* Ids, never pointers, except the caller's trace hook and the PRNG observer rando_generate points
  * back at this struct. */
@@ -54,6 +62,13 @@ typedef struct RandoGen {
 	RandoPrng prng;
 	RandoPools pools;
 	RandoWorld world;
+#ifdef RANDO_FAULTS
+	/* Host tests only: every attempt below fault_attempts fails at fault; the generator never writes
+	 * either and counts each failure in fault_fired. */
+	RandoFault fault;
+	uint32_t fault_attempts;
+	uint32_t fault_fired;
+#endif
 } RandoGen;
 
 /* The retry contract: attempt N reseeds with splitmix32(seed + N). max_attempts 0 is unbounded;

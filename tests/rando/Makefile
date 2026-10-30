@@ -1,5 +1,5 @@
 CC ?= gcc
-CFLAGS := -std=c99 -Wall -Wextra -Werror
+CFLAGS := -std=c99 -Wall -Wextra -Werror -DRANDO_FAULTS
 RANDO := ../../rando
 BUILD := build
 

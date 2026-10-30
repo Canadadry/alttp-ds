@@ -14,7 +14,7 @@
 			test_fail(TEST, "%s:%d: %s", __FILE__, __LINE__, #cond); \
 	} while (0)
 
-#define TRACE_MAX 32768
+#define TRACE_MAX 65536
 #define STAGE_TABLE "stages.txt"
 
 /* The hook's draws in trace.txt's format. */
@@ -47,11 +47,13 @@ static RandoStatus generate(const char *key, const char *value, uint32_t seed, T
 	if (key)
 		CHECK(rando_options_set(&options, key, value));
 	memset(trace, 0, sizeof *trace);
-	return rando_generate(&gen, &options, seed, 1, record, trace);
+	return rando_generate_until(&gen, &options, seed, 1, record, trace, RANDO_STAGE_PREPARE_WORLD);
 }
 
 /* The C draws must be the first lines of the case's golden trace; with next_stage, the golden's next
- * line must belong to that stage. */
+ * line must belong to that stage, GOLDEN_END meaning there is none. */
+static const char GOLDEN_END[] = "";
+
 static void check_golden_stop(const char *name, const Trace *trace, const char *next_stage)
 {
 	char path[256], golden[TRACE_MAX], next[128] = "", stage[64] = "";
@@ -74,7 +76,10 @@ static void check_golden_stop(const char *name, const Trace *trace, const char *
 	if (strcmp(trace->text, golden) != 0)
 		test_fail(TEST, "%s: C draws\n%s\ndiffer from the golden's first %d lines\n%s", name, trace->text,
 			  trace->lines, golden);
-	if (next_stage && (sscanf(next, "%*s %*s %63s", stage) != 1 || strcmp(stage, next_stage) != 0))
+	if (next_stage == GOLDEN_END) {
+		if (next[0] != '\0')
+			test_fail(TEST, "%s: the golden goes on with \"%s\" after the C draws", name, next);
+	} else if (next_stage && (sscanf(next, "%*s %*s %63s", stage) != 1 || strcmp(stage, next_stage) != 0))
 		test_fail(TEST, "%s: the golden goes on with \"%s\" after the C draws, not stage %s", name, next,
 			  next_stage);
 }
@@ -165,7 +170,8 @@ static void check_crystals_order(void)
 	CHECK(rando_options_set(&options, "crystals_ganon", "random"));
 	CHECK(rando_options_set(&options, "crystals_tower", "random"));
 	memset(&trace, 0, sizeof trace);
-	CHECK(rando_generate(&gen, &options, 1, 1, record, &trace) == RANDO_INCOMPLETE);
+	CHECK(rando_generate_until(&gen, &options, 1, 1, record, &trace, RANDO_STAGE_PREPARE_WORLD) ==
+	      RANDO_INCOMPLETE);
 	CHECK(trace.lines == 234);
 	CHECK(strncmp(trace.text, "0 1 crystals 0 7 -> 5\n0 2 crystals 0 7 -> ", 42) == 0);
 	CHECK(gen.world.config.crystals_ganon == 5);
@@ -216,9 +222,79 @@ static void check_reseed(uint32_t seed)
 	CHECK(trace.text[strlen("0 1 getAdvancementItems 0 6 -> ")] - '0' == expected);
 
 	rando_options_init(&options);
-	CHECK(rando_generate(&gen, &options, seed, 0, NULL, NULL) == RANDO_INCOMPLETE);
+	CHECK(rando_generate_until(&gen, &options, seed, 0, NULL, NULL, RANDO_STAGE_PREPARE_WORLD) ==
+	      RANDO_INCOMPLETE);
 	CHECK(gen.attempt == 0);
 	CHECK(gen.draw == 232);
+}
+
+/* tests/rando/cases/baseline: the fill makes lines 233-805, the golden's last. */
+static void check_baseline_fill(void)
+{
+	RandoOptions options;
+	Trace trace;
+
+	rando_options_init(&options);
+	memset(&trace, 0, sizeof trace);
+	CHECK(rando_generate_until(&gen, &options, 1, 1, record, &trace, RANDO_STAGE_FILL) == RANDO_INCOMPLETE);
+	CHECK(trace.lines == 805);
+	check_golden_stop("baseline", &trace, GOLDEN_END);
+}
+
+/* tests/rando/cases/baseline: attempts 0 and the whole golden trace. */
+static void check_baseline_complete(void)
+{
+	RandoOptions options;
+	Trace trace;
+
+	rando_options_init(&options);
+	memset(&trace, 0, sizeof trace);
+	CHECK(rando_generate(&gen, &options, 1, 0, record, &trace) == RANDO_COMPLETE);
+	CHECK(gen.attempt == 0);
+	CHECK(trace.lines == 805);
+	check_golden_stop("baseline", &trace, GOLDEN_END);
+}
+
+/* Attempt k of seed s is attempt 0 of seed s + k: seed 0 with attempt 0 failed at point must replay
+ * tests/rando/cases/baseline (seed 1) at attempt 1. */
+static void check_retry_identity(RandoFault point)
+{
+	static char golden[TRACE_MAX], expected[TRACE_MAX];
+	RandoOptions options;
+	Trace trace;
+	const char *retry, *line;
+	size_t len;
+	FILE *f;
+
+	f = fopen("cases/baseline/trace.txt", "r");
+	if (!f)
+		test_fail(TEST, "cases/baseline/trace.txt: cannot open");
+	len = fread(golden, 1, sizeof golden - 1, f);
+	fclose(f);
+	golden[len] = '\0';
+	memcpy(expected, golden, len + 1);
+	for (line = golden; *line; line = strchr(line, '\n') + 1) {
+		CHECK(line[0] == '0' && line[1] == ' ');
+		expected[line - golden] = '1';
+	}
+
+	rando_options_init(&options);
+	memset(&trace, 0, sizeof trace);
+	gen.fault = point;
+	gen.fault_attempts = 1;
+	gen.fault_fired = 0;
+	CHECK(rando_generate(&gen, &options, 0, 0, record, &trace) == RANDO_COMPLETE);
+	gen.fault = RANDO_FAULT_NONE;
+	CHECK(gen.attempt == 1);
+	CHECK(gen.fault_fired == 1);
+	retry = strstr(trace.text, "\n1 ");
+	CHECK(retry != NULL);
+	if (strcmp(retry + 1, expected) != 0)
+		test_fail(TEST, "fault %d: attempt 1 of seed 0 is not baseline's golden trace at attempt 1", (int)point);
+	line = retry - 1;
+	while (line > trace.text && line[-1] != '\n')
+		line--;
+	CHECK(strstr(line, " fill ") != NULL && strstr(line, " fill ") < retry);
 }
 
 static int count_item(RandoPoolList list, RandoItemId item)
@@ -259,7 +335,8 @@ static void check_stop_stage(void)
 	CHECK(gen.pools.items[RANDO_POOL_ITEMS][items] == RANDO_ITEM_TwentyRupees);
 
 	memset(&trace, 0, sizeof trace);
-	CHECK(rando_generate(&gen, &options, 1, 1, record, &trace) == RANDO_INCOMPLETE);
+	CHECK(rando_generate_until(&gen, &options, 1, 1, record, &trace, RANDO_STAGE_PREPARE_WORLD) ==
+	      RANDO_INCOMPLETE);
 	CHECK(trace.lines == 232);
 	check_golden_prefix("glitches-overworld_glitches", &trace);
 }
@@ -402,6 +479,12 @@ int main(int argc, char **argv)
 	printf(TEST ": hand-written cases passed\n");
 	if (!fixtures)
 		return 0;
+	check_baseline_fill();
+	check_baseline_complete();
+	printf(TEST ": baseline generated to completion\n");
+	check_retry_identity(RANDO_FAULT_MID_FILL);
+	check_retry_identity(RANDO_FAULT_IS_WINNABLE);
+	printf(TEST ": seed 0 failed mid-fill, then at isWinnable, replayed baseline at attempt 1\n");
 	printf(TEST ": %d pool list records replayed, %d skipped (no world)\n",
 	       check_pool_records(FIXTURE_POOL_LISTS, RANDO_STAGE_GET_ADVANCEMENT_ITEMS, NULL), SKIPPED_COUNT);
 	printf(TEST ": %d prepared pool records replayed, %d skipped (no world)\n",

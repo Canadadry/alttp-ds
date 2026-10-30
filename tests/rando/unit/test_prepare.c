@@ -1271,7 +1271,7 @@ static void check_pools_baseline_anchors(void)
 	RandoOptions options;
 
 	rando_options_init(&options);
-	CHECK(rando_generate(&gen, &options, 1, 1, NULL, NULL) == RANDO_INCOMPLETE);
+	CHECK(rando_generate_until(&gen, &options, 1, 1, NULL, NULL, RANDO_STAGE_PREPARE_WORLD) == RANDO_INCOMPLETE);
 	CHECK(gen.pools.count[RANDO_POOL_DUNGEON] == 63);
 	CHECK(gen.pools.count[RANDO_POOL_ADVANCEMENT] == 43);
 	CHECK(gen.pools.count[RANDO_POOL_NICE] == 40);

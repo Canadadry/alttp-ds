@@ -1,4 +1,5 @@
 #include "rando.h"
+#include "rando_filler.h"
 #include "rando_prepare.h"
 
 #include <assert.h>
@@ -51,12 +52,25 @@ static bool end_stage(RandoGen *gen, RandoStatus *status)
 	return stop;
 }
 
+#ifdef RANDO_FAULTS
+static bool fault_fires(RandoGen *gen, RandoFault point)
+{
+	if (gen->fault != point || gen->attempt >= gen->fault_attempts)
+		return false;
+	gen->fault_fired++;
+	return true;
+}
+#else
+#define fault_fires(gen, point) false
+#endif
+
 /* Returns false when the attempt failed and the loop must retry; otherwise stores the final status. */
 static bool run_attempt(RandoGen *gen, RandoStatus *status)
 {
 	RandoConfig config;
 	int crystals_ganon, crystals_tower;
 	RandoVariant variant;
+	RandoFillState fill;
 
 	gen->stage = RANDO_STAGE_NONE;
 	gen->draw = 0;
@@ -115,9 +129,22 @@ static bool run_attempt(RandoGen *gen, RandoStatus *status)
 		return true;
 	gen->stage = RANDO_STAGE_PREPARE_WORLD;
 	rando_prepare_pools(&gen->world, &gen->prng, &gen->pools);
-	gen->stage = RANDO_STAGE_NONE;
+	if (end_stage(gen, status))
+		return true;
 
-	*status = RANDO_INCOMPLETE;
+	gen->stage = RANDO_STAGE_FILL;
+	if (!rando_fill_dungeon(&gen->world, &gen->prng, &gen->pools, &fill)
+	    || fault_fires(gen, RANDO_FAULT_MID_FILL)
+	    || !rando_fill_rest(&gen->world, &gen->prng, &gen->pools, &fill)) {
+		gen->stage = RANDO_STAGE_NONE;
+		return false;
+	}
+	if (end_stage(gen, status))
+		return true;
+	if (fault_fires(gen, RANDO_FAULT_IS_WINNABLE) || !rando_world_is_winnable(&gen->world))
+		return false;
+
+	*status = RANDO_COMPLETE;
 	return true;
 }
 
