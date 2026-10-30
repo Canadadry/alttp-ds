@@ -44,4 +44,4 @@ goal-dungeons all
 goal-fast_ganon all
 goal-ganonhunt all
 glitches-no_logic all
-state-inverted setMedallions
+state-inverted all

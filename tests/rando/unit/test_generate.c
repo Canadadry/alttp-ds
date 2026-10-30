@@ -224,7 +224,7 @@ static void check_crystals_order(void)
 	CHECK(gen.world.config.crystals_tower == trace.text[42] - '0');
 }
 
-/* Inverted's regions are ported up to setMedallions only: no earlier stage evaluates a rule. */
+/* `state` picks the world variant and mode.state; retro has no world yet. */
 static void check_states(void)
 {
 	RandoOptions options;
@@ -432,13 +432,10 @@ typedef struct Skipped {
 } Skipped;
 
 static const char *const no_world[] = {"state-retro"};
-/* TODO: Inverted's region rules (step 3.12, chunk 8). */
-static const char *const no_world_rules[] = {"state-inverted", "state-retro"};
-static const Skipped pool_skips = {no_world, (int)(sizeof no_world / sizeof no_world[0])};
-static const Skipped prepared_skips = {no_world_rules, (int)(sizeof no_world_rules / sizeof no_world_rules[0])};
+static const Skipped no_world_skips = {no_world, (int)(sizeof no_world / sizeof no_world[0])};
 
-#define SKIPPED_MAX 2
-typedef char skipped_fit[sizeof no_world_rules / sizeof no_world_rules[0] <= SKIPPED_MAX ? 1 : -1];
+#define SKIPPED_MAX 1
+typedef char skipped_fit[sizeof no_world / sizeof no_world[0] <= SKIPPED_MAX ? 1 : -1];
 
 static int skipped_index(const Skipped *skipped, const char *name)
 {
@@ -553,10 +550,10 @@ int main(int argc, char **argv)
 	check_retry_identity(RANDO_FAULT_IS_WINNABLE);
 	printf(TEST ": seed 0 failed mid-fill, then at isWinnable, replayed baseline at attempt 1\n");
 	printf(TEST ": %d pool list records replayed, %d skipped (no world)\n",
-	       check_pool_records(FIXTURE_POOL_LISTS, RANDO_STAGE_GET_ADVANCEMENT_ITEMS, NULL, &pool_skips),
-	       pool_skips.count);
-	printf(TEST ": %d prepared pool records replayed, %d skipped (no world rules)\n",
-	       check_pool_records(FIXTURE_PREPARED_POOLS, RANDO_STAGE_PREPARE_WORLD, "fill", &prepared_skips),
-	       prepared_skips.count);
+	       check_pool_records(FIXTURE_POOL_LISTS, RANDO_STAGE_GET_ADVANCEMENT_ITEMS, NULL, &no_world_skips),
+	       no_world_skips.count);
+	printf(TEST ": %d prepared pool records replayed, %d skipped (no world)\n",
+	       check_pool_records(FIXTURE_PREPARED_POOLS, RANDO_STAGE_PREPARE_WORLD, "fill", &no_world_skips),
+	       no_world_skips.count);
 	return 0;
 }

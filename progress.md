@@ -83,7 +83,7 @@
   - [x] 3.9 crystals_tower
   - [x] 3.10 crystals_ganon
   - [x] 3.11 state: standard
-  - [ ] 3.12 state: inverted
+  - [x] 3.12 state: inverted
   - [ ] 3.13 state: retro
   - [ ] 3.14 weapons
   - [x] 3.15 item_pool
@@ -103,7 +103,7 @@
   - [x] Chunk 1: MajorGlitches fixture
   - [x] Chunk 2: C replay and derivation case
 - [x] Step 3.4: NoLogic rules and claim
-- [ ] Step 3.12 chunks
+- [x] Step 3.12 chunks
   - [x] Chunk 1: Inverted oracle fixtures
   - [x] Chunk 2: per-variant layout refactor
   - [x] Chunk 3: Inverted world
@@ -111,4 +111,4 @@
   - [x] Chunk 5: Light World dungeons, Swamp, Skull
   - [x] Chunk 6: Turtle Rock
   - [x] Chunk 7: Ganon's Tower, every row replayed
-  - [ ] Chunk 8: generator claim at all
+  - [x] Chunk 8: generator claim at all
