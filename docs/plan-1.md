@@ -52,7 +52,7 @@ This plan follows the boot fix already on branch `melonds-0.9.5-boot`, commits `
   1. Build melonDS 0.9.5 from source: `git clone https://github.com/melonDS-emu/melonDS`, then `git worktree add ../m095 0.9.5`.
   2. Install the apt dependencies: `qtbase5-dev qtbase5-private-dev qtmultimedia5-dev libsdl2-dev libslirp-dev libarchive-dev libepoxy-dev libzstd-dev extra-cmake-modules libwayland-dev`.
   3. Configure with `cmake -B build -DENABLE_JIT=OFF` and keep the OpenGL renderer ON, or the link fails.
-  4. Run it as `QT_QPA_PLATFORM=offscreen SDL_AUDIODRIVER=dummy stdbuf -oL -eL melonDS rom.nds > out.txt 2>&1 &`, then kill it with `pkill -9 melonDS` after a few seconds. `timeout` does not stop it.
+  4. Run it as `QT_QPA_PLATFORM=offscreen SDL_AUDIODRIVER=dummy stdbuf -oL -eL melonDS rom.nds > out.txt 2>&1 &`, then kill it with `pkill -9 melonDS`. `timeout` does not stop it. When a check reads the emulator's `.sav`, kill only after stdout shows `SaveManager: Written` (with a time limit): 0.9.5 writes the file from a background thread at least 2 s after the last flush request, or in a destructor that `pkill -9` skips. The instrumented EEPROM SPI write path is the main proof that the ROM wrote; the file is a second check.
 - **Read only the console.** The user allowed melonDS as an exception to `CLAUDE.md`'s "Never launch the game", for this work only and for **log-only checks**: read stdout and files, never judge the screen, never play.
   - Instrumentation printfs added to melonDS's own source are fine. Examples: a `printf` in `ARMv5::JumpTo` when the PC hits a symbol address taken from `arm-none-eabi-nm lttp-ds.elf`, or in the EEPROM SPI handler.
   - To trigger a save without a gamepad, seed the emulator's `.sav`, or call `ZeldaWriteSram` through instrumentation. Never press buttons.
@@ -71,8 +71,17 @@ This plan follows the boot fix already on branch `melonds-0.9.5-boot`, commits `
 
 1. **`ndstool` writes game code `ZLTP`.**
    - The `.nds` header bytes `0x0C..0x0F` read `ZLTP`. Check with a Python one-liner.
-   - On headless melonDS 0.9.5, stdout no longer prints `ROM entry not found` followed by homebrew behavior. The ROM still boots: instrumentation shows `main` and `ZeldaHostTick` reached, as on the current branch.
-   - melonDS creates `<rom>.sav` of 8192 bytes next to the ROM once something writes the EEPROM. Before Phase 2, it is enough that 0.9.5 sets up an 8 KB EEPROM: instrument `SetupSave`, or print `romparams.SaveMemType`.
+   - On headless melonDS 0.9.5, stdout prints `Game code: ZLTP`, and instrumentation prints `romparams.SaveMemType == 2`. (`ROM entry not found` still prints: `ZLTP` is in no ROM list, so that line does not tell homebrew from retail.)
+   - The ROM still boots: instrumentation shows `main` and `ZeldaHostTick` reached, as on the current branch.
+
+2. **The ARM9 reaches the EEPROM (probe, old save code still in place).**
+   - Add a minimal throwaway probe on the current code: read the EEPROM status register, read one page, write one page. It goes through exactly the libnds calls and the slot-ownership sequence of § 2, the path Phase 2 will ship; if any of them must change to work, that change is the result.
+   - Verified with instrumentation on melonDS 0.9.5's EEPROM SPI handler: the read and write commands arrive, and the `.sav` changes.
+   - Run the probe a second time with `romparams.SaveMemType` forced to 0, and record what the status register and data reads return with no chip. In 0.9.5, `CartRetail::SPIWrite` returns 0 when `SRAMType == 0`, so they may read `0x00`, not the `0xFF` § 2 assumes.
+   - Two known doubts drive this step:
+     - calico hands the slot between the CPUs through `ntrcardOpen`/`ntrcardClose` and a cross-CPU `exmemcnt_mirror` (`source/nds/ntrcard.c`), which a direct `sysSetCardOwner` bypasses;
+     - melonDS 0.9.5 drops ARM9 writes to `0x040001A0`/`0x040001A2` unless EXMEMCNT bit 11 is clear.
+   - Record in § 6 Step notes how the slot must be taken and what a missing chip reads, and check § 2's slot sequence and `off`/`new` rule against them before Phase 2 starts. Remove the probe once it has answered.
 
 ### Phase 2 — Save through the EEPROM only
 
@@ -91,6 +100,7 @@ This plan follows the boot fix already on branch `melonds-0.9.5-boot`, commits `
    - Put a known 8 KB image as `<rom>.sav`: a valid slot, or a settings block with a non-default value.
    - Relaunch, and check from stdout instrumentation that `ZeldaSaveMount` reads it: the status is `loaded`, and the setting is applied, for example the `ZeldaHudOnTop` value.
    - A blank `.sav` (all `0xFF`) gives `new`.
+   - With no save memory (force `romparams.SaveMemType = 0` through instrumentation, `NDSCart.cpp:1639` in 0.9.5), the ROM still reaches `ZeldaHostTick` and the status is `off`. Then trigger a save as in step 2: the EEPROM SPI instrumentation sees no write-enable or page-write command, and the ROM keeps reaching `ZeldaHostTick` after the flush.
 
 ### Phase 3 — Docs
 
@@ -109,6 +119,7 @@ This plan follows the boot fix already on branch `melonds-0.9.5-boot`, commits `
   - the ROM boots to `ZeldaHostTick`;
   - a save writes `<rom>.sav` (8192 bytes);
   - a relaunch loads it.
+  - with no save memory exposed, the ROM still boots, the status is `off`, and a triggered save sends no EEPROM write.
 - The README is updated.
 - **Waits on the human:** the user plays on Delta and saves, quits and reloads. It is also checked on a recent melonDS and, if possible, on a flashcart.
 
