@@ -624,3 +624,11 @@ None.
 - `make measure`: ARM code+rodata 113.6 KB (17.4 KB left of A-2), stack peak 6 328 B, max case
   17.5 ms (`item_placement-basic`, still over A-3), sweep max 19.3 ms, 0 retries;
   `make test` ~85 ms, `logic` ~0.36 s, e2e ~0.2 s.
+
+### Step 3.14
+
+- `RandomizerTest::testVanillaSwordsSet` and `::testVanillaSwordsSetWithPedestalGoal` →
+  8 `prepared_item` rows in `noglitches_rows.txt` (VT seeded 1, stopped after `prepareWorld`;
+  VT agrees, its old `accessibility: full` replays as `items`). The C port already matched; library
+  unchanged. `make logic` now runs `test_prepare`'s fixture mode.
+- `weapons-*` already at `all`. `make test` ~85 ms, `logic` ~0.38 s, e2e ~0.18 s.

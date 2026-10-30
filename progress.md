@@ -85,7 +85,7 @@
   - [x] 3.11 state: standard
   - [x] 3.12 state: inverted
   - [x] 3.13 state: retro
-  - [ ] 3.14 weapons
+  - [x] 3.14 weapons
   - [x] 3.15 item_pool
   - [x] 3.16 item_functionality
 - [ ] Phase 4 — Fits on the DS
@@ -119,6 +119,6 @@
   - [x] Chunk 3: setShops random path and generator
   - [x] Chunk 4: generic-key naming and claim at all
   - [x] Step note
-- [ ] Step 3.14 chunks
+- [x] Step 3.14 chunks
   - [x] Chunk 1: RandomizerTest sword rows
-  - [ ] Step note
+  - [x] Step note
