@@ -1,7 +1,8 @@
 #!/bin/sh
 # Usage: gen_golden.sh [--fresh] [--out <dir>] [<case>...]
 # Without --out, each case's golden is written back into tests/rando/cases/<case>/, and the logic fixtures
-# (extract_logic.php) into tests/rando/oracle/; with --out, both go under <dir>.
+# (extract_logic.php) and the pool fixture (dump_pools.php, always over every case) into tests/rando/oracle/;
+# with --out, all go under <dir>.
 # Never called by `make test` or `make e2e`: regenerating goldens is a deliberate act (CLAUDE.md).
 set -eu
 export LC_ALL=C
@@ -83,3 +84,17 @@ php "$oracle_dir/extract_logic.php" "$vt_dir" "${out:-$oracle_dir}"
 for name in "$@"; do
 	php "$oracle_dir/gen_case.php" "$vt_dir" "$cases_dir/$name" "${out:-$cases_dir}/$name"
 done
+
+# After the cases: the dump checks its draws against each golden trace, so it must read the ones just written.
+all_cases="$(discover_cases "$cases_dir" gen_golden)"
+dump_dirs=
+for name in $all_cases; do
+	dir="$cases_dir/$name"
+	for named in "$@"; do
+		if [ "$named" = "$name" ]; then dir="${out:-$cases_dir}/$name"; fi
+	done
+	dump_dirs="$dump_dirs $dir"
+done
+set -f
+php "$oracle_dir/dump_pools.php" "$vt_dir" "${out:-$oracle_dir}" $dump_dirs
+set +f
