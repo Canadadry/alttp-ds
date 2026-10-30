@@ -21,8 +21,8 @@ typedef struct RandoLocationRules {
 	RandoAlwaysAllowRule always_allow;
 } RandoLocationRules;
 
-/* Any rule may be NULL, as in VT. locations is indexed from the region's first_location and shops
- * from its first_shop; either may be NULL when every entry would be. */
+/* Any rule may be NULL, as in VT. locations is indexed by the location's layout slot and shops from
+ * the region's first_shop; either may be NULL when every entry would be. */
 typedef struct RandoRegionRules {
 	const char *vt_class;
 	RandoRule can_enter;
@@ -32,6 +32,17 @@ typedef struct RandoRegionRules {
 } RandoRegionRules;
 
 const RandoRegionRules *rando_region_rules(RandoVariant variant, RandoRegionId region);
+/* slot is the location's index in its region's list; region is RANDO_REGION_NONE, and slot 0, where
+ * the variant's world lacks the location. */
+typedef struct RandoLayoutLocation {
+	uint8_t region;
+	uint8_t slot;
+} RandoLayoutLocation;
+
+/* Indexed by location id. */
+const RandoLayoutLocation *rando_layout_locations(RandoVariant variant);
+/* rando_layout_location_count(variant) location ids, in VT's getLocations() order. */
+const uint8_t *rando_layout_order(RandoVariant variant);
 
 extern const RandoRegionRules rando_rules_north_east_light_world;
 extern const RandoRegionRules rando_rules_north_west_light_world;

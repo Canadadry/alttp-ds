@@ -8,9 +8,11 @@
 
 #define RANDO_PLAYTHROUGH_ENTRY_MAX (RANDO_LOCATION_COUNT + RANDO_SHOP_COUNT * RANDO_SHOP_SLOTS)
 
-/* location is RANDO_LOCATION_NONE for a shop slot. item is the raw item, never an alias target. */
+/* location is RANDO_LOCATION_NONE for a shop slot. item is the raw item, never an alias target. region
+ * is the location's in the world's variant, or the shop's. */
 typedef struct RandoPlaythroughEntry {
 	uint16_t round;
+	RandoRegionId region;
 	RandoLocationId location;
 	RandoShopId shop;
 	uint8_t slot;

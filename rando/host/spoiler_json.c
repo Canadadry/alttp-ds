@@ -74,8 +74,8 @@ static void write_region_section(FILE *out, const RandoWorld *world, const char 
 
 		if (strcmp(region->spoiler_name, spoiler_name) != 0)
 			continue;
-		for (i = 0; i < region->nlocations; i++) {
-			RandoLocationId id = (RandoLocationId)(region->first_location + i);
+		for (i = 0; i < rando_layout_region_location_count(world->variant, (RandoRegionId)r); i++) {
+			RandoLocationId id = rando_layout_region_location(world->variant, (RandoRegionId)r, i);
 			const RandoLocationInfo *location = rando_location_info(id);
 			int len;
 

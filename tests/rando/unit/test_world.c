@@ -21,6 +21,36 @@ static void standard_world(RandoWorld *world)
 	rando_world_init(world, RANDO_VARIANT_STANDARD, &config);
 }
 
+static int region_holds(RandoVariant variant, RandoRegionId region, RandoLocationId location)
+{
+	int i;
+
+	for (i = 0; i < rando_layout_region_location_count(variant, region); i++)
+		if (rando_layout_region_location(variant, region, i) == location)
+			return 1;
+	return 0;
+}
+
+/* Standard and Open share VT's classic world: 236 locations, none moved. */
+static void check_classic_layout(void)
+{
+	RandoVariant v;
+
+	for (v = RANDO_VARIANT_STANDARD; v <= RANDO_VARIANT_OPEN; v++) {
+		CHECK(rando_layout_location_count(v) == 236);
+		CHECK(rando_layout_location(v, 0) == RANDO_LOC_SAHASRAHLAS_HUT_LEFT);
+		CHECK(rando_layout_location(v, 235) == RANDO_LOC_PYRAMID_BOTTLE);
+		CHECK(rando_layout_location_region(v, RANDO_LOC_LINKS_HOUSE) == RANDO_REGION_SOUTH_LIGHT_WORLD);
+		CHECK(region_holds(v, RANDO_REGION_SOUTH_LIGHT_WORLD, RANDO_LOC_LINKS_HOUSE));
+		CHECK(rando_layout_location_region(v, RANDO_LOC_GANON) == RANDO_REGION_NORTH_EAST_DARK_WORLD);
+		CHECK(rando_layout_region_prize(v, RANDO_REGION_NORTH_EAST_DARK_WORLD) == RANDO_LOC_GANON);
+		CHECK(rando_layout_region_prize(v, RANDO_REGION_NORTH_EAST_LIGHT_WORLD) == RANDO_LOCATION_NONE);
+		CHECK(rando_layout_location_region(v, RANDO_LOC_ETHER_TABLET) == RANDO_REGION_WEST_DEATH_MOUNTAIN);
+		CHECK(region_holds(v, RANDO_REGION_WEST_DEATH_MOUNTAIN, RANDO_LOC_ETHER_TABLET));
+		CHECK(rando_layout_region_location_count(v, RANDO_REGION_GANONS_TOWER) == 28);
+	}
+}
+
 /* World::__construct: the constructor items, VT's default bosses, the shops' default inventory. */
 static void check_init(void)
 {
@@ -633,6 +663,7 @@ static void check_region_record(const Fixture *fx, RandoVariant variant, int id)
 {
 	char buf[512];
 	const RandoRegionInfo *info;
+	RandoLocationId prize;
 	RandoWorld world;
 	RandoConfig config;
 	size_t n = 0;
@@ -646,8 +677,8 @@ static void check_region_record(const Fixture *fx, RandoVariant variant, int id)
 		fixture_fail(fx, "rando_region_find does not return the region's id");
 	expect_field(fx, fx->field[3], info->spoiler_name, "spoiler name");
 	expect_field(fx, fx->field[4], rando_region_vt_class(variant, (RandoRegionId)id), "VT class");
-	expect_field(fx, fx->field[5],
-		     info->prize_location == RANDO_LOCATION_NONE ? "-" : rando_location_info(info->prize_location)->name,
+	prize = rando_layout_region_prize(variant, (RandoRegionId)id);
+	expect_field(fx, fx->field[5], prize == RANDO_LOCATION_NONE ? "-" : rando_location_info(prize)->name,
 		     "prize location");
 	rando_config_init(&config);
 	rando_world_init(&world, variant, &config);
@@ -667,41 +698,58 @@ static void check_region_record(const Fixture *fx, RandoVariant variant, int id)
 	expect_field(fx, fx->field[7], n ? buf : "-", "region items");
 }
 
-static void check_location_record(const Fixture *fx, RandoVariant variant, int id)
+/* i is the record's index in VT's getLocations() order. */
+static void check_location_record(const Fixture *fx, RandoVariant variant, int i)
 {
 	const RandoLocationInfo *info;
+	RandoLocationId id;
 	RandoWorld world;
 	RandoConfig config;
 
-	if (id >= RANDO_LOCATION_COUNT)
-		fixture_fail(fx, "more locations in the dump than in the C table");
-	info = rando_location_info((RandoLocationId)id);
+	if (i >= rando_layout_location_count(variant))
+		fixture_fail(fx, "more locations in the dump than in the C layout");
+	id = rando_layout_location(variant, i);
+	info = rando_location_info(id);
 	expect_field(fx, fx->field[2], info->name, "location name");
-	if (rando_location_find(fx->field[2]) != (RandoLocationId)id)
+	if (rando_location_find(fx->field[2]) != id)
 		fixture_fail(fx, "rando_location_find does not return the location's id");
-	expect_field(fx, fx->field[3], rando_region_info(info->region)->key, "location region");
+	expect_field(fx, fx->field[3], rando_region_info(rando_layout_location_region(variant, id))->key,
+		     "location region");
 	expect_field(fx, fx->field[4], location_class_names[info->location_class], "location class");
 	rando_config_init(&config);
 	rando_world_init(&world, variant, &config);
-	expect_field(fx, fx->field[5], item_name(rando_world_item(&world, (RandoLocationId)id)), "constructor item");
+	expect_field(fx, fx->field[5], item_name(rando_world_item(&world, id)), "constructor item");
 }
 
-static void check_region_spans(void)
+/* The regions' lists, in region order, are the world's getLocations() order, and a location the
+ * world lacks has no region. */
+static void check_region_spans(RandoVariant variant)
 {
-	int r, l, next = 0;
+	int r, l, next = 0, present = 0;
 
 	for (r = 0; r < RANDO_REGION_COUNT; r++) {
-		const RandoRegionInfo *info = rando_region_info((RandoRegionId)r);
+		const char *key = rando_region_info((RandoRegionId)r)->key;
+		int n = rando_layout_region_location_count(variant, (RandoRegionId)r);
 
-		if ((int)info->first_location != next)
-			test_fail(TEST, "region %s does not start after the previous one's locations", info->key);
-		for (l = 0; l < info->nlocations; l++)
-			if (rando_location_info((RandoLocationId)(next + l))->region != (RandoRegionId)r)
-				test_fail(TEST, "region %s spans a location of another region", info->key);
-		next += info->nlocations;
+		if (next + n > rando_layout_location_count(variant))
+			test_fail(TEST, "variant %d: region %s spans past the world's locations", variant, key);
+		for (l = 0; l < n; l++) {
+			RandoLocationId id = rando_layout_region_location(variant, (RandoRegionId)r, l);
+
+			if (id != rando_layout_location(variant, next + l))
+				test_fail(TEST, "variant %d: region %s is not a span of the world's order", variant, key);
+			if (rando_layout_location_region(variant, id) != (RandoRegionId)r)
+				test_fail(TEST, "variant %d: region %s lists a location of another region", variant, key);
+		}
+		next += n;
 	}
-	if (next != RANDO_LOCATION_COUNT)
-		test_fail(TEST, "the regions span %d locations, the table has %d", next, RANDO_LOCATION_COUNT);
+	if (next != rando_layout_location_count(variant))
+		test_fail(TEST, "variant %d: the regions span %d locations, the world has %d", variant, next,
+			  rando_layout_location_count(variant));
+	for (l = 0; l < RANDO_LOCATION_COUNT; l++)
+		present += rando_layout_location_region(variant, (RandoLocationId)l) != RANDO_REGION_NONE;
+	if (present != next)
+		test_fail(TEST, "variant %d: %d locations have a region, the world has %d", variant, present, next);
 }
 
 /* Returns the number of region and location records checked. */
@@ -728,10 +776,12 @@ static int check_world_dump(void)
 	}
 	fixture_close(&fx);
 	for (v = 0; v < RANDO_VARIANT_COUNT; v++)
-		if (regions[v] != RANDO_REGION_COUNT || locations[v] != RANDO_LOCATION_COUNT)
-			test_fail(TEST, "variant %d: the dump has %d regions and %d locations, the C tables %d and %d",
-				  v, regions[v], locations[v], RANDO_REGION_COUNT, RANDO_LOCATION_COUNT);
-	check_region_spans();
+		if (regions[v] != RANDO_REGION_COUNT || locations[v] != rando_layout_location_count((RandoVariant)v))
+			test_fail(TEST, "variant %d: the dump has %d regions and %d locations, the C layout %d and %d",
+				  v, regions[v], locations[v], RANDO_REGION_COUNT,
+				  rando_layout_location_count((RandoVariant)v));
+	for (v = 0; v < RANDO_VARIANT_COUNT; v++)
+		check_region_spans((RandoVariant)v);
 	if (rando_location_find("No Such Location") != RANDO_LOCATION_NONE
 	    || rando_region_find("Light World") != RANDO_REGION_NONE)
 		test_fail(TEST, "a lookup of an unknown name does not return its NONE sentinel");
@@ -1058,6 +1108,7 @@ int main(int argc, char **argv)
 	int fixtures = test_fixtures_mode(TEST, argc, argv);
 	int rows, total;
 
+	check_classic_layout();
 	check_init();
 	check_shop_kinds();
 	check_shop_active();

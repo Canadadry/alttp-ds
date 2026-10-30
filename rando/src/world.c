@@ -148,8 +148,12 @@ void rando_world_init(RandoWorld *world, RandoVariant variant, const RandoConfig
 	world->config = *config;
 	derive_config(&world->config, variant);
 	world->variant = variant;
-	for (i = 0; i < RANDO_LOCATION_COUNT; i++)
-		world->location_items[i] = (uint8_t)rando_location_info((RandoLocationId)i)->constructor_item;
+	memset(world->location_items, RANDO_ITEM_NONE, sizeof world->location_items);
+	for (i = 0; i < rando_layout_location_count(variant); i++) {
+		RandoLocationId location = rando_layout_location(variant, i);
+
+		world->location_items[location] = (uint8_t)rando_location_info(location)->constructor_item;
+	}
 	for (i = 0; i < RANDO_SHOP_COUNT; i++)
 		for (s = 0; s < RANDO_SHOP_SLOTS; s++) {
 			world->shop_items[i][s] = (uint8_t)rando_shop_info((RandoShopId)i)->default_items[s];
@@ -265,6 +269,17 @@ void rando_world_shop_add(RandoWorld *world, RandoShopId shop, int slot, RandoIt
 	world->shop_prices[shop][slot] = (uint16_t)price;
 }
 
+/* Asserts the world has the location. */
+static RandoLayoutLocation layout_location(const RandoWorld *world, RandoLocationId location)
+{
+	RandoLayoutLocation at;
+
+	assert(location < RANDO_LOCATION_COUNT);
+	at = rando_layout_locations(world->variant)[location];
+	assert(at.region != RANDO_REGION_NONE && "the world does not have this location");
+	return at;
+}
+
 static bool accepts(RandoLocationClass location_class, RandoItemId item)
 {
 	RandoItemClass item_class;
@@ -285,7 +300,8 @@ bool rando_world_set_item(RandoWorld *world, RandoLocationId location, RandoItem
 {
 	RandoLocationClass location_class;
 
-	assert(location < RANDO_LOCATION_COUNT && item <= RANDO_ITEM_NONE);
+	assert(item <= RANDO_ITEM_NONE);
+	(void)layout_location(world, location);
 	location_class = rando_location_info(location)->location_class;
 	if (!accepts(location_class, item))
 		return false;
@@ -332,14 +348,11 @@ static const RandoRegionRules *region_rules(const RandoWorld *world, RandoRegion
 	return world->config.logic == RANDO_LOGIC_NO_LOGIC ? &no_rules : rando_region_rules(world->variant, region);
 }
 
-static const RandoLocationRules *location_rules(const RandoWorld *world, RandoLocationId location)
+static const RandoLocationRules *location_rules(const RandoWorld *world, RandoLayoutLocation at)
 {
-	RandoRegionId region = rando_location_info(location)->region;
-	const RandoRegionRules *rules = region_rules(world, region);
+	const RandoRegionRules *rules = region_rules(world, (RandoRegionId)at.region);
 
-	if (!rules->locations)
-		return NULL;
-	return &rules->locations[location - rando_region_info(region)->first_location];
+	return rules->locations ? &rules->locations[at.slot] : NULL;
 }
 
 bool rando_world_region_can_enter_with(const RandoWorld *world, const RandoWorld *locations, RandoRegionId region,
@@ -365,9 +378,10 @@ bool rando_world_region_can_complete(const RandoWorld *world, RandoRegionId regi
 bool rando_world_can_access_with(const RandoWorld *world, const RandoWorld *locations, RandoLocationId location,
 				 const RandoItems *items)
 {
-	const RandoLocationRules *rules = location_rules(world, location);
+	RandoLayoutLocation at = layout_location(world, location);
+	const RandoLocationRules *rules = location_rules(world, at);
 
-	if (!rando_world_region_can_enter_with(world, locations, rando_location_info(location)->region, items))
+	if (!rando_world_region_can_enter_with(world, locations, (RandoRegionId)at.region, items))
 		return false;
 	return !rules || !rules->requirement || rules->requirement(world, locations, items);
 }
@@ -380,7 +394,8 @@ bool rando_world_can_access(const RandoWorld *world, RandoLocationId location, c
 bool rando_world_can_fill(RandoWorld *world, RandoLocationId location, RandoItemId item,
 			  const RandoItems *items, bool check_access)
 {
-	const RandoLocationRules *rules = location_rules(world, location);
+	RandoLayoutLocation at = layout_location(world, location);
+	const RandoLocationRules *rules = location_rules(world, at);
 	RandoItemId old_item = rando_world_item(world, location);
 	bool fillable;
 
@@ -388,7 +403,7 @@ bool rando_world_can_fill(RandoWorld *world, RandoLocationId location, RandoItem
 	if (!rando_world_set_item(world, location, item))
 		assert(!"can_fill with an item VT's setItem would throw on");
 	fillable = (rules && rules->always_allow && rules->always_allow(world, item, items))
-		|| (rando_world_region_can_fill(world, rando_location_info(location)->region, item)
+		|| (rando_world_region_can_fill(world, (RandoRegionId)at.region, item)
 		    && (!rules || !rules->fill || rules->fill(world, item, items))
 		    && (!check_access || rando_world_can_access(world, location, items)));
 	world->location_items[location] = (uint8_t)old_item;
@@ -411,11 +426,12 @@ static void compute_collectable(RandoWorld *world)
 {
 	int i;
 
-	for (i = 0; i < RANDO_LOCATION_COUNT; i++) {
-		RandoLocationClass c = rando_location_info((RandoLocationId)i)->location_class;
+	for (i = 0; i < rando_layout_location_count(world->variant); i++) {
+		RandoLocationId location = rando_layout_location(world->variant, i);
+		RandoLocationClass c = rando_location_info(location)->location_class;
 
-		world->collectable[i] = c != RANDO_LOCATION_CLASS_MEDALLION && c != RANDO_LOCATION_CLASS_FOUNTAIN
-			&& !world->collected[i];
+		world->collectable[location] = c != RANDO_LOCATION_CLASS_MEDALLION && c != RANDO_LOCATION_CLASS_FOUNTAIN
+			&& !world->collected[location];
 	}
 	memcpy(world->collectable_shop_items, world->shop_items, sizeof world->shop_items);
 	world->collectable_computed = true;
@@ -434,23 +450,28 @@ bool rando_world_can_access_shop(const RandoWorld *world, RandoShopId shop, cons
 static void search(RandoWorld *world, RandoItems *my_items, RandoItems *found_total)
 {
 	bool available[RANDO_LOCATION_COUNT];
+	const uint8_t *order = rando_layout_order(world->variant);
 	RandoItems found;
-	int i, s, nfound;
+	int n = rando_layout_location_count(world->variant), i, s, nfound;
 
 	if (!world->collectable_computed)
 		compute_collectable(world);
-	for (i = 0; i < RANDO_LOCATION_COUNT; i++)
-		available[i] = world->collectable[i] && world->location_items[i] != RANDO_ITEM_NONE;
+	for (i = 0; i < n; i++) {
+		RandoLocationId l = (RandoLocationId)order[i];
+
+		available[l] = world->collectable[l] && world->location_items[l] != RANDO_ITEM_NONE;
+	}
 	do {
 		rando_items_clear(&found);
 		nfound = 0;
-		for (i = 0; i < RANDO_LOCATION_COUNT; i++) {
-			if (!available[i] || world->collected[i]
-			    || !rando_world_can_access(world, (RandoLocationId)i, my_items))
+		for (i = 0; i < n; i++) {
+			RandoLocationId l = (RandoLocationId)order[i];
+
+			if (!available[l] || world->collected[l] || !rando_world_can_access(world, l, my_items))
 				continue;
-			world->collected[i] = true;
-			available[i] = false;
-			rando_items_add(&found, (RandoItemId)world->location_items[i]);
+			world->collected[l] = true;
+			available[l] = false;
+			rando_items_add(&found, (RandoItemId)world->location_items[l]);
 			nfound++;
 		}
 		for (i = 0; i < RANDO_SHOP_COUNT; i++) {
@@ -527,8 +548,8 @@ int rando_world_collected_count(const RandoWorld *world)
 {
 	int n = 0, i, s;
 
-	for (i = 0; i < RANDO_LOCATION_COUNT; i++)
-		n += world->collected[i];
+	for (i = 0; i < rando_layout_location_count(world->variant); i++)
+		n += world->collected[rando_layout_location(world->variant, i)];
 	for (i = 0; i < RANDO_SHOP_COUNT; i++)
 		for (s = 0; s < RANDO_SHOP_SLOTS; s++)
 			n += world->shop_collected[i][s];

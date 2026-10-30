@@ -112,12 +112,11 @@ void rando_set_shops(RandoWorld *world)
 void rando_set_medallions(RandoWorld *world, RandoPrng *prng)
 {
 	static const RandoItemId medallions[] = {RANDO_ITEM_Ether, RANDO_ITEM_Bombos, RANDO_ITEM_Quake};
-	const RandoRegionInfo *region = rando_region_info(RANDO_REGION_MEDALLIONS);
 	int i;
 
-	/* Table order, Turtle Rock first: baseline's two equal draws would hide a swap. */
-	for (i = 0; i < region->nlocations; i++) {
-		RandoLocationId location = (RandoLocationId)(region->first_location + i);
+	/* Region order, Turtle Rock first: baseline's two equal draws would hide a swap. */
+	for (i = 0; i < rando_layout_region_location_count(world->variant, RANDO_REGION_MEDALLIONS); i++) {
+		RandoLocationId location = rando_layout_region_location(world->variant, RANDO_REGION_MEDALLIONS, i);
 		bool placed;
 
 		if (rando_world_has_item(world, location, RANDO_ITEM_NONE))
@@ -130,11 +129,10 @@ void rando_set_medallions(RandoWorld *world, RandoPrng *prng)
 
 void rando_set_fountains(RandoWorld *world, RandoPrng *prng)
 {
-	const RandoRegionInfo *region = rando_region_info(RANDO_REGION_FOUNTAINS);
 	int i;
 
-	for (i = 0; i < region->nlocations; i++) {
-		RandoLocationId location = (RandoLocationId)(region->first_location + i);
+	for (i = 0; i < rando_layout_region_location_count(world->variant, RANDO_REGION_FOUNTAINS); i++) {
+		RandoLocationId location = rando_layout_region_location(world->variant, RANDO_REGION_FOUNTAINS, i);
 
 		if (rando_world_has_item(world, location, RANDO_ITEM_NONE))
 			continue;
@@ -554,12 +552,14 @@ bool rando_fill_prizes(RandoWorld *world, RandoPrng *prng)
 		RandoItemId prizes[PRIZES];
 		int npool = 0, norder, ncrystals = 0, npendants = 0, nprizes = 0, i, j;
 
-		for (i = 0; i < RANDO_LOCATION_COUNT; i++)
-			if (rando_location_is_a(rando_location_info((RandoLocationId)i)->location_class,
-						RANDO_LOCATION_CLASS_PRIZE)) {
+		for (i = 0; i < rando_layout_location_count(world->variant); i++) {
+			RandoLocationId location = rando_layout_location(world->variant, i);
+
+			if (rando_location_is_a(rando_location_info(location)->location_class, RANDO_LOCATION_CLASS_PRIZE)) {
 				assert(npool < PRIZE_LOCATIONS && "fillPrizes: more Prize locations than VT's 14");
-				pool[npool++] = (uint8_t)i;
+				pool[npool++] = (uint8_t)location;
 			}
+		}
 		norder = rando_random_collection(prng, pool, npool, npool, order);
 		for (j = 0; j < norder; j++) {
 			RandoLocationId location = (RandoLocationId)order[j];

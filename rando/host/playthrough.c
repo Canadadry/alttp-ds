@@ -4,7 +4,8 @@
 #include <string.h>
 
 /* A pseudo-location is a world location id, or RANDO_LOCATION_COUNT + shop * RANDO_SHOP_SLOTS + slot.
- * VT's equipment slots only ever add the pre-collected items, so they get no id. */
+ * VT's equipment slots only ever add the pre-collected items, so they get no id. Arrays are indexed
+ * by it; walks go through pseudo_at, which skips the locations the world does not have. */
 #define PSEUDO_COUNT RANDO_PLAYTHROUGH_ENTRY_MAX
 
 typedef struct Playthrough {
@@ -55,6 +56,20 @@ static RandoShopId shop_of(int p)
 static int slot_of(int p)
 {
 	return (p - RANDO_LOCATION_COUNT) % RANDO_SHOP_SLOTS;
+}
+
+static int pseudo_count(const Playthrough *pt)
+{
+	return rando_layout_location_count(pt->world->variant) + RANDO_SHOP_COUNT * RANDO_SHOP_SLOTS;
+}
+
+/* The k-th pseudo-location in VT's walk: the world's locations in getLocations() order, then the
+ * shop slots. */
+static int pseudo_at(const Playthrough *pt, int k)
+{
+	int n = rando_layout_location_count(pt->world->variant);
+
+	return k < n ? (int)rando_layout_location(pt->world->variant, k) : RANDO_LOCATION_COUNT + (k - n);
 }
 
 static RandoItemId shadow_item(const Playthrough *pt, int p)
@@ -118,14 +133,15 @@ static void collectable_items(const Playthrough *pt, RandoItems *items)
 static void build_spheres(Playthrough *pt)
 {
 	RandoItems my_items = pt->shadow.pre_collected, found;
-	int p, n, start;
+	int k, p, n, start;
 
 	memset(pt->in_sphere, 0, sizeof pt->in_sphere);
 	pt->nspheres = 1;
 	pt->sphere_start[0] = pt->sphere_start[1] = 0;
 	do {
 		start = n = pt->sphere_start[pt->nspheres];
-		for (p = 0; p < PSEUDO_COUNT; p++) {
+		for (k = 0; k < pseudo_count(pt); k++) {
+			p = pseudo_at(pt, k);
 			if (!is_collectable(p) || shadow_item(pt, p) == RANDO_ITEM_NONE || pt->in_sphere[p]
 			    || !can_access(pt, &pt->shadow, p, &my_items))
 				continue;
@@ -247,6 +263,8 @@ static void push_entry(const Playthrough *pt, RandoPlaythrough *out, int round, 
 	assert(out->nentries < RANDO_PLAYTHROUGH_ENTRY_MAX);
 	e = &out->entries[out->nentries++];
 	e->round = (uint16_t)round;
+	e->region = is_shop(p) ? rando_shop_info(shop_of(p))->region
+			       : rando_layout_location_region(pt->world->variant, (RandoLocationId)p);
 	e->location = is_shop(p) ? RANDO_LOCATION_NONE : (RandoLocationId)p;
 	e->shop = is_shop(p) ? shop_of(p) : RANDO_SHOP_NONE;
 	e->slot = (uint8_t)(is_shop(p) ? slot_of(p) : 0);
@@ -255,10 +273,7 @@ static void push_entry(const Playthrough *pt, RandoPlaythrough *out, int round, 
 
 const char *rando_playthrough_entry_region(const RandoPlaythroughEntry *e)
 {
-	RandoRegionId region = e->location == RANDO_LOCATION_NONE ? rando_shop_info(e->shop)->region
-								  : rando_location_info(e->location)->region;
-
-	return rando_region_info(region)->spoiler_name;
+	return rando_region_info(e->region)->spoiler_name;
 }
 
 /* VT counts the rounds, then takes one off for each round left with no entry once Trade locations
@@ -285,7 +300,7 @@ static void replay(Playthrough *pt, RandoPlaythrough *out)
 {
 	const RandoConfig *c = &pt->world->config;
 	RandoItems my_items = pt->shadow.pre_collected, found;
-	int longest = 1, round_size = 0, p, nfound;
+	int longest = 1, round_size = 0, k, p, nfound;
 	bool available[PSEUDO_COUNT];
 
 	memset(pt->in_order, 0, sizeof pt->in_order);
@@ -296,7 +311,8 @@ static void replay(Playthrough *pt, RandoPlaythrough *out)
 		round_size = 0;
 		nfound = 0;
 		rando_items_clear(&found);
-		for (p = 0; p < PSEUDO_COUNT; p++) {
+		for (k = 0; k < pseudo_count(pt); k++) {
+			p = pseudo_at(pt, k);
 			available[p] = is_collectable(p) && shadow_item(pt, p) != RANDO_ITEM_NONE
 				       && !pt->in_order[p] && can_access(pt, pt->world, p, &my_items);
 			if (available[p]) {
@@ -304,7 +320,8 @@ static void replay(Playthrough *pt, RandoPlaythrough *out)
 				nfound++;
 			}
 		}
-		for (p = 0; p < PSEUDO_COUNT; p++) {
+		for (k = 0; k < pseudo_count(pt); k++) {
+			p = pseudo_at(pt, k);
 			if (!available[p])
 				continue;
 			pt->in_order[p] = true;
@@ -322,14 +339,17 @@ static void replay(Playthrough *pt, RandoPlaythrough *out)
 void rando_playthrough(const RandoWorld *world, RandoPlaythrough *out)
 {
 	Playthrough pt;
-	int i, p;
+	int i;
 
 	pt.world = world;
 	rando_world_copy(&pt.shadow, world);
 	memcpy(pt.shadow_shop_items, pt.shadow.shop_items, sizeof pt.shadow_shop_items);
-	for (p = 0; p < RANDO_LOCATION_COUNT; p++)
+	for (i = 0; i < rando_layout_location_count(world->variant); i++) {
+		RandoLocationId p = rando_layout_location(world->variant, i);
+
 		if (is_junk(shadow_item(&pt, p)))
 			set_shadow_item(&pt, p, RANDO_ITEM_NONE);
+	}
 	build_spheres(&pt);
 	prune(&pt);
 

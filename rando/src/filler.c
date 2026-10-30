@@ -134,9 +134,12 @@ bool rando_fill_dungeon(RandoWorld *world, RandoPrng *prng, const RandoPools *po
 	RandoItems base;
 	int i, n = 0;
 
-	for (i = 0; i < RANDO_LOCATION_COUNT; i++)
-		if (is_empty(world, (uint8_t)i))
-			state->order[n++] = (uint8_t)i;
+	for (i = 0; i < rando_layout_location_count(world->variant); i++) {
+		uint8_t location = (uint8_t)rando_layout_location(world->variant, i);
+
+		if (is_empty(world, location))
+			state->order[n++] = location;
+	}
 	state->count = (uint16_t)n;
 	shuffle_locations(prng, state);
 
@@ -156,16 +159,18 @@ static void shuffle_list(RandoPrng *prng, RandoPools *pools, RandoPoolList list)
 
 static void junk_fill(RandoWorld *world, RandoPrng *prng, RandoPools *pools)
 {
-	const RandoRegionInfo *tower = rando_region_info(RANDO_REGION_GANONS_TOWER);
 	uint8_t empty[RANDO_LOCATION_COUNT], chosen[RANDO_LOCATION_COUNT];
 	uint8_t *extra = pools->items[RANDO_POOL_ITEMS];
 	int lower, upper, number, nempty = 0, nchosen, ntrash, i;
 
 	junk_fill_range(&world->config, &lower, &upper);
 	number = (int)rando_random_int(prng, lower, upper);
-	for (i = 0; i < tower->nlocations; i++)
-		if (is_empty(world, (uint8_t)(tower->first_location + i)))
-			empty[nempty++] = (uint8_t)(tower->first_location + i);
+	for (i = 0; i < rando_layout_region_location_count(world->variant, RANDO_REGION_GANONS_TOWER); i++) {
+		uint8_t location = (uint8_t)rando_layout_region_location(world->variant, RANDO_REGION_GANONS_TOWER, i);
+
+		if (is_empty(world, location))
+			empty[nempty++] = location;
+	}
 	nchosen = rando_random_collection(prng, empty, nempty, number, chosen);
 
 	shuffle_list(prng, pools, RANDO_POOL_ITEMS);

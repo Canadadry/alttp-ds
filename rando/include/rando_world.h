@@ -414,7 +414,6 @@ typedef enum RandoPrizePack {
 
 typedef struct RandoLocationInfo {
 	const char *name;
-	RandoRegionId region;
 	RandoLocationClass location_class;
 	RandoItemId constructor_item;
 } RandoLocationInfo;
@@ -424,11 +423,8 @@ typedef struct RandoRegionInfo {
 	const char *spoiler_name;
 	const uint8_t *items;
 	uint8_t nitems;
-	RandoLocationId first_location;
-	uint8_t nlocations;
 	RandoShopId first_shop;
 	uint8_t nshops;
-	RandoLocationId prize_location;
 	uint8_t nboss_slots;
 	RandoBossId default_bosses[RANDO_BOSS_SLOT_COUNT];
 } RandoRegionInfo;
@@ -476,6 +472,17 @@ const RandoRegionInfo *rando_region_info(RandoRegionId id);
 const RandoShopInfo *rando_shop_info(RandoShopId id);
 /* The VT region class the variant uses in that slot, e.g. "Region\Open\HyruleCastleEscape". */
 const char *rando_region_vt_class(RandoVariant variant, RandoRegionId id);
+
+/* The variant's world layout: its locations in VT's World::getLocations() order, and per region its
+ * locations in VT order and its prize location (RANDO_LOCATION_NONE when it has none). A location's
+ * region is RANDO_REGION_NONE when the variant's world does not have it. Each asserts its arguments
+ * are in range. */
+int rando_layout_location_count(RandoVariant variant);
+RandoLocationId rando_layout_location(RandoVariant variant, int i);
+RandoRegionId rando_layout_location_region(RandoVariant variant, RandoLocationId location);
+int rando_layout_region_location_count(RandoVariant variant, RandoRegionId region);
+RandoLocationId rando_layout_region_location(RandoVariant variant, RandoRegionId region, int i);
+RandoLocationId rando_layout_region_prize(RandoVariant variant, RandoRegionId region);
 
 /* Each returns its NONE sentinel when the name is unknown; regions are found by world key. */
 RandoLocationId rando_location_find(const char *name);

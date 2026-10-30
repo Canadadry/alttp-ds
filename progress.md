@@ -105,7 +105,7 @@
 - [x] Step 3.4: NoLogic rules and claim
 - [ ] Step 3.12 chunks
   - [x] Chunk 1: Inverted oracle fixtures
-  - [ ] Chunk 2: per-variant layout refactor
+  - [x] Chunk 2: per-variant layout refactor
   - [ ] Chunk 3: Inverted world
   - [ ] Chunk 4: overworld and dungeon entries
   - [ ] Chunk 5: Light World dungeons, Swamp, Skull
