@@ -365,3 +365,11 @@ None.
   through `setFountains`.
 - Check `keys *Bottle:1` (exactly the two fountain keys in every golden). The 13 claims move up to
   `setFountains`, none added: 13 pass, 31 pending; e2e ~0.11 s; `make test` ~54 ms.
+
+### Step 2.3.5
+
+- Prize packs in `RandoWorld` (11 packs × 8 drop ids; ROM sprite byte `0xD7 + id`), config
+  `custom_prize_packs`, `rando_shuffle_prize_packs` after `setFountains`. Not in the spoiler, so
+  `test_prepare` pins baseline's 56 drops against a one-off VT dump (not committed).
+- All 42 supported cases match their golden trace through `shufflePrizePacks`. The 13 claims move
+  up, none added: 13 pass, 31 pending; e2e ~0.11 s; `make test` ~56 ms. `RandoWorld` 2 744 bytes.

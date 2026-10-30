@@ -45,7 +45,7 @@
       - [x] Chunk 5: Bosses writer, check lines and claims
     - [x] 2.3.4 setFountains
       - [x] setFountains stage, check and claims
-    - [ ] 2.3.5 shufflePrizePacks
+    - [x] 2.3.5 shufflePrizePacks
       - [x] shufflePrizePacks stage and claims
     - [ ] 2.3.6 prepareWorld item pool and shuffles
   - [ ] 2.4 RandomAssumed fill, isWinnable() and the retry loop
