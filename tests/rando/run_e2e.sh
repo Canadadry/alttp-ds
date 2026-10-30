@@ -27,63 +27,92 @@ for f in "$claims" "$stages"; do
 	[ -f "$f" ] || fail "no such file: $f"
 done
 
-awk -v out="$tmp/stages" -v checks="$tmp/checks" '
+# Writes $tmp/claims, one "<case>\t<stage>\t<draws>\t<due file or ->" line per
+# claim, and $tmp/due.<rank>, the "<stage>\t<kind>\t<arg>" checks a claim at the
+# stage of that rank owes, in table order.
+CASES="$cases_dir" TMP="$tmp" awk '
 function bad(msg) { printf "%s:%d: %s\n", FILENAME, FNR, msg; err = 1; exit }
-BEGIN { printf "" > out }
-/^[ \t]*(#|$)/ { next }
-$1 == "stage" {
-	if (NF != 2) bad("malformed line")
-	if ($2 in seen) bad("duplicate stage: " $2)
-	seen[$2] = ++nstages
-	print $2 > out
-	next
+function die(msg) { print msg; exit 2 }
+function end_stages(   n) {
+	stages_done = 1
+	for (n = 1; n <= ncheck; n++)
+		if (!(check_stage[n] in seen)) {
+			printf "%s:%d: check names unknown stage: %s\n", ARGV[1], check_line[n], check_stage[n]
+			return 1
+		}
+	return 0
 }
-$1 == "check" && NF >= 3 {
-	if ($3 == "section" && NF != 4 || $3 == "keys" && NF < 4 || $3 == "pool" && NF != 3) bad("malformed line")
-	if ($3 != "section" && $3 != "keys" && $3 != "pool") bad("unknown check kind: " $3)
-	arg = $0
-	sub(/^[ \t]*check[ \t]+[^ \t]+[ \t]+[^ \t]+[ \t]*/, "", arg)
-	sub(/[ \t]+$/, "", arg)
-	ncheck++
-	check_line[ncheck] = FNR
-	check_stage[ncheck] = $2
-	check_text[ncheck] = $2 "\t" $3 "\t" arg
-	next
-}
-{ bad("malformed line") }
-END {
-	if (err) exit 2
-	printf "" > checks
-	for (n = 1; n <= ncheck; n++) {
-		if (!(check_stage[n] in seen)) { printf "%s:%d: check names unknown stage: %s\n", FILENAME, check_line[n], check_stage[n]; exit 2 }
-		print seen[check_stage[n]] "\t" n "\t" check_text[n] > checks
+FILENAME == ARGV[1] {
+	if (/^[ \t]*(#|$)/) next
+	if ($1 == "stage") {
+		if (NF != 2) bad("malformed line")
+		if ($2 in seen) bad("duplicate stage: " $2)
+		seen[$2] = ++nstages
+		next
 	}
-}' "$stages" >"$tmp/err" || fail "$(cat "$tmp/err")"
-sort -n -k1,1 -k2,2 "$tmp/checks" >"$tmp/checks.sorted"
-
-awk -v err="$tmp/err" '
-function bad(msg) { printf "%s:%d: %s\n", FILENAME, FNR, msg > err; exit 2 }
+	if ($1 == "check" && NF >= 3) {
+		if ($3 == "section" && NF != 4 || $3 == "keys" && NF < 4 || $3 == "pool" && NF != 3) bad("malformed line")
+		if ($3 != "section" && $3 != "keys" && $3 != "pool") bad("unknown check kind: " $3)
+		arg = $0
+		sub(/^[ \t]*check[ \t]+[^ \t]+[ \t]+[^ \t]+[ \t]*/, "", arg)
+		sub(/[ \t]+$/, "", arg)
+		ncheck++
+		check_line[ncheck] = FNR
+		check_stage[ncheck] = $2
+		check_text[ncheck] = $2 "\t" $3 "\t" arg
+		next
+	}
+	bad("malformed line")
+}
+!stages_done && end_stages() { err = 1; exit }
 /^[ \t]*(#|$)/ { next }
 NF != 2 { bad("malformed line") }
-$1 in seen { bad("duplicate case: " $1) }
-{ seen[$1] = 1; print FNR, $1, $2 }' "$claims" >"$tmp/claims" || fail "$(cat "$tmp/err")"
-
-while read -r line name stage; do
-	where="$claims:$line"
-	trace="$cases_dir/$name/trace.txt"
-	[ -f "$cases_dir/$name/config.json" ] || fail "$where: no such case: $name"
-	if [ "$stage" != all ]; then
-		grep -qxF "$stage" "$tmp/stages" || fail "$where: unknown stage: $stage"
-		awk -v s="$stage" '$1 == 0 && $3 == s { found = 1; exit } END { exit !found }' "$trace" ||
-			fail "$where: $stage makes no draw in attempt 0 of $name"
-	fi
-	msg="$(awk 'NR == FNR { rank[$0] = NR; next }
-		$1 != 0 { exit }
-		!($3 in rank) { print "golden stage " $3 " not in table"; exit }
-		rank[$3] < last { print "golden stage " $3 " out of table order"; exit }
-		{ last = rank[$3] }' "$tmp/stages" "$trace")"
-	[ -z "$msg" ] || fail "$name: $msg"
-done <"$tmp/claims"
+$1 in claimed { bad("duplicate case: " $1) }
+{ claimed[$1] = 1; nclaims++; cl_line[nclaims] = FNR; cl_name[nclaims] = $1; cl_stage[nclaims] = $2 }
+END {
+	if (err || !stages_done && end_stages()) exit 2
+	out = ENVIRON["TMP"] "/claims"
+	printf "" > out
+	for (i = 1; i <= nclaims; i++) {
+		name = cl_name[i]; s = cl_stage[i]; where = ARGV[2] ":" cl_line[i]
+		f = ENVIRON["CASES"] "/" name "/config.json"
+		if ((getline line < f) < 0) die(where ": no such case: " name)
+		close(f)
+		t = ENVIRON["CASES"] "/" name "/trace.txt"
+		n = 0; k = 0; last = 0; msg = ""; stop = 0
+		while ((r = (getline < t)) > 0) {
+			n++
+			if ($1 == 0 && $3 == s) k = n
+			if (stop) continue
+			if ($1 != 0) stop = 1
+			else if (!($3 in seen)) { msg = "golden stage " $3 " not in table"; stop = 1 }
+			else if (seen[$3] < last) { msg = "golden stage " $3 " out of table order"; stop = 1 }
+			else last = seen[$3]
+		}
+		close(t)
+		if (s != "all") {
+			if (!(s in seen)) die(where ": unknown stage: " s)
+			if (!k) die(where ": " s " makes no draw in attempt 0 of " name)
+		} else if (r < 0) die(name ": cannot read " t)
+		if (msg != "") die(name ": " msg)
+		due = "-"
+		if (s != "all") {
+			rank = seen[s]
+			if (!(rank in written)) {
+				written[rank] = ""
+				for (rr = 1; rr <= rank; rr++)
+					for (c = 1; c <= ncheck; c++)
+						if (seen[check_stage[c]] == rr) written[rank] = written[rank] check_text[c] "\n"
+			}
+			if (written[rank] != "") {
+				due = ENVIRON["TMP"] "/due." rank
+				printf "%s", written[rank] > due
+				close(due)
+			}
+		}
+		print name "\t" s "\t" (s == "all" ? n : k) "\t" due > out
+	}
+}' "$stages" "$claims" >"$tmp/err" || fail "$(cat "$tmp/err")"
 
 names="$(discover_cases "$cases_dir" run_e2e.sh "$@")"
 if [ -z "$names" ]; then
@@ -94,89 +123,95 @@ set -f
 set -- $names
 set +f
 
-# first_diff <golden> <c>: prints the first differing line number, then the
-# golden and C lines ("<end>" past a file's end); prints nothing when the
-# files hold the same lines.
-first_diff() {
-	G="$1" C="$2" awk 'BEGIN {
-		for (n = 1; ; n++) {
-			a = (getline g < ENVIRON["G"]) > 0
-			b = (getline c < ENVIRON["C"]) > 0
-			if (!a && !b) exit
-			if (a != b || g != c) {
-				print n; print (a ? g : "<end>"); print (b ? c : "<end>")
-				exit
-			}
+# Compares one claim's C output (O) with its golden (G), prints the detail lines
+# of the first failure and exits 1, or exits 0. MODE is "all" or "stage"; a
+# stage claim compares the first DRAWS trace lines, then runs the checks of DUE.
+CLAIM_AWK='
+function slurp(path, L,   s, r, n) {
+	split("", L)
+	r = (getline s < path)
+	if (r < 0) return -1
+	close(path)
+	nl_end = 1
+	if (r == 0) return 0
+	n = split(s, L, "\n")
+	if (substr(s, length(s)) == "\n") { delete L[n]; n-- }
+	else nl_end = 0
+	return n
+}
+function same(A, na, B, nb,   k) {
+	if (na != nb) return 0
+	for (k = 1; k <= na; k++) if (A[k] "" != B[k] "") return 0
+	return 1
+}
+function first_diff(A, na, B, nb,   k) {
+	fd_n = 0
+	fd_g = fd_c = ""
+	for (k = 1; ; k++) {
+		if (k > na && k > nb) return 0
+		if (k > na || k > nb || A[k] != B[k]) {
+			fd_n = k
+			fd_g = k > na ? "<end>" : A[k]
+			fd_c = k > nb ? "<end>" : B[k]
+			return 1
 		}
-	}'
+	}
 }
-
-# check_trace <golden> <c> <draws>: compares the first <draws> lines.
-check_trace() {
-	head -n "$3" "$1" >"$tmp/g"
-	if [ -f "$2" ]; then head -n "$3" "$2" >"$tmp/c"; else : >"$tmp/c"; fi
-	cmp -s "$tmp/g" "$tmp/c" && return 0
-	first_diff "$tmp/g" "$tmp/c" >"$tmp/diff"
-	if [ "$(sed -n 3p "$tmp/diff")" = "<end>" ]; then
-		echo "  c trace ends after $(awk 'END { print NR }' "$tmp/c") draws, claim needs $3"
-	elif [ -s "$tmp/diff" ]; then
-		echo "  first differing draw:"
-		echo "    golden: $(sed -n 2p "$tmp/diff")"
-		echo "    c: $(sed -n 3p "$tmp/diff")"
-	else
-		echo "  first differing draw: line endings differ"
-	fi
-	return 1
+function fail(msg) { printf "%s", msg; exit 1 }
+function check_trace(draws,   ng, ge, nc, ce, pg, pc, eq) {
+	draws += 0
+	ng = slurp(ENVIRON["G"] "/trace.txt", GT); ge = nl_end
+	if (ng < 0) ng = 0
+	if (mode == "all") draws = ng
+	nc = slurp(ENVIRON["O"] "/trace.txt", CT); ce = nl_end
+	if (nc < 0) { nc = 0; ce = 1 }
+	pg = ng < draws ? ng : draws + 0
+	pc = nc < draws ? nc : draws + 0
+	eq = same(GT, pg, CT, pc) && (pg == 0 || (pg < ng || ge) == (pc < nc || ce))
+	if (eq) return
+	if (first_diff(GT, pg, CT, pc) && fd_c == "<end>")
+		fail("  c trace ends after " pc " draws, claim needs " draws "\n")
+	if (fd_n)
+		fail("  first differing draw:\n    golden: " fd_g "\n    c: " fd_c "\n")
+	fail("  first differing draw: line endings differ\n")
 }
-
-# check_file <golden_dir> <out_dir> <file>: byte-for-byte comparison.
-check_file() {
-	if [ ! -f "$2/$3" ]; then
-		echo "  c wrote no $3"
-		return 1
-	fi
-	cmp -s "$1/$3" "$2/$3" && return 0
-	first_diff "$1/$3" "$2/$3" >"$tmp/diff"
-	if [ -s "$tmp/diff" ]; then
-		echo "  $3: first differing line $(sed -n 1p "$tmp/diff"):"
-		echo "    golden: $(sed -n 2p "$tmp/diff")"
-		echo "    c: $(sed -n 3p "$tmp/diff")"
-	else
-		echo "  $3: line endings differ"
-	fi
-	return 1
+function check_file(file,   ng, ge, nc, ce) {
+	nc = slurp(ENVIRON["O"] "/" file, CF); ce = nl_end
+	if (nc < 0) fail("  c wrote no " file "\n")
+	ng = slurp(ENVIRON["G"] "/" file, GF); ge = nl_end
+	if (ng >= 0 && same(GF, ng, CF, nc) && (ng == 0 || ge == ce)) return
+	if (ng < 0) ng = 0
+	if (first_diff(GF, ng, CF, nc))
+		fail("  " file ": first differing line " fd_n ":\n    golden: " fd_g "\n    c: " fd_c "\n")
+	fail("  " file ": line endings differ\n")
 }
-
-tab="$(printf '\t')"
-
-# entries <spoiler>: prints "<section>\t<key>\t<value>" for every entry line of
-# every top-level section but playthrough, key unquoted, trailing comma dropped.
-# A missing file prints nothing.
-entries() {
-	[ -f "$1" ] || return 0
-	awk '
-	/^    "/ { sec = substr($0, 6); sub(/": .*$/, "", sec); next }
-	sec != "playthrough" && /^        "/ {
-		line = substr($0, 10)
+function block(L, n, name, B,   k, on, m) {
+	m = 0
+	for (k = 1; k <= n; k++) {
+		if (index(L[k], "    \"" name "\": ") == 1) on = 1
+		if (!on) continue
+		if (L[k] ~ /^    [}\]]/) { B[++m] = L[k]; sub(/,$/, "", B[m]); return m }
+		B[++m] = L[k]
+	}
+	return m
+}
+function entries(L, n, S, K, V,   k, sec, line, i, m) {
+	m = 0
+	sec = ""
+	for (k = 1; k <= n; k++) {
+		if (L[k] ~ /^    "/) { sec = substr(L[k], 6); sub(/": .*$/, "", sec); continue }
+		if (sec == "playthrough" || L[k] !~ /^        "/) continue
+		line = substr(L[k], 10)
 		i = index(line, "\": ")
-		if (!i) next
-		val = substr(line, i + 3)
-		sub(/,$/, "", val)
-		print sec "\t" substr(line, 1, i - 1) "\t" val
-	}' "$1"
+		if (!i) continue
+		m++
+		S[m] = sec
+		K[m] = substr(line, 1, i - 1)
+		V[m] = substr(line, i + 3)
+		sub(/,$/, "", V[m])
+	}
+	return m
 }
-
-# section_block <spoiler> <name>: the lines of top-level section <name>, the
-# closing line without its trailing comma.
-section_block() {
-	[ -f "$1" ] || return 0
-	NAME="$2" awk '
-	index($0, "    \"" ENVIRON["NAME"] "\": ") == 1 { on = 1 }
-	on && /^    [}\]]/ { sub(/,$/, ""); print; exit }
-	on { print }' "$1"
-}
-
-GLOB2RE='
 function glob2re(g,   i, c, re, inb) {
 	re = "^"
 	for (i = 1; i <= length(g); i++) {
@@ -194,132 +229,137 @@ function glob2re(g,   i, c, re, inb) {
 		else re = re c
 	}
 	return re "$"
-}'
-
-# matching <entries> <glob>: the entries whose key matches <glob>, as sorted
-# "[<section>] "<key>": <value>" lines.
-matching() {
-	GLOB="$2" awk -F "$tab" "$GLOB2RE"'
-	BEGIN { re = glob2re(ENVIRON["GLOB"]) }
-	$2 ~ re { print "[" $1 "] \"" $2 "\": " $3 }' "$1" | sort
 }
-
-check_section() {
-	section_block "$golden/spoiler.json" "$1" >"$tmp/g"
-	section_block "$out/spoiler.json" "$1" >"$tmp/c"
-	cmp -s "$tmp/g" "$tmp/c" && return 0
-	if [ ! -s "$tmp/c" ]; then
-		echo "    c lacks section $1"
-		return 1
-	fi
-	first_diff "$tmp/g" "$tmp/c" >"$tmp/diff"
-	echo "    golden: $(sed -n 2p "$tmp/diff")"
-	echo "    c: $(sed -n 3p "$tmp/diff")"
-	return 1
+function matching(n, S, K, V, re, M,   k, m, j, x) {
+	m = 0
+	for (k = 1; k <= n; k++) {
+		if (K[k] !~ re) continue
+		x = "[" S[k] "] \"" K[k] "\": " V[k]
+		for (j = m++; j > 0 && M[j] > x; j--) M[j + 1] = M[j]
+		M[j + 1] = x
+	}
+	return m
 }
-
-check_keys() {
-	matching "$tmp/ge" "$1" >"$tmp/g"
-	matching "$tmp/ce" "$1" >"$tmp/c"
-	cmp -s "$tmp/g" "$tmp/c" && return 0
-	missing="$(awk 'FILENAME == ARGV[1] { sub(/": .*$/, "\""); have[$0] = 1; next }
-		{ sub(/": .*$/, "\"") } !($0 in have) { print; exit }' "$tmp/c" "$tmp/g")"
-	if [ -n "$missing" ]; then
-		echo "    c lacks $missing"
-		return 1
-	fi
-	first_diff "$tmp/g" "$tmp/c" >"$tmp/diff"
-	echo "    golden: $(sed -n 2p "$tmp/diff")"
-	echo "    c: $(sed -n 3p "$tmp/diff")"
-	return 1
+function load_entries() {
+	if (entries_done++) return
+	gn = entries(GS, ngs, GES, GEK, GEV)
+	cn = entries(CS, ncs, CES, CEK, CEV)
 }
-
-# check_pool <due checks>: the golden's placed items, outside the sections that
-# hold no location and the entries of due keys checks, against the C pool.txt.
-check_pool() {
-	if [ ! -f "$out/pool.txt" ]; then
-		echo "    c wrote no pool.txt"
-		return 1
-	fi
-	awk -F "$tab" "$GLOB2RE"'
-	NR == FNR { if ($4 == "keys") re[++n] = glob2re($5); next }
-	$1 ~ /^(Bosses|Equipped|Shops|Special|meta)$/ { next }
-	{
-		for (i = 1; i <= n; i++) if ($2 ~ re[i]) next
-		v = $3
+function check_section(name,   nb, nc) {
+	nb = block(GS, ngs, name, GB)
+	nc = block(CS, ncs, name, CB)
+	if (same(GB, nb, CB, nc)) return 1
+	if (!nc) { out = "    c lacks section " name "\n"; return 0 }
+	first_diff(GB, nb, CB, nc)
+	out = "    golden: " fd_g "\n    c: " fd_c "\n"
+	return 0
+}
+function check_keys(glob,   re, mg, mc, k, p, have) {
+	load_entries()
+	re = glob2re(glob)
+	split("", MG); split("", MC)
+	mg = matching(gn, GES, GEK, GEV, re, MG)
+	mc = matching(cn, CES, CEK, CEV, re, MC)
+	if (same(MG, mg, MC, mc)) return 1
+	for (k = 1; k <= mc; k++) { p = MC[k]; sub(/": .*$/, "\"", p); have[p] = 1 }
+	for (k = 1; k <= mg; k++) {
+		p = MG[k]; sub(/": .*$/, "\"", p)
+		if (!(p in have)) { out = "    c lacks " p "\n"; return 0 }
+	}
+	first_diff(MG, mg, MC, mc)
+	out = "    golden: " fd_g "\n    c: " fd_c "\n"
+	return 0
+}
+function check_pool(   np, k, i, n, re, v, g, c, all, x, first) {
+	np = slurp(ENVIRON["O"] "/pool.txt", PL)
+	if (np < 0) { out = "    c wrote no pool.txt\n"; return 0 }
+	load_entries()
+	n = 0
+	for (k = 1; k <= ndue; k++) if (DK[k] == "keys") { v = DA[k]; sub(/\t.*/, "", v); re[++n] = glob2re(v) }
+	for (k = 1; k <= gn; k++) {
+		if (GES[k] ~ /^(Bosses|Equipped|Shops|Special|meta)$/) continue
+		for (i = 1; i <= n; i++) if (GEK[k] ~ re[i]) break
+		if (i <= n) continue
+		v = GEV[k]
 		sub(/^"/, "", v)
 		sub(/"$/, "", v)
-		print v
-	}' "$1" "$tmp/ge" | sort >"$tmp/g"
-	grep -v '^$' "$out/pool.txt" | sort >"$tmp/c"
-	cmp -s "$tmp/g" "$tmp/c" && return 0
-	awk 'FILENAME == ARGV[1] { g[$0]++; all[$0] = 1; next } { c[$0]++; all[$0] = 1 }
-	END {
-		for (x in all) if (g[x] != c[x] && (first == "" || x < first)) first = x
-		printf "    golden: %s x%d\n    c: %s x%d\n", first, g[first], first, c[first]
-	}' "$tmp/g" "$tmp/c"
-	return 1
+		g[v]++; all[v] = 1
+	}
+	for (k = 1; k <= np; k++) if (PL[k] != "") { c[PL[k]]++; all[PL[k]] = 1 }
+	first = ""
+	for (x in all) if (g[x] != c[x] && (first == "" || x < first)) first = x
+	if (first == "") return 1
+	out = sprintf("    golden: %s x%d\n    c: %s x%d\n", first, g[first], first, c[first])
+	return 0
 }
+BEGIN {
+	RS = "\001"
+	mode = ENVIRON["MODE"]
+	if (mode == "all") {
+		check_file("attempts")
+		check_trace()
+		check_file("spoiler.json")
+		exit 0
+	}
+	check_trace(ENVIRON["DRAWS"])
+	if (ENVIRON["DUE"] == "-") exit 0
+	ndue = slurp(ENVIRON["DUE"], DL)
+	ngs = slurp(ENVIRON["G"] "/spoiler.json", GS)
+	ncs = slurp(ENVIRON["O"] "/spoiler.json", CS)
+	for (d = 1; d <= ndue; d++) {
+		i = index(DL[d], "\t"); DS[d] = substr(DL[d], 1, i - 1); rest = substr(DL[d], i + 1)
+		i = index(rest, "\t"); DK[d] = substr(rest, 1, i - 1); DA[d] = substr(rest, i + 1)
+	}
+	for (d = 1; d <= ndue; d++) {
+		if (DK[d] == "section") ok = check_section(DA[d])
+		else if (DK[d] == "keys") ok = check_keys(DA[d])
+		else ok = check_pool()
+		if (!ok) fail("  " DS[d] ": " DK[d] (DA[d] != "" ? " " DA[d] : "") ":\n" out)
+	}
+}'
 
-# run_checks <golden_dir> <out_dir> <stage>: runs, in table order, the checks
-# owed by <stage> and the stages before it.
-run_checks() {
-	rank="$(awk -v s="$3" '$0 == s { print NR; exit }' "$tmp/stages")"
-	awk -F "$tab" -v r="$rank" '$1 <= r' "$tmp/checks.sorted" >"$tmp/due"
-	[ -s "$tmp/due" ] || return 0
-	entries "$golden/spoiler.json" >"$tmp/ge"
-	entries "$out/spoiler.json" >"$tmp/ce"
-	while IFS="$tab" read -r _rank _n cstage kind arg; do
-		case "$kind" in
-		section) check_section "$arg" >"$tmp/check" ;;
-		keys) check_keys "$arg" >"$tmp/check" ;;
-		pool) check_pool "$tmp/due" >"$tmp/check" ;;
-		esac && continue
-		echo "  $cstage: $kind${arg:+ $arg}:"
-		cat "$tmp/check"
-		return 1
-	done <"$tmp/due"
-}
-
-# run_claim <case> <stage>: prints the detail lines and returns 1 when DIVERGENT.
+# run_claim <case> <stage> <draws> <due>: prints the detail lines and returns 1
+# when DIVERGENT.
+nout=0
 run_claim() {
 	golden="$cases_dir/$1"
 	if [ ! -f "$gen" ] || [ ! -x "$gen" ]; then
 		echo "  no C generator: $gen"
 		return 1
 	fi
-	out="$tmp/out"
-	rm -rf "$out"
+	nout=$((nout + 1))
+	out="$tmp/out$nout"
 	mkdir "$out"
 	status=0
 	"$gen" "$golden" "$out" >&2 || status=$?
+	mode=stage
 	if [ "$2" = all ]; then
 		if [ "$status" -ne 0 ]; then
 			echo "  C generator exited $status"
 			return 1
 		fi
-		check_file "$golden" "$out" attempts || return 1
-		check_trace "$golden/trace.txt" "$out/trace.txt" "$(awk 'END { print NR }' "$golden/trace.txt")" || return 1
-		check_file "$golden" "$out" spoiler.json || return 1
-		return 0
+		mode=all
 	fi
-	draws="$(awk -v s="$2" '$1 == 0 && $3 == s { k = NR } END { print k }' "$golden/trace.txt")"
-	check_trace "$golden/trace.txt" "$out/trace.txt" "$draws" || return 1
-	run_checks "$golden" "$out" "$2"
+	G="$golden" O="$out" MODE="$mode" DRAWS="$3" DUE="$4" awk "$CLAIM_AWK"
 }
 
+tab="$(printf '\t')"
 pass=0
 divergent=0
 pending=0
 for name in "$@"; do
 	stage=
-	while read -r line claimed claimed_stage; do
-		if [ "$claimed" = "$name" ]; then stage="$claimed_stage"; fi
+	while IFS="$tab" read -r claimed claimed_stage claimed_draws claimed_due; do
+		if [ "$claimed" = "$name" ]; then
+			stage="$claimed_stage"
+			draws="$claimed_draws"
+			due="$claimed_due"
+		fi
 	done <"$tmp/claims"
 	if [ -z "$stage" ]; then
 		echo "PENDING $name"
 		pending=$((pending + 1))
-	elif run_claim "$name" "$stage" >"$tmp/detail"; then
+	elif run_claim "$name" "$stage" "$draws" "$due" >"$tmp/detail"; then
 		echo "PASS $name ($stage)"
 		pass=$((pass + 1))
 	else

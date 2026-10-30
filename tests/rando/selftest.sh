@@ -294,6 +294,22 @@ gate "pool lacks an item" "two gamma$nl" 1 \
 fake pool.txt "Sword:1${nl}Arrow:1${nl}Bow:1${nl}Arrow:1${nl}Bomb:1$nl"
 gate "pool has an extra item" "two gamma$nl" 1 \
 	"DIVERGENT two${nl}  gamma: pool:${nl}    golden: Bomb:1 x0${nl}    c: Bomb:1 x1${nl}e2e: 0 pass, 1 divergent, 0 pending"
+
+partial "$prize" "$(printf '%s' "$medallion" | sed 's/Ether/Bombos/')"
+gate "a later stage's failing check is not due" "two alpha$nl" 1 \
+	"DIVERGENT two${nl}  alpha: keys *Medallion:1:${nl}    golden: [Special] \"Misery Mire Medallion:1\": \"Ether:1\"${nl}    c: [Special] \"Misery Mire Medallion:1\": \"Bombos:1\"${nl}e2e: 0 pass, 1 divergent, 0 pending"
+
+fake trace.txt "$(golden_lines 3)"
+gate "trace prefix lacks its last newline" "two beta$nl" 1 \
+	"DIVERGENT two${nl}  first differing draw: line endings differ${nl}e2e: 0 pass, 1 divergent, 0 pending"
+
+cp "$g/cases/two/trace.txt" "$g/cases/two/spoiler.json" "$g/out/two/"
+fake attempts "1"
+gate "attempts lack their newline" "two all$nl" 1 \
+	"DIVERGENT two${nl}  attempts: line endings differ${nl}e2e: 0 pass, 1 divergent, 0 pending"
+
+cp "$g/cases/two/attempts" "$g/out/two/"
+gate "all pass after stage checks" "two all$nl" 0 "PASS two (all)${nl}e2e: 1 pass, 0 divergent, 0 pending"
 named=
 
 echo "selftest: gate passed"
