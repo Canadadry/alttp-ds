@@ -84,4 +84,36 @@ static inline bool wild_or_not_dungeon_item(const RandoConfig *c, RandoItemId it
 		 || (!c->region_wild_compasses && k == RANDO_ITEM_CLASS_COMPASS));
 }
 
+static inline bool is_dungeon_item(RandoItemId item)
+{
+	RandoItemClass k = rando_item_info(item)->item_class;
+
+	return k == RANDO_ITEM_CLASS_KEY || k == RANDO_ITEM_CLASS_BIG_KEY || k == RANDO_ITEM_CLASS_MAP
+		|| k == RANDO_ITEM_CLASS_COMPASS;
+}
+
+static inline bool boss_can_beat(const RandoWorld *world, RandoRegionId region, const RandoItems *items)
+{
+	return rando_boss_can_beat(rando_world_boss(world, region, RANDO_BOSS_SLOT_BOSS), &world->config, items);
+}
+
+static inline bool boss_has_wild_compass_and_map(const RandoWorld *world, RandoLocationId boss,
+						 RandoItemId compass, RandoItemId map, const RandoItems *items)
+{
+	const RandoConfig *c = &world->config;
+
+	return (!c->region_wild_compasses || has(items, compass) || rando_world_has_item(world, boss, compass))
+		&& (!c->region_wild_maps || has(items, map) || rando_world_has_item(world, boss, map));
+}
+
+static inline bool boss_fill_allows(const RandoWorld *world, RandoItemId item)
+{
+	return world->config.region_boss_normal_location || !is_dungeon_item(item);
+}
+
+static inline bool boss_always_allows(const RandoWorld *world, RandoItemId item, RandoItemId compass, RandoItemId map)
+{
+	return world->config.region_boss_normal_location && (item == compass || item == map);
+}
+
 #endif

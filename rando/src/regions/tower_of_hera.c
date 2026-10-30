@@ -1,5 +1,8 @@
 #include "../world_rules.h"
 
+#define FIRST RANDO_LOC_TOWER_OF_HERA_BIG_KEY_CHEST
+#define NLOCATIONS (RANDO_LOC_TOWER_OF_HERA_PRIZE - FIRST + 1)
+
 static bool main_entrance(const RandoWorld *world, const RandoItems *items)
 {
 	const RandoConfig *c = &world->config;
@@ -26,6 +29,70 @@ static bool enter(const RandoWorld *world, const RandoItems *items)
 	return has(items, RANDO_ITEM_RescueZelda) && (main_entrance(world, items) || mire(world, items));
 }
 
+static bool big_key_chest(const RandoWorld *world, const RandoItems *items)
+{
+	(void)world;
+	return rando_items_can_light_torches(items) && has(items, RANDO_ITEM_KeyP3);
+}
+
+static bool big_key_chest_fill(RandoWorld *world, RandoItemId item, const RandoItems *items)
+{
+	(void)items;
+	return world->config.accessibility != RANDO_ACCESSIBILITY_LOCATIONS || item != RANDO_ITEM_KeyP3;
+}
+
+static bool big_key_chest_always_allow(const RandoWorld *world, RandoItemId item, const RandoItems *items)
+{
+	(void)items;
+	return world->config.accessibility != RANDO_ACCESSIBILITY_LOCATIONS && item == RANDO_ITEM_KeyP3;
+}
+
+static bool compass_chest(const RandoWorld *world, const RandoItems *items)
+{
+	return (main_entrance(world, items) && has(items, RANDO_ITEM_BigKeyP3)) || mire(world, items);
+}
+
+static bool big_chest(const RandoWorld *world, const RandoItems *items)
+{
+	return (main_entrance(world, items) && has(items, RANDO_ITEM_BigKeyP3))
+		|| (mire(world, items) && (has(items, RANDO_ITEM_BigKeyP3) || has(items, RANDO_ITEM_BigKeyD6)));
+}
+
+static bool boss(const RandoWorld *world, const RandoItems *items)
+{
+	return main_entrance(world, items)
+		&& boss_can_beat(world, RANDO_REGION_TOWER_OF_HERA, items)
+		&& (has(items, RANDO_ITEM_BigKeyP3) || (mire(world, items) && has(items, RANDO_ITEM_BigKeyD6)))
+		&& boss_has_wild_compass_and_map(world, RANDO_LOC_TOWER_OF_HERA_BOSS, RANDO_ITEM_CompassP3,
+						 RANDO_ITEM_MapP3, items);
+}
+
+static bool boss_fill(RandoWorld *world, RandoItemId item, const RandoItems *items)
+{
+	(void)items;
+	return boss_fill_allows(world, item);
+}
+
+static bool boss_always_allow(const RandoWorld *world, RandoItemId item, const RandoItems *items)
+{
+	(void)items;
+	return boss_always_allows(world, item, RANDO_ITEM_CompassP3, RANDO_ITEM_MapP3);
+}
+
+static bool complete(const RandoWorld *world, const RandoItems *items)
+{
+	return rando_world_can_access(world, RANDO_LOC_TOWER_OF_HERA_BOSS, items);
+}
+
+static const RandoLocationRules locations[NLOCATIONS] = {
+	[RANDO_LOC_TOWER_OF_HERA_BIG_KEY_CHEST - FIRST] = {big_key_chest, big_key_chest_fill,
+							   big_key_chest_always_allow},
+	[RANDO_LOC_TOWER_OF_HERA_COMPASS_CHEST - FIRST] = {compass_chest, NULL, NULL},
+	[RANDO_LOC_TOWER_OF_HERA_BIG_CHEST - FIRST] = {big_chest, NULL, NULL},
+	[RANDO_LOC_TOWER_OF_HERA_BOSS - FIRST] = {boss, boss_fill, boss_always_allow},
+	[RANDO_LOC_TOWER_OF_HERA_PRIZE - FIRST] = {complete, NULL, NULL},
+};
+
 const RandoRegionRules rando_rules_tower_of_hera = {
-	"Region\\Standard\\TowerOfHera", enter, NULL, NULL, NULL,
+	"Region\\Standard\\TowerOfHera", enter, complete, locations, NULL,
 };

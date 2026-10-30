@@ -86,13 +86,48 @@ static void check_sword_required_to_complete_castle_tower(void)
 	CHECK(!rando_world_region_can_complete(&world, RANDO_REGION_HYRULE_CASTLE_TOWER, &items));
 }
 
+/* Region::initalize's bossNormalLocation fill rule, which no NoGlitches row varies. */
+static void check_boss_normal_location_decides_dungeon_items_on_bosses(void)
+{
+	RandoConfig config;
+	RandoWorld world;
+	RandoItems items;
+
+	rando_items_clear(&items);
+	rando_config_init(&config);
+	rando_world_init(&world, RANDO_VARIANT_STANDARD, &config);
+	CHECK(rando_world_can_fill(&world, RANDO_LOC_EASTERN_PALACE_BOSS, RANDO_ITEM_MapP1, &items, true));
+	config.region_boss_normal_location = false;
+	rando_world_init(&world, RANDO_VARIANT_STANDARD, &config);
+	CHECK(!rando_world_can_fill(&world, RANDO_LOC_EASTERN_PALACE_BOSS, RANDO_ITEM_MapP1, &items, false));
+	CHECK(!rando_world_can_fill(&world, RANDO_LOC_TOWER_OF_HERA_BOSS, RANDO_ITEM_KeyP3, &items, false));
+	CHECK(rando_world_can_fill(&world, RANDO_LOC_DESERT_PALACE_BOSS, RANDO_ITEM_Hammer, &items, false));
+}
+
+/* The Tower of Hera Big Key Chest takes its own key unreachable unless accessibility is "locations". */
+static void check_hera_big_key_chest_follows_accessibility(void)
+{
+	RandoConfig config;
+	RandoWorld world;
+	RandoItems items;
+
+	rando_items_clear(&items);
+	rando_config_init(&config);
+	rando_world_init(&world, RANDO_VARIANT_STANDARD, &config);
+	CHECK(rando_world_can_fill(&world, RANDO_LOC_TOWER_OF_HERA_BIG_KEY_CHEST, RANDO_ITEM_KeyP3, &items, true));
+	config.accessibility = RANDO_ACCESSIBILITY_LOCATIONS;
+	rando_world_init(&world, RANDO_VARIANT_STANDARD, &config);
+	CHECK(!rando_world_can_fill(&world, RANDO_LOC_TOWER_OF_HERA_BIG_KEY_CHEST, RANDO_ITEM_KeyP3, &items, false));
+}
+
 /* The tests/NoGlitches files whose rows are replayed whole; each chunk of the region port adds its
  * own, and the last one removes the list. */
 static const char *const enabled_files[] = {
 	"LightWorldTest.php", "HyruleCastleEscapeTest.php", "OpenTest.php",
 	"DeathMountain/EastTest.php", "DeathMountain/WestTest.php",
 	"DarkWorld/NorthEastTest.php", "DarkWorld/NorthWestTest.php", "DarkWorld/SouthTest.php", "DarkWorld/MireTest.php",
-	"DarkWorld/DeathMountain/EastTest.php", "DarkWorld/DeathMountain/WestTest.php", NULL,
+	"DarkWorld/DeathMountain/EastTest.php", "DarkWorld/DeathMountain/WestTest.php",
+	"EasternPalaceTest.php", "DesertPalaceTest.php", "TowerOfHeraTest.php", "HyruleCastleTowerTest.php", NULL,
 };
 
 /* Methods replayed in every file: their region rules are all ported. */
@@ -123,6 +158,8 @@ int main(int argc, char **argv)
 	check_can_enter_tower_of_hera_with_everything();
 	check_cape_or_upgraded_sword_required_to_enter_castle_tower();
 	check_sword_required_to_complete_castle_tower();
+	check_boss_normal_location_decides_dungeon_items_on_bosses();
+	check_hera_big_key_chest_follows_accessibility();
 	printf(TEST ": hand-written cases passed\n");
 	if (!fixtures)
 		return 0;

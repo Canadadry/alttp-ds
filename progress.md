@@ -21,7 +21,7 @@
     - [x] Chunk 2: items and bosses
     - [x] Chunk 3: world core
     - [x] Chunk 4: overworld regions and escape variants
-    - [ ] Chunk 5: Light World dungeons
+    - [x] Chunk 5: Light World dungeons
     - [ ] Chunk 6: PoD, Swamp, Skull Woods, Thieves' Town
     - [ ] Chunk 7: Ice Palace, Misery Mire, Turtle Rock
     - [ ] Chunk 8: Ganon's Tower and full row count
