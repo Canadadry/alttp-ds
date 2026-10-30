@@ -102,3 +102,4 @@
 - [x] Step 3.3 chunks
   - [x] Chunk 1: MajorGlitches fixture
   - [x] Chunk 2: C replay and derivation case
+- [x] Step 3.4: NoLogic rules and claim

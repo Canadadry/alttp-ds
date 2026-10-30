@@ -1013,6 +1013,38 @@ static void check_win_keeps_collected(void)
 	CHECK(!rando_world_check_win_condition(&world, &start));
 }
 
+/* VT's World::__construct skips every region's initalize() under NoLogic; values from a VT probe. */
+static void check_no_logic_world(void)
+{
+	static const RandoVariant variants[] = {RANDO_VARIANT_OPEN, RANDO_VARIANT_STANDARD};
+	RandoWorld world;
+	RandoConfig config;
+	RandoItems none;
+	int i;
+
+	rando_items_clear(&none);
+	for (i = 0; i < 2; i++) {
+		rando_config_init(&config);
+		config.logic = RANDO_LOGIC_NO_LOGIC;
+		rando_world_init(&world, variants[i], &config);
+		CHECK(rando_world_can_fill(&world, RANDO_LOC_LINKS_UNCLE, RANDO_ITEM_MapH2, &none, false));
+		CHECK(rando_world_can_fill(&world, RANDO_LOC_SECRET_PASSAGE, RANDO_ITEM_MapH2, &none, false));
+		CHECK(rando_world_can_access(&world, RANDO_LOC_GANON, &none));
+		CHECK(rando_world_can_access(&world, RANDO_LOC_GANONS_TOWER_MOLDORM_CHEST, &none));
+		CHECK(rando_world_can_access(&world, RANDO_LOC_MASTER_SWORD_PEDESTAL, &none));
+		CHECK(rando_world_can_access_shop(&world, RANDO_SHOP_CAPACITY_UPGRADE, &none));
+		CHECK(!rando_world_can_fill(&world, RANDO_LOC_PALACE_OF_DARKNESS_MAP_CHEST, RANDO_ITEM_MapP1, &none,
+					    false));
+		CHECK(!rando_world_region_can_fill(&world, RANDO_REGION_EASTERN_PALACE, RANDO_ITEM_KeyH2));
+		CHECK(!rando_world_win_condition(&world, &none));
+
+		rando_config_init(&config);
+		rando_world_init(&world, variants[i], &config);
+		CHECK(!rando_world_can_fill(&world, RANDO_LOC_LINKS_UNCLE, RANDO_ITEM_MapH2, &none, false));
+		CHECK(!rando_world_can_access(&world, RANDO_LOC_MASTER_SWORD_PEDESTAL, &none));
+	}
+}
+
 int main(int argc, char **argv)
 {
 	int fixtures = test_fixtures_mode(TEST, argc, argv);
@@ -1030,6 +1062,7 @@ int main(int argc, char **argv)
 	check_set_item();
 	check_region_can_fill();
 	check_can_fill_and_fill();
+	check_no_logic_world();
 	check_collect_items();
 	check_pre_collected_order();
 	check_collect_other_items();

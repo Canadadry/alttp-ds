@@ -43,4 +43,4 @@ goal-completionist all
 goal-dungeons all
 goal-fast_ganon all
 goal-ganonhunt all
-glitches-no_logic prepareWorld
+glitches-no_logic all

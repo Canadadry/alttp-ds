@@ -325,10 +325,17 @@ bool rando_world_region_can_fill(const RandoWorld *world, RandoRegionId region, 
 	return true;
 }
 
+static const RandoRegionRules *region_rules(const RandoWorld *world, RandoRegionId region)
+{
+	static const RandoRegionRules no_rules = {NULL, NULL, NULL, NULL, NULL};
+
+	return world->config.logic == RANDO_LOGIC_NO_LOGIC ? &no_rules : rando_region_rules(world->variant, region);
+}
+
 static const RandoLocationRules *location_rules(const RandoWorld *world, RandoLocationId location)
 {
 	RandoRegionId region = rando_location_info(location)->region;
-	const RandoRegionRules *rules = rando_region_rules(world->variant, region);
+	const RandoRegionRules *rules = region_rules(world, region);
 
 	if (!rules->locations)
 		return NULL;
@@ -338,7 +345,7 @@ static const RandoLocationRules *location_rules(const RandoWorld *world, RandoLo
 bool rando_world_region_can_enter_with(const RandoWorld *world, const RandoWorld *locations, RandoRegionId region,
 				      const RandoItems *items)
 {
-	RandoRule rule = rando_region_rules(world->variant, region)->can_enter;
+	RandoRule rule = region_rules(world, region)->can_enter;
 
 	return !rule || rule(world, locations, items);
 }
@@ -350,7 +357,7 @@ bool rando_world_region_can_enter(const RandoWorld *world, RandoRegionId region,
 
 bool rando_world_region_can_complete(const RandoWorld *world, RandoRegionId region, const RandoItems *items)
 {
-	RandoRule rule = rando_region_rules(world->variant, region)->can_complete;
+	RandoRule rule = region_rules(world, region)->can_complete;
 
 	return !rule || rule(world, world, items);
 }
@@ -417,7 +424,7 @@ static void compute_collectable(RandoWorld *world)
 bool rando_world_can_access_shop(const RandoWorld *world, RandoShopId shop, const RandoItems *items)
 {
 	RandoRegionId region = rando_shop_info(shop)->region;
-	const RandoRegionRules *rules = rando_region_rules(world->variant, region);
+	const RandoRegionRules *rules = region_rules(world, region);
 	RandoRule requirement = rules->shops ? rules->shops[shop - rando_region_info(region)->first_shop] : NULL;
 
 	return rando_world_region_can_enter(world, region, items) && (!requirement || requirement(world, world, items));
