@@ -2,8 +2,11 @@
 # that stage's last attempt-0 draw) or `<case> all` (trace, attempts and
 # spoiler.json match). <stage> is a stage of stages.txt with a draw in the
 # case's attempt 0. An unclaimed case is PENDING.
-baseline getAdvancementItems
-crystals_ganon-random getAdvancementItems
-crystals_tower-random getAdvancementItems
-item_functionality-hard getAdvancementItems
-item_functionality-expert getAdvancementItems
+baseline setMedallions
+crystals_ganon-random setMedallions
+crystals_tower-random setMedallions
+item_functionality-hard setMedallions
+item_functionality-expert setMedallions
+item_pool-hard setMedallions
+item_pool-expert setMedallions
+item_pool-crowd_control setMedallions

@@ -36,7 +36,7 @@
       - [x] Chunk 1: shops in the world, HardMode in the config
       - [x] Chunk 2: setShops and setMedallions stages
       - [x] Chunk 3: spoiler writer
-      - [ ] Chunk 4: driver, gate and claims
+      - [x] Chunk 4: driver, gate and claims
     - [ ] 2.3.3 fillPrizes (with placeBosses baseline path)
     - [ ] 2.3.4 setFountains
     - [ ] 2.3.5 shufflePrizePacks

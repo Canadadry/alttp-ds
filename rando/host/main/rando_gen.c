@@ -1,8 +1,11 @@
 #include "rando.h"
 #include "rando_case.h"
 #include "rando_out.h"
+#include "rando_spoiler.h"
 
+#include <errno.h>
 #include <stdio.h>
+#include <string.h>
 
 enum {
 	EXIT_COMPLETE = 0,
@@ -16,6 +19,26 @@ enum {
 #define ORACLE_WATCHDOG 1000u
 
 static RandoGen gen;
+
+static bool write_spoiler(const char *out_dir)
+{
+	char path[RANDO_OUT_ERROR_MAX];
+	FILE *f;
+	bool ok;
+
+	snprintf(path, sizeof path, "%s/spoiler.json", out_dir);
+	f = fopen(path, "w");
+	if (!f) {
+		fprintf(stderr, "rando_gen: %s: %s\n", path, strerror(errno));
+		return false;
+	}
+	ok = rando_spoiler_write_json(f, &gen.world);
+	if (fclose(f) != 0)
+		ok = false;
+	if (!ok)
+		fprintf(stderr, "rando_gen: %s: write failed\n", path);
+	return ok;
+}
 
 int main(int argc, char **argv)
 {
@@ -44,6 +67,8 @@ int main(int argc, char **argv)
 		fprintf(stderr, "rando_gen: %s\n", out_error);
 		return EXIT_INPUT;
 	}
+	if ((status == RANDO_COMPLETE || status == RANDO_INCOMPLETE) && !write_spoiler(argv[2]))
+		return EXIT_INPUT;
 	switch (status) {
 	case RANDO_COMPLETE:
 		if (!rando_attempts_write(argv[2], gen.attempt, out_error)) {

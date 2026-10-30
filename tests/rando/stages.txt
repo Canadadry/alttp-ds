@@ -11,3 +11,5 @@ stage setFountains
 stage shufflePrizePacks
 stage prepareWorld
 stage fill
+check setShops section Shops
+check setMedallions keys *Medallion:1
