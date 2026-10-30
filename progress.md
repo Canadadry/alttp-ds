@@ -29,7 +29,7 @@
     - [ ] 2.3.1 getAdvancementItems, generator driver and trace
       - [x] Chunk 1: oracle pool fixture
       - [x] Chunk 2: options, derivations and case reader
-      - [ ] Chunk 3: item pools
+      - [x] Chunk 3: item pools
       - [ ] Chunk 4: generator
       - [ ] Chunk 5: driver and claims
     - [ ] 2.3.2 setMedallions (with setShops baseline path)
