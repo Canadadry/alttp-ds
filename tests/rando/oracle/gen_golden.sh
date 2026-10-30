@@ -10,7 +10,9 @@ VT_PIN=219fcafd029dab597b8db400efafd8f56f8b4edb
 PHP_EXPECTED=8.3
 
 oracle_dir="$(cd "$(dirname "$0")" && pwd)"
-cases_dir="$(dirname "$oracle_dir")/cases"
+rando_tests_dir="$(dirname "$oracle_dir")"
+. "$rando_tests_dir/cases.sh"
+cases_dir="$rando_tests_dir/cases"
 vt_dir="${VT_DIR:-$oracle_dir/vt}"
 
 usage() {
@@ -34,21 +36,15 @@ while [ "$#" -gt 0 ]; do
 	shift
 done
 
-if [ "$#" -eq 0 ]; then
-	for dir in "$cases_dir"/*/; do
-		if [ -f "$dir/config.json" ]; then set -- "$@" "$(basename "$dir")"; fi
-	done
-	if [ "$#" -eq 0 ]; then
-		echo "gen_golden: no cases" >&2
-		exit 2
-	fi
+names="$(discover_cases "$cases_dir" gen_golden "$@")"
+if [ -z "$names" ]; then
+	echo "gen_golden: no cases" >&2
+	exit 2
 fi
-for name in "$@"; do
-	if [ ! -f "$cases_dir/$name/config.json" ]; then
-		echo "gen_golden: no such case: $name" >&2
-		exit 2
-	fi
-done
+set -f
+set -- $names
+set +f
+
 if [ -n "$out" ]; then
 	mkdir -p "$out"
 	out="$(cd "$out" && pwd)"

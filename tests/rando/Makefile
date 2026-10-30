@@ -12,7 +12,8 @@ UNIT_BINS := $(addprefix $(BUILD)/,$(UNIT_TESTS))
 
 test: $(UNIT_BINS)
 	@set -e; for t in $(UNIT_BINS); do ./$$t; done
-	@echo "test: $(words $(UNIT_TESTS)) unit tests ran"
+	@./selftest.sh
+	@echo "test: $(words $(UNIT_TESTS)) unit tests and the shell self-test ran"
 
 e2e:
 	@./run_e2e.sh
