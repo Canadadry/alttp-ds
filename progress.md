@@ -7,7 +7,7 @@
       - [x] Baseline golden
   - [ ] 1.2 Every golden committed
     - [x] Chunk 1: case list
-    - [ ] Chunk 2: goldens
+    - [x] Chunk 2: goldens
 - [ ] Phase 2 — C port, baseline
   - [ ] 2.1 PRNG and fy_shuffle, convergence gate claims, CI
   - [ ] 2.2 World, regions and location rules for the baseline
