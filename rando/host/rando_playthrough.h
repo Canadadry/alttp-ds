@@ -30,7 +30,7 @@ typedef struct RandoPlaythrough {
 /* VT's $location->getRegion()->getName(): a shop slot's is its shop's region. */
 const char *rando_playthrough_entry_region(const RandoPlaythroughEntry *entry);
 
-/* Leaves world unchanged. Not reentrant: the shadow world and the spheres are static. */
+/* Leaves world unchanged. */
 void rando_playthrough(const RandoWorld *world, RandoPlaythrough *out);
 
 #endif

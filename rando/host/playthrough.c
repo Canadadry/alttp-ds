@@ -7,18 +7,21 @@
  * VT's equipment slots only ever add the pre-collected items, so they get no id. */
 #define PSEUDO_COUNT RANDO_PLAYTHROUGH_ENTRY_MAX
 
-static RandoWorld shadow;
-static uint8_t shadow_shop_items[RANDO_SHOP_COUNT][RANDO_SHOP_SLOTS];
-static uint16_t sphere_locations[PSEUDO_COUNT];
-static int sphere_start[PSEUDO_COUNT + 2];
-static int nspheres;
-static bool in_sphere[PSEUDO_COUNT];
-static bool required[PSEUDO_COUNT];
-static uint16_t required_location[PSEUDO_COUNT], required_sphere[PSEUDO_COUNT];
-static int nrequired;
-static uint16_t required_keys[PSEUDO_COUNT];
-static int nrequired_keys;
-static bool in_order[PSEUDO_COUNT];
+typedef struct Playthrough {
+	const RandoWorld *world;
+	RandoWorld shadow;
+	uint8_t shadow_shop_items[RANDO_SHOP_COUNT][RANDO_SHOP_SLOTS];
+	uint16_t sphere_locations[PSEUDO_COUNT];
+	int sphere_start[PSEUDO_COUNT + 2];
+	int nspheres;
+	bool in_sphere[PSEUDO_COUNT];
+	bool required[PSEUDO_COUNT];
+	uint16_t required_location[PSEUDO_COUNT], required_sphere[PSEUDO_COUNT];
+	int nrequired;
+	uint16_t required_keys[PSEUDO_COUNT];
+	int nrequired_keys;
+	bool in_order[PSEUDO_COUNT];
+} Playthrough;
 
 static const RandoItemId junk_items[] = {
 	RANDO_ITEM_BlueShield, RANDO_ITEM_Boomerang, RANDO_ITEM_MirrorShield, RANDO_ITEM_RedBoomerang,
@@ -54,36 +57,37 @@ static int slot_of(int p)
 	return (p - RANDO_LOCATION_COUNT) % RANDO_SHOP_SLOTS;
 }
 
-static RandoItemId shadow_item(int p)
+static RandoItemId shadow_item(const Playthrough *pt, int p)
 {
-	return (RandoItemId)(is_shop(p) ? shadow_shop_items[shop_of(p)][slot_of(p)] : shadow.location_items[p]);
+	return (RandoItemId)(is_shop(p) ? pt->shadow_shop_items[shop_of(p)][slot_of(p)] : pt->shadow.location_items[p]);
 }
 
-static void set_shadow_item(int p, RandoItemId item)
+static void set_shadow_item(Playthrough *pt, int p, RandoItemId item)
 {
 	if (is_shop(p))
-		shadow_shop_items[shop_of(p)][slot_of(p)] = (uint8_t)item;
+		pt->shadow_shop_items[shop_of(p)][slot_of(p)] = (uint8_t)item;
 	else
-		shadow.location_items[p] = (uint8_t)item;
+		pt->shadow.location_items[p] = (uint8_t)item;
 }
 
 /* $world->getCollectableLocations()[name]->getItem(): a shop slot reads the real world's cached slot. */
-static RandoItemId real_item(const RandoWorld *world, int p)
+static RandoItemId real_item(const Playthrough *pt, int p)
 {
+	const RandoWorld *world = pt->world;
+
 	if (!is_shop(p))
 		return rando_world_item(world, (RandoLocationId)p);
 	return (RandoItemId)(world->collectable_computed ? world->collectable_shop_items[shop_of(p)][slot_of(p)]
 							 : world->shop_items[shop_of(p)][slot_of(p)]);
 }
 
-/* A shop slot's region is the real world's, so its access always reads the real world.
- * TODO: with location_world the real world, a world location diverges from VT, whose $this->locations
- * reads and nested canAccess($items) read the shadow (dungeon_items-mcs, Ice Palace - Big Key Chest). */
-static bool can_access(const RandoWorld *location_world, const RandoWorld *world, int p, const RandoItems *items)
+/* A shadow location checked against locations. A shop slot's region is the real world's, so its
+ * access always reads the real world. */
+static bool can_access(const Playthrough *pt, const RandoWorld *locations, int p, const RandoItems *items)
 {
 	if (is_shop(p))
-		return rando_world_can_access_shop(world, shop_of(p), items);
-	return rando_world_can_access(location_world, (RandoLocationId)p, items);
+		return rando_world_can_access_shop(pt->world, shop_of(p), items);
+	return rando_world_can_access_with(&pt->shadow, locations, (RandoLocationId)p, items);
 }
 
 /* The shadow's getCollectableLocations(); its collected state is always empty. */
@@ -98,126 +102,126 @@ static bool is_collectable(int p)
 }
 
 /* The equipment slots, then every sphere. */
-static void collectable_items(RandoItems *items)
+static void collectable_items(const Playthrough *pt, RandoItems *items)
 {
 	int i;
 
 	rando_items_clear(items);
-	for (i = 0; i < rando_world_pre_collected_count(&shadow); i++)
-		rando_items_add(items, rando_world_pre_collected_item(&shadow, i));
-	for (i = 0; i < sphere_start[nspheres]; i++)
-		if (shadow_item(sphere_locations[i]) != RANDO_ITEM_NONE)
-			rando_items_add(items, shadow_item(sphere_locations[i]));
+	for (i = 0; i < rando_world_pre_collected_count(&pt->shadow); i++)
+		rando_items_add(items, rando_world_pre_collected_item(&pt->shadow, i));
+	for (i = 0; i < pt->sphere_start[pt->nspheres]; i++)
+		if (shadow_item(pt, pt->sphere_locations[i]) != RANDO_ITEM_NONE)
+			rando_items_add(items, shadow_item(pt, pt->sphere_locations[i]));
 }
 
 /* World::getLocationSpheres on the shadow; sphere 0 holds only the equipment slots. */
-static void build_spheres(const RandoWorld *world)
+static void build_spheres(Playthrough *pt)
 {
-	RandoItems my_items = shadow.pre_collected, found;
+	RandoItems my_items = pt->shadow.pre_collected, found;
 	int p, n, start;
 
-	memset(in_sphere, 0, sizeof in_sphere);
-	nspheres = 1;
-	sphere_start[0] = sphere_start[1] = 0;
+	memset(pt->in_sphere, 0, sizeof pt->in_sphere);
+	pt->nspheres = 1;
+	pt->sphere_start[0] = pt->sphere_start[1] = 0;
 	do {
-		start = n = sphere_start[nspheres];
+		start = n = pt->sphere_start[pt->nspheres];
 		for (p = 0; p < PSEUDO_COUNT; p++) {
-			if (!is_collectable(p) || shadow_item(p) == RANDO_ITEM_NONE || in_sphere[p]
-			    || !can_access(&shadow, world, p, &my_items))
+			if (!is_collectable(p) || shadow_item(pt, p) == RANDO_ITEM_NONE || pt->in_sphere[p]
+			    || !can_access(pt, &pt->shadow, p, &my_items))
 				continue;
-			sphere_locations[n++] = (uint16_t)p;
+			pt->sphere_locations[n++] = (uint16_t)p;
 		}
 		rando_items_clear(&found);
 		for (p = start; p < n; p++) {
-			in_sphere[sphere_locations[p]] = true;
-			rando_items_add(&found, shadow_item(sphere_locations[p]));
+			pt->in_sphere[pt->sphere_locations[p]] = true;
+			rando_items_add(&found, shadow_item(pt, pt->sphere_locations[p]));
 		}
 		rando_items_merge(&my_items, &my_items, &found);
-		assert(nspheres + 1 < PSEUDO_COUNT + 2);
-		sphere_start[++nspheres] = n;
+		assert(pt->nspheres + 1 < PSEUDO_COUNT + 2);
+		pt->sphere_start[++pt->nspheres] = n;
 	} while (n > start);
 }
 
-static void add_required(int p, int sphere)
+static void add_required(Playthrough *pt, int p, int sphere)
 {
 	int k;
 
-	assert(!required[p]);
-	required[p] = true;
-	required_location[nrequired] = (uint16_t)p;
-	required_sphere[nrequired++] = (uint16_t)sphere;
-	for (k = 0; k < nrequired_keys && required_keys[k] != sphere; k++)
+	assert(!pt->required[p]);
+	pt->required[p] = true;
+	pt->required_location[pt->nrequired] = (uint16_t)p;
+	pt->required_sphere[pt->nrequired++] = (uint16_t)sphere;
+	for (k = 0; k < pt->nrequired_keys && pt->required_keys[k] != sphere; k++)
 		;
-	if (k == nrequired_keys)
-		required_keys[nrequired_keys++] = (uint16_t)sphere;
+	if (k == pt->nrequired_keys)
+		pt->required_keys[pt->nrequired_keys++] = (uint16_t)sphere;
 }
 
 /* VT's `break 2` leaves only the two inner loops: "put all higher items back" still runs for that
  * check sphere, and the later check spheres are skipped because p is now required. Keep it so. */
-static void bubble(const RandoWorld *world, int p, int sphere)
+static void bubble(Playthrough *pt, int p, int sphere)
 {
 	RandoItems items;
-	int nkeys = nrequired_keys, k, r, nr;
+	int nkeys = pt->nrequired_keys, k, r, nr;
 
 	for (k = nkeys - 1; k >= 0; k--) {
-		int check = required_keys[k];
+		int check = pt->required_keys[k];
 
-		if (check == sphere || required[p])
+		if (check == sphere || pt->required[p])
 			continue;
-		for (r = 0; r < nrequired; r++)
-			if (required_sphere[r] >= check)
-				set_shadow_item(required_location[r], RANDO_ITEM_NONE);
-		nr = nrequired;
+		for (r = 0; r < pt->nrequired; r++)
+			if (pt->required_sphere[r] >= check)
+				set_shadow_item(pt, pt->required_location[r], RANDO_ITEM_NONE);
+		nr = pt->nrequired;
 		for (r = 0; r < nr; r++) {
-			int q = required_location[r];
+			int q = pt->required_location[r];
 			RandoItemId temp;
 
-			if (required_sphere[r] != check)
+			if (pt->required_sphere[r] != check)
 				continue;
-			temp = shadow_item(q);
-			set_shadow_item(q, RANDO_ITEM_NONE);
-			collectable_items(&items);
-			if (!can_access(world, world, q, &items)) {
-				set_shadow_item(p, real_item(world, p));
-				add_required(p, sphere);
+			temp = shadow_item(pt, q);
+			set_shadow_item(pt, q, RANDO_ITEM_NONE);
+			collectable_items(pt, &items);
+			if (!can_access(pt, pt->world, q, &items)) {
+				set_shadow_item(pt, p, real_item(pt, p));
+				add_required(pt, p, sphere);
 				break;
 			}
-			set_shadow_item(q, temp);
+			set_shadow_item(pt, q, temp);
 		}
-		for (r = 0; r < nrequired; r++)
-			set_shadow_item(required_location[r], real_item(world, required_location[r]));
+		for (r = 0; r < pt->nrequired; r++)
+			set_shadow_item(pt, pt->required_location[r], real_item(pt, pt->required_location[r]));
 	}
 }
 
-static void prune(const RandoWorld *world)
+static void prune(Playthrough *pt)
 {
-	const RandoConfig *c = &world->config;
+	const RandoConfig *c = &pt->world->config;
 	RandoItems items;
 	int sphere, i;
 
-	memset(required, 0, sizeof required);
-	nrequired = nrequired_keys = 0;
-	for (sphere = nspheres - 1; sphere >= 1; sphere--) {
-		for (i = sphere_start[sphere]; i < sphere_start[sphere + 1]; i++) {
-			int p = sphere_locations[i];
-			RandoItemId pulled = shadow_item(p);
+	memset(pt->required, 0, sizeof pt->required);
+	pt->nrequired = pt->nrequired_keys = 0;
+	for (sphere = pt->nspheres - 1; sphere >= 1; sphere--) {
+		for (i = pt->sphere_start[sphere]; i < pt->sphere_start[sphere + 1]; i++) {
+			int p = pt->sphere_locations[i];
+			RandoItemId pulled = shadow_item(pt, p);
 			RandoItemClass item_class;
 
 			if (pulled == RANDO_ITEM_NONE)
 				continue;
-			set_shadow_item(p, RANDO_ITEM_NONE);
+			set_shadow_item(pt, p, RANDO_ITEM_NONE);
 			item_class = rando_item_info(pulled)->item_class;
 			if (((item_class == RANDO_ITEM_CLASS_MAP || item_class == RANDO_ITEM_CLASS_COMPASS)
 			     && rando_dungeon_item_confined(c, item_class))
 			    || is_junk(pulled))
 				continue;
-			collectable_items(&items);
-			if (!rando_world_win_condition(&shadow, &items)) {
-				set_shadow_item(p, real_item(world, p));
-				add_required(p, sphere);
+			collectable_items(pt, &items);
+			if (!rando_world_win_condition(&pt->shadow, &items)) {
+				set_shadow_item(pt, p, real_item(pt, p));
+				add_required(pt, p, sphere);
 				continue;
 			}
-			bubble(world, p, sphere);
+			bubble(pt, p, sphere);
 		}
 	}
 }
@@ -236,7 +240,7 @@ static bool is_trade(int p)
 	return !is_shop(p) && rando_location_info((RandoLocationId)p)->location_class == RANDO_LOCATION_CLASS_TRADE;
 }
 
-static void push_entry(RandoPlaythrough *out, int round, int p)
+static void push_entry(const Playthrough *pt, RandoPlaythrough *out, int round, int p)
 {
 	RandoPlaythroughEntry *e;
 
@@ -246,7 +250,7 @@ static void push_entry(RandoPlaythrough *out, int round, int p)
 	e->location = is_shop(p) ? RANDO_LOCATION_NONE : (RandoLocationId)p;
 	e->shop = is_shop(p) ? shop_of(p) : RANDO_SHOP_NONE;
 	e->slot = (uint8_t)(is_shop(p) ? slot_of(p) : 0);
-	e->item = shadow_item(p);
+	e->item = shadow_item(pt, p);
 }
 
 const char *rando_playthrough_entry_region(const RandoPlaythroughEntry *e)
@@ -277,14 +281,14 @@ static void count_rounds_and_regions(RandoPlaythrough *out)
 	}
 }
 
-static void replay(const RandoWorld *world, RandoPlaythrough *out)
+static void replay(Playthrough *pt, RandoPlaythrough *out)
 {
-	const RandoConfig *c = &world->config;
-	RandoItems my_items = shadow.pre_collected, found;
+	const RandoConfig *c = &pt->world->config;
+	RandoItems my_items = pt->shadow.pre_collected, found;
 	int longest = 1, round_size = 0, p, nfound;
 	bool available[PSEUDO_COUNT];
 
-	memset(in_order, 0, sizeof in_order);
+	memset(pt->in_order, 0, sizeof pt->in_order);
 	out->nentries = 0;
 	do {
 		if (round_size > 0)
@@ -293,22 +297,22 @@ static void replay(const RandoWorld *world, RandoPlaythrough *out)
 		nfound = 0;
 		rando_items_clear(&found);
 		for (p = 0; p < PSEUDO_COUNT; p++) {
-			available[p] = is_collectable(p) && shadow_item(p) != RANDO_ITEM_NONE
-				       && !in_order[p] && can_access(world, world, p, &my_items);
+			available[p] = is_collectable(p) && shadow_item(pt, p) != RANDO_ITEM_NONE
+				       && !pt->in_order[p] && can_access(pt, pt->world, p, &my_items);
 			if (available[p]) {
-				rando_items_add(&found, shadow_item(p));
+				rando_items_add(&found, shadow_item(pt, p));
 				nfound++;
 			}
 		}
 		for (p = 0; p < PSEUDO_COUNT; p++) {
 			if (!available[p])
 				continue;
-			in_order[p] = true;
-			if (round_skips(c, shadow_item(p)))
+			pt->in_order[p] = true;
+			if (round_skips(c, shadow_item(pt, p)))
 				continue;
 			round_size++;
 			if (!is_trade(p))
-				push_entry(out, longest, p);
+				push_entry(pt, out, longest, p);
 		}
 		rando_items_merge(&my_items, &my_items, &found);
 	} while (nfound > 0);
@@ -317,24 +321,26 @@ static void replay(const RandoWorld *world, RandoPlaythrough *out)
 
 void rando_playthrough(const RandoWorld *world, RandoPlaythrough *out)
 {
+	Playthrough pt;
 	int i, p;
 
-	rando_world_copy(&shadow, world);
-	memcpy(shadow_shop_items, shadow.shop_items, sizeof shadow_shop_items);
+	pt.world = world;
+	rando_world_copy(&pt.shadow, world);
+	memcpy(pt.shadow_shop_items, pt.shadow.shop_items, sizeof pt.shadow_shop_items);
 	for (p = 0; p < RANDO_LOCATION_COUNT; p++)
-		if (is_junk(shadow_item(p)))
-			set_shadow_item(p, RANDO_ITEM_NONE);
-	build_spheres(world);
-	prune(world);
+		if (is_junk(shadow_item(&pt, p)))
+			set_shadow_item(&pt, p, RANDO_ITEM_NONE);
+	build_spheres(&pt);
+	prune(&pt);
 
 	out->nequipped = 0;
-	for (i = 0; i < rando_world_pre_collected_count(&shadow); i++) {
-		RandoItemId item = rando_world_pre_collected_item(&shadow, i);
+	for (i = 0; i < rando_world_pre_collected_count(&pt.shadow); i++) {
+		RandoItemId item = rando_world_pre_collected_item(&pt.shadow, i);
 		RandoItemClass c = rando_item_info(item)->item_class;
 
 		if (c != RANDO_ITEM_CLASS_UPGRADE_ARROW && c != RANDO_ITEM_CLASS_UPGRADE_BOMB
 		    && c != RANDO_ITEM_CLASS_HEALTH && c != RANDO_ITEM_CLASS_EVENT)
 			out->equipped[out->nequipped++] = item;
 	}
-	replay(world, out);
+	replay(&pt, out);
 }

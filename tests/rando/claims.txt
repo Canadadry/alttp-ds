@@ -19,7 +19,7 @@ item_placement-basic all
 weapons-assured all
 weapons-vanilla all
 dungeon_items-mc all
-dungeon_items-mcs prepareWorld
+dungeon_items-mcs all
 dungeon_items-full all
 accessibility-locations all
 accessibility-none all
