@@ -1,5 +1,6 @@
 #!/bin/sh
-# Usage: selftest.sh
+# Usage: selftest.sh [discovery]
+# With "discovery", runs only the case-discovery checks (fast, run by make test).
 # Exit 0 when every check passes, 1 on the first failure.
 set -eu
 export LC_ALL=C
@@ -47,3 +48,142 @@ expect "missing dir status" "$status" 0
 expect "missing dir stdout" "$out" ""
 
 echo "selftest: discovery passed"
+if [ "${1:-}" = discovery ]; then exit 0; fi
+
+g="$tmp/gate"
+mkdir -p "$g/cases/one" "$g/cases/two" "$g/out/two"
+for c in one two; do
+	echo '{}' >"$g/cases/$c/config.json"
+	echo 1 >"$g/cases/$c/seed"
+done
+cat >"$g/cases/two/trace.txt" <<'EOF2'
+0 1 alpha 0 6 -> 3
+0 2 alpha 0 6 -> 4
+0 3 beta 0 1 -> 1
+0 4 gamma 0 2 -> 2
+1 1 alpha 0 6 -> 5
+1 2 beta 0 1 -> 0
+EOF2
+echo 1 >"$g/cases/two/attempts"
+printf '{\n    "meta": {\n        "seed": 1\n    }\n}\n' >"$g/cases/two/spoiler.json"
+printf 'stage alpha\nstage zero\nstage beta\nstage gamma\n' >"$g/stages.txt"
+cat >"$g/gen" <<'EOF2'
+#!/bin/sh
+src="$FAKE_OUT/$(basename "$1")"
+for f in "$src"/*; do if [ -f "$f" ]; then cp "$f" "$2"/; fi; done
+if [ -f "$src/status" ]; then exit "$(cat "$src/status")"; fi
+EOF2
+chmod +x "$g/gen"
+
+# gate <label> <claims> <expected status> <expected stdout> [<expected stderr>]
+gate() {
+	printf '%s' "$2" >"$g/claims.txt"
+	status=0
+	out="$(RANDO_CASES="$g/cases" RANDO_CLAIMS="$g/claims.txt" RANDO_STAGES="$g/stages.txt" \
+		RANDO_GEN="${gen_override:-$g/gen}" FAKE_OUT="$g/out" "$here/run_e2e.sh" ${named:-} 2>"$tmp/err")" || status=$?
+	expect "$1 status" "$status" "$3"
+	expect "$1 stdout" "$out" "$4"
+	expect "$1 stderr" "$(cat "$tmp/err")" "${5:-}"
+}
+
+# fake <file> <content>: what the fake generator writes for case two
+fake() {
+	printf '%s' "$2" >"$g/out/two/$1"
+}
+
+golden_lines() {
+	head -n "$1" "$g/cases/two/trace.txt"
+}
+
+fake trace.txt ""
+gate "no claim" "# comment$nl$nl" 0 "PENDING one${nl}PENDING two${nl}e2e: 0 pass, 0 divergent, 2 pending"
+
+fake trace.txt "$(golden_lines 3)$nl"
+gate "stage pass, prefix within attempt 0" "two beta$nl" 0 \
+	"PENDING one${nl}PASS two (beta)${nl}e2e: 1 pass, 0 divergent, 1 pending"
+
+fake trace.txt "$(golden_lines 4)$nl"
+gate "prefix ends at the last attempt-0 line" "two gamma$nl" 0 \
+	"PENDING one${nl}PASS two (gamma)${nl}e2e: 1 pass, 0 divergent, 1 pending"
+
+fake trace.txt "$(cat "$g/cases/two/trace.txt")${nl}2 1 alpha 0 6 -> 0$nl"
+gate "longer C trace" "two alpha$nl" 0 \
+	"PENDING one${nl}PASS two (alpha)${nl}e2e: 1 pass, 0 divergent, 1 pending"
+
+fake trace.txt "0 1 alpha 0 6 -> 3${nl}0 2 alpha 0 6 -> 5${nl}0 3 beta 0 1 -> 1$nl"
+gate "first differing draw" "two beta$nl" 1 \
+	"PENDING one${nl}DIVERGENT two${nl}  first differing draw:${nl}    golden: 0 2 alpha 0 6 -> 4${nl}    c: 0 2 alpha 0 6 -> 5${nl}e2e: 0 pass, 1 divergent, 1 pending"
+
+fake trace.txt "$(golden_lines 2)$nl"
+gate "short C trace" "two gamma$nl" 1 \
+	"PENDING one${nl}DIVERGENT two${nl}  c trace ends after 2 draws, claim needs 4${nl}e2e: 0 pass, 1 divergent, 1 pending"
+
+rm "$g/out/two/trace.txt"
+gate "no C trace" "two alpha$nl" 1 \
+	"PENDING one${nl}DIVERGENT two${nl}  c trace ends after 0 draws, claim needs 2${nl}e2e: 0 pass, 1 divergent, 1 pending"
+
+gen_override="$g/missing"
+gate "missing generator" "two alpha$nl" 1 \
+	"PENDING one${nl}DIVERGENT two${nl}  no C generator: $g/missing${nl}e2e: 0 pass, 1 divergent, 1 pending"
+gen_override=
+
+cp "$g/cases/two/trace.txt" "$g/cases/two/attempts" "$g/cases/two/spoiler.json" "$g/out/two/"
+gate "all pass" "two all$nl" 0 \
+	"PENDING one${nl}PASS two (all)${nl}e2e: 1 pass, 0 divergent, 1 pending"
+
+named=two
+gate "one case named" "two all$nl" 0 "PASS two (all)${nl}e2e: 1 pass, 0 divergent, 0 pending"
+named=
+
+fake status 3
+gate "all, generator fails" "two all$nl" 1 \
+	"PENDING one${nl}DIVERGENT two${nl}  C generator exited 3${nl}e2e: 0 pass, 1 divergent, 1 pending"
+rm "$g/out/two/status"
+
+fake attempts "0$nl"
+gate "attempts mismatch" "two all$nl" 1 \
+	"PENDING one${nl}DIVERGENT two${nl}  attempts: first differing line 1:${nl}    golden: 1${nl}    c: 0${nl}e2e: 0 pass, 1 divergent, 1 pending"
+cp "$g/cases/two/attempts" "$g/out/two/"
+
+fake trace.txt "$(golden_lines 5)$nl"
+gate "all, short C trace" "two all$nl" 1 \
+	"PENDING one${nl}DIVERGENT two${nl}  c trace ends after 5 draws, claim needs 6${nl}e2e: 0 pass, 1 divergent, 1 pending"
+cp "$g/cases/two/trace.txt" "$g/out/two/"
+
+fake spoiler.json "{$nl    \"meta\": {$nl        \"seed\": 2$nl    }$nl}$nl"
+gate "spoiler mismatch" "two all$nl" 1 \
+	"PENDING one${nl}DIVERGENT two${nl}  spoiler.json: first differing line 3:${nl}    golden:         \"seed\": 1${nl}    c:         \"seed\": 2${nl}e2e: 0 pass, 1 divergent, 1 pending"
+
+rm "$g/out/two/spoiler.json"
+gate "missing C spoiler" "two all$nl" 1 \
+	"PENDING one${nl}DIVERGENT two${nl}  c wrote no spoiler.json${nl}e2e: 0 pass, 1 divergent, 1 pending"
+
+c="$g/claims.txt"
+gate "malformed claim" "two$nl" 2 "" "run_e2e.sh: $c:1: malformed line"
+gate "malformed claim, extra field" "two beta x$nl" 2 "" "run_e2e.sh: $c:1: malformed line"
+gate "claimed case unknown" "# x${nl}three all$nl" 2 "" "run_e2e.sh: $c:2: no such case: three"
+gate "duplicate claim" "two all${nl}two beta$nl" 2 "" "run_e2e.sh: $c:2: duplicate case: two"
+gate "unknown stage" "two delta$nl" 2 "" "run_e2e.sh: $c:1: unknown stage: delta"
+gate "zero-draw stage" "two zero$nl" 2 "" "run_e2e.sh: $c:1: zero makes no draw in attempt 0 of two"
+
+s="$g/stages.txt"
+printf 'stage beta\nstage alpha\nstage zero\nstage gamma\n' >"$s"
+gate "golden out of table order" "two all$nl" 2 "" "run_e2e.sh: two: golden stage beta out of table order"
+gate "out of order but unclaimed" "" 0 "PENDING one${nl}PENDING two${nl}e2e: 0 pass, 0 divergent, 2 pending"
+printf 'stage alpha\nstage zero\nstage gamma\n' >"$s"
+gate "golden stage not in table" "two alpha$nl" 2 "" "run_e2e.sh: two: golden stage beta not in table"
+
+printf 'stage alpha\nstage\n' >"$s"
+gate "malformed stage line" "" 2 "" "run_e2e.sh: $s:2: malformed line"
+printf 'stage alpha\nstep beta\n' >"$s"
+gate "unknown stage-table line" "" 2 "" "run_e2e.sh: $s:2: malformed line"
+printf 'stage alpha\nstage alpha\n' >"$s"
+gate "duplicate stage" "" 2 "" "run_e2e.sh: $s:2: duplicate stage: alpha"
+printf 'stage alpha\ncheck delta pool\n' >"$s"
+gate "check on unknown stage" "" 2 "" "run_e2e.sh: $s:2: check names unknown stage: delta"
+printf 'stage alpha\ncheck alpha lines x\n' >"$s"
+gate "unknown check kind" "" 2 "" "run_e2e.sh: $s:2: unknown check kind: lines"
+printf 'stage alpha\ncheck alpha section\n' >"$s"
+gate "section without name" "" 2 "" "run_e2e.sh: $s:2: malformed line"
+
+echo "selftest: gate passed"

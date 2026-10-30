@@ -8,12 +8,15 @@ UNIT_TESTS := test_prng
 RANDO_SRC := $(wildcard $(RANDO)/src/*.c $(RANDO)/src/*/*.c)
 UNIT_BINS := $(addprefix $(BUILD)/,$(UNIT_TESTS))
 
-.PHONY: test e2e clean
+.PHONY: test selftest e2e clean
 
 test: $(UNIT_BINS)
 	@set -e; for t in $(UNIT_BINS); do ./$$t; done
+	@./selftest.sh discovery
+	@echo "test: $(words $(UNIT_TESTS)) unit tests and the discovery self-test ran"
+
+selftest:
 	@./selftest.sh
-	@echo "test: $(words $(UNIT_TESTS)) unit tests and the shell self-test ran"
 
 e2e:
 	@./run_e2e.sh

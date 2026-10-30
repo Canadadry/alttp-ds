@@ -13,7 +13,7 @@
     - [x] Chunk 1: C PRNG
     - [x] Chunk 2: fy_shuffle and the vector file
     - [x] Chunk 3: shared case discovery
-    - [ ] Chunk 4: claims and trace-prefix gate
+    - [x] Chunk 4: claims and trace-prefix gate
     - [ ] Chunk 5: spoiler checks
     - [ ] Chunk 6: CI
   - [ ] 2.2 World, regions and location rules for the baseline

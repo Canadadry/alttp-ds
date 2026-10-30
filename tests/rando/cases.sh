@@ -8,7 +8,10 @@ discover_cases() {
 	shift 2
 	if [ "$#" -eq 0 ]; then
 		for _dc_case in "$_dc_dir"/*/; do
-			if [ -f "$_dc_case/config.json" ]; then basename "$_dc_case"; fi
+			if [ -f "$_dc_case/config.json" ]; then
+				_dc_case="${_dc_case%/}"
+				echo "${_dc_case##*/}"
+			fi
 		done
 		return 0
 	fi
