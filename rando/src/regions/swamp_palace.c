@@ -1,10 +1,87 @@
 #include "../world_rules.h"
 
+#define FIRST RANDO_LOC_SWAMP_PALACE_ENTRANCE
+#define NLOCATIONS (RANDO_LOC_SWAMP_PALACE_PRIZE - FIRST + 1)
+
 static bool mire(const RandoWorld *world, const RandoItems *items)
 {
 	return world->config.can_one_frame_clip_uw
 		&& has_n(items, RANDO_ITEM_KeyD6, 3)
 		&& can_enter(world, RANDO_REGION_MISERY_MIRE, items);
+}
+
+static bool hera(const RandoWorld *world, const RandoItems *items)
+{
+	return world->config.can_one_frame_clip_uw
+		&& can_enter(world, RANDO_REGION_TOWER_OF_HERA, items)
+		&& has(items, RANDO_ITEM_BigKeyP3);
+}
+
+static bool past_first_key(const RandoWorld *world, const RandoItems *items)
+{
+	return (has(items, RANDO_ITEM_KeyD2) || mire(world, items))
+		&& (has(items, RANDO_ITEM_Hammer) || mire(world, items) || hera(world, items));
+}
+
+static bool entrance_fill(RandoWorld *world, RandoItemId item, const RandoItems *items)
+{
+	(void)items;
+	return world->config.can_one_frame_clip_uw || world->config.region_wild_keys || item == RANDO_ITEM_KeyD2;
+}
+
+static bool big_chest(const RandoWorld *world, const RandoItems *items)
+{
+	return past_first_key(world, items)
+		&& (has(items, RANDO_ITEM_BigKeyD2)
+		    || (mire(world, items) && has(items, RANDO_ITEM_BigKeyD6))
+		    || (hera(world, items) && has(items, RANDO_ITEM_BigKeyP3)));
+}
+
+static bool big_chest_always_allow(const RandoWorld *world, RandoItemId item, const RandoItems *items)
+{
+	(void)items;
+	return world->config.accessibility != RANDO_ACCESSIBILITY_LOCATIONS && item == RANDO_ITEM_BigKeyD2;
+}
+
+static bool big_chest_fill(RandoWorld *world, RandoItemId item, const RandoItems *items)
+{
+	(void)items;
+	return world->config.accessibility != RANDO_ACCESSIBILITY_LOCATIONS || item != RANDO_ITEM_BigKeyD2;
+}
+
+static bool map_chest(const RandoWorld *world, const RandoItems *items)
+{
+	return rando_items_can_bomb_things(items) && (has(items, RANDO_ITEM_KeyD2) || mire(world, items));
+}
+
+static bool flooded(const RandoWorld *world, const RandoItems *items)
+{
+	return has(items, RANDO_ITEM_Hookshot) && past_first_key(world, items);
+}
+
+static bool boss(const RandoWorld *world, const RandoItems *items)
+{
+	return flooded(world, items)
+		&& boss_can_beat(world, RANDO_REGION_SWAMP_PALACE, items)
+		&& boss_has_wild_compass_and_map(world, RANDO_LOC_SWAMP_PALACE_BOSS, RANDO_ITEM_CompassD2,
+						 RANDO_ITEM_MapD2, items);
+}
+
+static bool boss_fill(RandoWorld *world, RandoItemId item, const RandoItems *items)
+{
+	(void)items;
+	return boss_fill_allows(world, item);
+}
+
+static bool boss_always_allow(const RandoWorld *world, RandoItemId item, const RandoItems *items)
+{
+	(void)items;
+	return boss_always_allows(world, item, RANDO_ITEM_CompassD2, RANDO_ITEM_MapD2);
+}
+
+static bool complete(const RandoWorld *world, const RandoItems *items)
+{
+	return rando_world_can_access(world, RANDO_LOC_SWAMP_PALACE_BOSS, items);
 }
 
 static bool enter(const RandoWorld *world, const RandoItems *items)
@@ -26,6 +103,20 @@ static bool enter(const RandoWorld *world, const RandoItems *items)
 			    || c->can_one_frame_clip_ow)));
 }
 
+static const RandoLocationRules locations[NLOCATIONS] = {
+	[RANDO_LOC_SWAMP_PALACE_ENTRANCE - FIRST] = {NULL, entrance_fill, NULL},
+	[RANDO_LOC_SWAMP_PALACE_BIG_CHEST - FIRST] = {big_chest, big_chest_fill, big_chest_always_allow},
+	[RANDO_LOC_SWAMP_PALACE_BIG_KEY_CHEST - FIRST] = {past_first_key, NULL, NULL},
+	[RANDO_LOC_SWAMP_PALACE_MAP_CHEST - FIRST] = {map_chest, NULL, NULL},
+	[RANDO_LOC_SWAMP_PALACE_WEST_CHEST - FIRST] = {past_first_key, NULL, NULL},
+	[RANDO_LOC_SWAMP_PALACE_COMPASS_CHEST - FIRST] = {past_first_key, NULL, NULL},
+	[RANDO_LOC_SWAMP_PALACE_FLOODED_ROOM_LEFT - FIRST] = {flooded, NULL, NULL},
+	[RANDO_LOC_SWAMP_PALACE_FLOODED_ROOM_RIGHT - FIRST] = {flooded, NULL, NULL},
+	[RANDO_LOC_SWAMP_PALACE_WATERFALL_ROOM - FIRST] = {flooded, NULL, NULL},
+	[RANDO_LOC_SWAMP_PALACE_BOSS - FIRST] = {boss, boss_fill, boss_always_allow},
+	[RANDO_LOC_SWAMP_PALACE_PRIZE - FIRST] = {complete, NULL, NULL},
+};
+
 const RandoRegionRules rando_rules_swamp_palace = {
-	"Region\\Standard\\SwampPalace", enter, NULL, NULL, NULL,
+	"Region\\Standard\\SwampPalace", enter, complete, locations, NULL,
 };

@@ -22,7 +22,7 @@
     - [x] Chunk 3: world core
     - [x] Chunk 4: overworld regions and escape variants
     - [x] Chunk 5: Light World dungeons
-    - [ ] Chunk 6: PoD, Swamp, Skull Woods, Thieves' Town
+    - [x] Chunk 6: PoD, Swamp, Skull Woods, Thieves' Town
     - [ ] Chunk 7: Ice Palace, Misery Mire, Turtle Rock
     - [ ] Chunk 8: Ganon's Tower and full row count
   - [ ] 2.3 Pre-fill RNG consumers

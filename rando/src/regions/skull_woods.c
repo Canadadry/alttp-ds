@@ -1,5 +1,40 @@
 #include "../world_rules.h"
 
+#define FIRST RANDO_LOC_SKULL_WOODS_BIG_CHEST
+#define NLOCATIONS (RANDO_LOC_SKULL_WOODS_PRIZE - FIRST + 1)
+
+static bool pinball_room_fill(RandoWorld *world, RandoItemId item, const RandoItems *items)
+{
+	(void)items;
+	return !world->config.region_force_skull_woods_key || item == RANDO_ITEM_KeyD3;
+}
+
+static bool big_chest(const RandoWorld *world, const RandoItems *items)
+{
+	(void)world;
+	return has(items, RANDO_ITEM_BigKeyD3);
+}
+
+static bool big_chest_always_allow(const RandoWorld *world, RandoItemId item, const RandoItems *items)
+{
+	(void)items;
+	return world->config.accessibility != RANDO_ACCESSIBILITY_LOCATIONS && item == RANDO_ITEM_BigKeyD3;
+}
+
+static bool big_chest_fill(RandoWorld *world, RandoItemId item, const RandoItems *items)
+{
+	(void)items;
+	return world->config.accessibility != RANDO_ACCESSIBILITY_LOCATIONS || item != RANDO_ITEM_BigKeyD3;
+}
+
+static bool bridge_room(const RandoWorld *world, const RandoItems *items)
+{
+	return has(items, RANDO_ITEM_FireRod)
+		&& (has(items, RANDO_ITEM_MoonPearl)
+		    || (world->config.can_dungeon_revive && has(items, RANDO_ITEM_PegasusBoots)
+			&& (has(items, RANDO_ITEM_MagicMirror) || rando_items_has_a_bottle(items))));
+}
+
 static bool enter(const RandoWorld *world, const RandoItems *items)
 {
 	const RandoConfig *c = &world->config;
@@ -14,6 +49,42 @@ static bool enter(const RandoWorld *world, const RandoItems *items)
 		&& can_enter(world, RANDO_REGION_NORTH_WEST_DARK_WORLD, items);
 }
 
+static bool boss(const RandoWorld *world, const RandoItems *items)
+{
+	return enter(world, items)
+		&& bridge_room(world, items)
+		&& (world->config.mode_weapons == RANDO_WEAPONS_SWORDLESS || rando_items_has_sword(items, 1))
+		&& has_n(items, RANDO_ITEM_KeyD3, 3)
+		&& boss_can_beat(world, RANDO_REGION_SKULL_WOODS, items)
+		&& boss_has_wild_compass_and_map(world, RANDO_LOC_SKULL_WOODS_BOSS, RANDO_ITEM_CompassD3,
+						 RANDO_ITEM_MapD3, items);
+}
+
+static bool boss_fill(RandoWorld *world, RandoItemId item, const RandoItems *items)
+{
+	(void)items;
+	return boss_fill_allows(world, item);
+}
+
+static bool boss_always_allow(const RandoWorld *world, RandoItemId item, const RandoItems *items)
+{
+	(void)items;
+	return boss_always_allows(world, item, RANDO_ITEM_CompassD3, RANDO_ITEM_MapD3);
+}
+
+static bool complete(const RandoWorld *world, const RandoItems *items)
+{
+	return rando_world_can_access(world, RANDO_LOC_SKULL_WOODS_BOSS, items);
+}
+
+static const RandoLocationRules locations[NLOCATIONS] = {
+	[RANDO_LOC_SKULL_WOODS_BIG_CHEST - FIRST] = {big_chest, big_chest_fill, big_chest_always_allow},
+	[RANDO_LOC_SKULL_WOODS_BRIDGE_ROOM - FIRST] = {bridge_room, NULL, NULL},
+	[RANDO_LOC_SKULL_WOODS_PINBALL_ROOM - FIRST] = {NULL, pinball_room_fill, NULL},
+	[RANDO_LOC_SKULL_WOODS_BOSS - FIRST] = {boss, boss_fill, boss_always_allow},
+	[RANDO_LOC_SKULL_WOODS_PRIZE - FIRST] = {complete, NULL, NULL},
+};
+
 const RandoRegionRules rando_rules_skull_woods = {
-	"Region\\Standard\\SkullWoods", enter, NULL, NULL, NULL,
+	"Region\\Standard\\SkullWoods", enter, complete, locations, NULL,
 };
