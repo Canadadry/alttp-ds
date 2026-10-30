@@ -23,7 +23,10 @@ FUNC_START32 __irq_handler
 	ldm   r12, {r0, r1}       @ read both IE and IF at the same time
 	ands  r0, r0, r1          @ r0 <- IO_IE & IO_IF
 #if defined(ARM9)
-	ldmeqia sp!, {r0-r3,r12,pc}^ @ GAS doesn't like pop {reglist}^; so use the "real" opcode instead
+	@ Not ldm sp!, {..pc}^: melonDS before 1.0 writes sp back after the mode
+	@ switch, into the interrupted mode's sp.
+	ldmeqia sp!, {r0-r3,r12,lr}
+	moveqs pc, lr
 #elif defined(ARM7)
 	bne   1f
 
@@ -129,7 +132,8 @@ FUNC_START32 __irq_handler
 #if defined(ARM7)
 	ldreq pc, [sp, #-4] @ Return to BIOS if not
 #elif defined(ARM9)
-	ldmeqia sp!, {r0-r3,r12,pc}^
+	ldmeqia sp!, {r0-r3,r12,lr}
+	moveqs pc, lr
 #endif
 
 	@ s_curThread = s_deferredThread; s_deferredThread = NULL;
