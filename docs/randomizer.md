@@ -116,8 +116,14 @@ to its own stage when they hold.
 
 `make -C tests/rando e2e` stays under 0.5 s on the host, and every step note records its time. A
 step whose new claims or checks would break that budget first restructures the gate, in its own
-commit, so that a claim's cost no longer grows with its number of due checks; `make selftest`
-proves the verdicts and messages unchanged.
+commit, so that the gate's wall time no longer grows with what it pays for: per-claim checks
+(done in 2.3.3) or, at `all`, one generator run per claim (run claims in parallel with output
+kept in case order, and/or make the generator cheaper); `make selftest` proves the verdicts and
+messages unchanged.
+
+`make test` gets only hand-written cases; ported location tests replay through `make logic`
+fixtures, as in step 2.2. Every step note records the `make test` time against step 2.5's
+figure. Steps that change logic record `make measure`'s maximum host time per case.
 
 ### Comparison
 
@@ -218,10 +224,29 @@ VT draws from the RNG, read from `Randomizer::randomize()`.
 
 ### Phase 3 — Options
 
-One step per option row of the test matrix, in table order. Each claims that row's cases and
-ports the location tests VT has for it (`tests/Inverted`, `tests/OverworldGlitches`, …). The
-`glitches` and `state` rows, whose values each bring their own logic or world, get one step per
-value instead.
+One step per option row of the test matrix. Each claims that row's cases and ports the location
+tests VT has for it (`tests/Inverted`, `tests/OverworldGlitches`, …). The `glitches` and `state`
+rows, whose values each bring their own logic or world, get one step per value instead. A row
+step is done when its cases are claimed at `all` and its listed tests are ported.
+
+Execution order, as listed (numbers match `progress.md`):
+
+0. **Claim what is green.** First the e2e budget restructure (§ Convergence gate), then every
+   case that holds claimed at `all`. The note lists, per row, the VT test files and methods that
+   row owes, enumerated from VT's `tests/` tree. A row whose cases are all claimed and whose list
+   is empty gets its `### Step 3.k` note here and is ticked, with no PRD. Then, under those
+   claims, one refactor commit (`test`, `logic`, `e2e` unchanged) merging the library
+   duplications Phase 2's warn-review found on Phase 3's paths: the map/compass-not-wild test,
+   `randomCollection`, the collect-until-stable loop, the list find/remove logic, and the inline
+   config defaults, shop prices and bottle index.
+6. **`dungeon_items`**, before any other logic step: it settles the rule shape (`dungeon_items-mcs`
+   needs VT's nested rules to read the shadow world, step 2.4 note) before glitch and inverted
+   rules are written. It also removes the host playthrough's static state.
+1–5, 7–16. The other rows, in table order.
+
+Phase 2's other host-only warn-review warnings (`rando_gen.c` statics and duplicated file
+handling, `spoiler_json.c` scratch buffers, the watchdog defined three times, `measure.sh`
+constants) are left open for the pull request.
 
 ### Phase 4 — Fits on the DS
 
@@ -409,3 +434,22 @@ None.
   `prepareWorld`; 19 pass, 25 pending; e2e ~0.29 s; `make test` ~80 ms (up from ~60: noisy host,
   but trending up). Cross-attempt state where `World::copy` keeps the collect cache is caught only
   by `make test`; the identity test guards a world not reinitialized per attempt.
+
+### Step 2.5
+
+- `make -C tests/rando measure` (not in CI, never run by `test` or `e2e`): library at -O2/-Os
+  without `RANDO_FAULTS`, a clang ARMv5TE proxy (devkitARM absent here), and `rando_measure` on a
+  painted 1 MiB thread stack.
+- Budget assumptions, to restate in roadmap item 2: A-1 stack peak ≤ 8 KiB (half of a 16 KiB
+  DTCM); A-2 code+rodata ≤ 128 KiB and state ≤ 32 KiB, no writable static in the library; A-3
+  ≤ 2 s per generation on the DS, host factor ×150 (13 ms on the host); A-4 no separate attempt
+  budget.
+- Figures: `RandoGen` 3 912 B (ARM 3 892); library code+rodata 80 KB (ARM proxy) to 96 KB (host
+  -O2), 0 writable, 0 bss; largest frame 2.6 KB (`rando_prepare_pools`); stack peak 6.2 KB net,
+  ARM frames ≤ 1.0× host → within A-1. All 42 supported cases match the golden's attempts, draws
+  and per-stage counts. Baseline 3.7 ms; 1 024-seed sweep: no retry, median 4.0 ms, max 6.9 ms
+  (DS projection 0.6 s / 1.0 s).
+- Over budget: `item_placement-basic` takes ~20 ms on the host (A-3 is 13 ms; ~3 s projected on
+  the DS). To look at before roadmap item 2.
+- Thread overhead is the entry frame depth, not a painted empty run (glibc writes below the
+  entry frame before the job runs).

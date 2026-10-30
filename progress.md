@@ -8,7 +8,7 @@
   - [x] 1.2 Every golden committed
     - [x] Chunk 1: case list
     - [x] Chunk 2: goldens
-- [ ] Phase 2 — C port, baseline
+- [x] Phase 2 — C port, baseline
   - [x] 2.1 PRNG and fy_shuffle, convergence gate claims, CI
     - [x] Chunk 1: C PRNG
     - [x] Chunk 2: fy_shuffle and the vector file
@@ -62,11 +62,12 @@
     - [x] Chunk 6: budget, then claims
       - [x] -O2 e2e generator
       - [x] Claims raised to all
-  - [ ] 2.5 Measure on the host
+  - [x] 2.5 Measure on the host
     - [x] Chunk 1: measure target and static figures
     - [x] Chunk 2: run-time driver
-    - [ ] Chunk 3: step note
+    - [x] Chunk 3: step note
 - [ ] Phase 3 — Options
+  - [ ] 3.0 Claim what is green, refactor duplications
   - [ ] 3.1 glitches: overworld_glitches
   - [ ] 3.2 glitches: hybrid_major_glitches
   - [ ] 3.3 glitches: major_glitches
