@@ -273,6 +273,8 @@ bool rando_items_has_n(const RandoItems *items, RandoItemId id, int at_least)
 	assert(id < RANDO_ITEM_COUNT && "rando_items_has_n: not an item id");
 	if (at_least == 0)
 		return true;
+	if (at_least == RANDO_CONFIG_NULL)
+		return false;
 	if (items->counts[RANDO_ITEM_ShopKey] > 0 && item_table[id].key_prefixed)
 		return true;
 	return items->counts[id] >= at_least;

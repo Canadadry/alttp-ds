@@ -123,21 +123,22 @@ static void check_region_can_fill(void)
 static void check_can_fill_and_fill(void)
 {
 	RandoWorld world;
-	RandoItems none;
+	RandoItems zelda;
 
 	standard_world(&world);
-	rando_items_clear(&none);
+	rando_items_clear(&zelda);
+	rando_items_add(&zelda, RANDO_ITEM_RescueZelda);
 	CHECK(rando_world_set_item(&world, RANDO_LOC_EASTERN_PALACE_MAP_CHEST, RANDO_ITEM_Hammer));
-	CHECK(rando_world_can_fill(&world, RANDO_LOC_EASTERN_PALACE_MAP_CHEST, RANDO_ITEM_KeyP1, &none, true));
-	CHECK(!rando_world_can_fill(&world, RANDO_LOC_EASTERN_PALACE_MAP_CHEST, RANDO_ITEM_KeyP2, &none, false));
+	CHECK(rando_world_can_fill(&world, RANDO_LOC_EASTERN_PALACE_MAP_CHEST, RANDO_ITEM_KeyP1, &zelda, true));
+	CHECK(!rando_world_can_fill(&world, RANDO_LOC_EASTERN_PALACE_MAP_CHEST, RANDO_ITEM_KeyP2, &zelda, false));
 	CHECK(rando_world_item(&world, RANDO_LOC_EASTERN_PALACE_MAP_CHEST) == RANDO_ITEM_Hammer);
 
-	CHECK(!rando_world_fill(&world, RANDO_LOC_EASTERN_PALACE_MAP_CHEST, RANDO_ITEM_BigKeyP2, &none));
+	CHECK(!rando_world_fill(&world, RANDO_LOC_EASTERN_PALACE_MAP_CHEST, RANDO_ITEM_BigKeyP2, &zelda));
 	CHECK(rando_world_item(&world, RANDO_LOC_EASTERN_PALACE_MAP_CHEST) == RANDO_ITEM_Hammer);
-	CHECK(rando_world_fill(&world, RANDO_LOC_EASTERN_PALACE_MAP_CHEST, RANDO_ITEM_BigKeyP1, &none));
+	CHECK(rando_world_fill(&world, RANDO_LOC_EASTERN_PALACE_MAP_CHEST, RANDO_ITEM_BigKeyP1, &zelda));
 	CHECK(rando_world_item(&world, RANDO_LOC_EASTERN_PALACE_MAP_CHEST) == RANDO_ITEM_BigKeyP1);
 
-	CHECK(rando_world_can_fill(&world, RANDO_LOC_MASTER_SWORD_PEDESTAL, RANDO_ITEM_MasterSword, &none, false));
+	CHECK(rando_world_can_fill(&world, RANDO_LOC_MASTER_SWORD_PEDESTAL, RANDO_ITEM_MasterSword, &zelda, false));
 	CHECK(!rando_world_has_item(&world, RANDO_LOC_MASTER_SWORD_PEDESTAL, RANDO_ITEM_NONE));
 }
 
@@ -361,19 +362,6 @@ static int check_world_dump(void)
 	return records;
 }
 
-/* The collect scenarios whose every step needs no region rule; chunk 4 enables the rest. */
-static const char *const enabled_collect_scenarios[] = {NULL};
-
-static int collect_enabled(const char *id)
-{
-	const char *const *e;
-
-	for (e = enabled_collect_scenarios; *e; e++)
-		if (strcmp(*e, id) == 0)
-			return 1;
-	return 0;
-}
-
 static void check_collected_set(const Fixture *fx, const RandoWorld *world, const char *want)
 {
 	char got[FIXTURE_LINE_MAX];
@@ -479,24 +467,21 @@ static void collect_step(const Fixture *fx, RandoWorld *world)
 	check_collected_set(fx, world, fx->field[9]);
 }
 
-/* Returns the number of collect steps replayed and stores the number of collect_step records in *total. */
-static int check_collect_vectors(int *total)
+/* Returns the number of collect steps replayed. */
+static int check_collect_vectors(void)
 {
 	RandoWorld world;
 	Fixture fx;
-	int steps = 0, enabled = 0;
+	int steps = 0, scenario = 0;
 
-	*total = 0;
 	fixture_open(&fx, FIXTURE_NOGLITCHES_ROWS);
 	while (fixture_next(&fx)) {
 		if (strcmp(fx.field[0], "collect_scenario") == 0) {
-			enabled = collect_enabled(fx.field[1]);
-			if (enabled)
-				collect_scenario(&fx, &world);
+			collect_scenario(&fx, &world);
+			scenario = 1;
 		} else if (strcmp(fx.field[0], "collect_step") == 0) {
-			(*total)++;
-			if (!enabled)
-				continue;
+			if (!scenario)
+				fixture_fail(&fx, "collect step before any scenario");
 			collect_step(&fx, &world);
 			steps++;
 		}
@@ -530,7 +515,9 @@ int main(int argc, char **argv)
 	if (rows != 360)
 		test_fail(TEST, "%d testRegionLockedItems rows replayed, the four classes have 360", rows);
 	printf(TEST ": %d of %d NoGlitches rows replayed (testRegionLockedItems)\n", rows, total);
-	rows = check_collect_vectors(&total);
-	printf(TEST ": %d of %d collectItems steps replayed\n", rows, total);
+	rows = check_collect_vectors();
+	if (rows == 0)
+		test_fail(TEST, "no collectItems step replayed");
+	printf(TEST ": %d collectItems steps replayed\n", rows);
 	return 0;
 }

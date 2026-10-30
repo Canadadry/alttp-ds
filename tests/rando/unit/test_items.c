@@ -375,7 +375,7 @@ static void check_bottle_counting(void)
 	}
 }
 
-/* ItemCollection::has: n == 0, then a ShopKey makes every Key* name true. */
+/* ItemCollection::has: n == 0, then a null n is false, then a ShopKey makes every Key* name true. */
 static void check_has(void)
 {
 	RandoItems items;
@@ -383,7 +383,9 @@ static void check_has(void)
 	rando_items_clear(&items);
 	CHECK(rando_items_has_n(&items, RANDO_ITEM_Hammer, 0));
 	CHECK(!rando_items_has(&items, RANDO_ITEM_KeyH2));
+	CHECK(!rando_items_has_n(&items, RANDO_ITEM_TriforcePiece, RANDO_CONFIG_NULL));
 	rando_items_add(&items, RANDO_ITEM_ShopKey);
+	CHECK(!rando_items_has_n(&items, RANDO_ITEM_KeyH2, RANDO_CONFIG_NULL));
 	CHECK(rando_items_has_n(&items, RANDO_ITEM_KeyH2, 5));
 	CHECK(rando_items_has(&items, RANDO_ITEM_Key));
 	CHECK(!rando_items_has(&items, RANDO_ITEM_BigKeyH2));

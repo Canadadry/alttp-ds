@@ -20,7 +20,7 @@
     - [x] Chunk 1: VT logic extractor and fixtures
     - [x] Chunk 2: items and bosses
     - [x] Chunk 3: world core
-    - [ ] Chunk 4: overworld regions and escape variants
+    - [x] Chunk 4: overworld regions and escape variants
     - [ ] Chunk 5: Light World dungeons
     - [ ] Chunk 6: PoD, Swamp, Skull Woods, Thieves' Town
     - [ ] Chunk 7: Ice Palace, Misery Mire, Turtle Rock

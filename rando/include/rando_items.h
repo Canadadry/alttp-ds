@@ -253,6 +253,7 @@ void rando_items_merge(RandoItems *out, const RandoItems *a, const RandoItems *b
 void rando_items_diff(RandoItems *out, const RandoItems *a, const RandoItems *b);
 
 bool rando_items_has(const RandoItems *items, RandoItemId id);
+/* RANDO_CONFIG_NULL is VT's has($key, null): false. */
 bool rando_items_has_n(const RandoItems *items, RandoItemId id, int at_least);
 int rando_items_count(const RandoItems *items);
 
