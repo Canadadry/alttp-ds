@@ -1,7 +1,7 @@
-- [ ] Phase 1 — The ROM exposes an EEPROM
+- [x] Phase 1 — The ROM exposes an EEPROM
   - [x] 1.1 ndstool writes game code ZLTP
     - [x] Makefile passes -g ZLTP to ndstool
-  - [ ] 1.2 The ARM9 reaches the EEPROM (probe)
+  - [x] 1.2 The ARM9 reaches the EEPROM (probe)
     - [x] probe, chip present
     - [x] no chip, notes, probe removed
 - [ ] Phase 2 — Save through the EEPROM only

@@ -135,3 +135,13 @@ This plan follows the boot fix already on branch `melonds-0.9.5-boot`, commits `
 - Header bytes `0x0C..0x0F`: `####` before, `ZLTP` after. Headless melonDS 0.9.5: `Game code: ZLTP`, `SaveMemType=2 homebrew=0` (new printf in the scratch melonDS `NDSCart.cpp` after `ReadROMParams`), `MARK9 main` and `ZeldaHostTick x300` reached.
 - ELF symbols unchanged (`main` 0x02001408, `ZeldaHostTick` 0x02009270), so the hardcoded MARK9 addresses still hold.
 - No `.sav` written yet: expected, nothing writes the EEPROM. No rando tests or e2e exist on this branch (§ 2), so check-e2e was skipped.
+
+### Step 1.2
+- Probe (commit 23e6f8e, removed in 75e8952) ran first in `ZeldaSaveMount`, on headless melonDS 0.9.5 with SPI/EXMEMCNT instrumentation.
+- Slot: plain `sysSetCardOwner(ARM9)`/`(ARM7)` works (EXMEMCNT `C880 -> C080 -> C880`). The ARM7 never touches the slot and `exmemcnt_mirror` holds no claim: a `ZLTP` ROM gets no DLDI patch (`dldi_io_type 0`, `dldi_features 0`). `boot_src` = Card.
+- Chip present: status `00`, `02` after WREN, `00` after WRDI; blank page reads `FF`.
+- **Deviation:** libnds `cardWriteEeprom` reached melonDS's memory but never the `.sav`. It keeps chip-select hold on the last byte and releases it through `AUXSPICNT`; released melonDS (0.9.5 to 1.1) commits a page only on a byte sent with hold cleared (only unreleased master 1db5729f changed that). A page write clearing hold before the last byte produced an 8192-byte `.sav` with the page. `cardWriteEeprom`'s write-in-progress poll has no timeout (objdump).
+- No chip (`SaveMemType` forced 0): every SPI byte reads `00`, status `00/00/00`; the probe returns and the ROM reaches `ZeldaHostTick`.
+- § 2 "EEPROM access" amended accordingly: own page write with hold cleared on the last byte, bounded polls, presence rule = status bit 1 set after WREN and clear after WRDI (both runs agree; a floating `FF` bus is inferred absent, not measured).
+- Phase 1 end: warn-review flagged the inline copy of ds_rules' ndstool recipe in the `Makefile` and no automated header check for `ZLTP`; plan-review proposed nothing.
+- Harness: pass the ROM as `./lttp-ds.nds` (a bare name breaks the save path); clear stale shared memory after `pkill -9` (`ipcrm`), see `scratchpad/tools/run.sh`.
