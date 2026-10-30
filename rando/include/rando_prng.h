@@ -1,6 +1,7 @@
 #ifndef RANDO_PRNG_H
 #define RANDO_PRNG_H
 
+#include <stddef.h>
 #include <stdint.h>
 
 typedef void (*RandoDrawObserver)(void *ctx, int64_t min, int64_t max, int64_t r);
@@ -19,5 +20,7 @@ uint32_t rando_prng_next(RandoPrng *prng);
 /* VT's get_random_int: min + next() % (max - min + 1), one next() even when min == max.
  * Asserts min <= max and a span of at most 2^32. */
 int64_t rando_random_int(RandoPrng *prng, int64_t min, int64_t max);
+/* VT's fy_shuffle, in place on count elements of size bytes: exactly count draws. */
+void rando_fy_shuffle(RandoPrng *prng, void *base, size_t count, size_t size);
 
 #endif

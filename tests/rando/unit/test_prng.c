@@ -64,6 +64,25 @@ static void check_range(const char *line)
 			fail("vector", line);
 }
 
+static void check_fy_shuffle(const char *line)
+{
+	int64_t v[64];
+	int n = parse_fields(line, v, 64);
+	uint8_t perm[62];
+	RandoPrng prng = {0};
+	int i;
+
+	if (n < 2 || v[1] < 0 || v[1] != n - 2)
+		fail("count does not match the permutation", line);
+	for (i = 0; i < v[1]; i++)
+		perm[i] = (uint8_t)i;
+	rando_prng_seed(&prng, (uint32_t)v[0]);
+	rando_fy_shuffle(&prng, perm, (size_t)v[1], sizeof perm[0]);
+	for (i = 0; i < v[1]; i++)
+		if (perm[i] != v[2 + i])
+			fail("vector", line);
+}
+
 static int check_vectors(void)
 {
 	FILE *f = fopen(VECTORS, "r");
@@ -85,6 +104,8 @@ static int check_vectors(void)
 			check_next(line);
 		} else if (strncmp(line, "range ", 6) == 0) {
 			check_range(line);
+		} else if (strncmp(line, "fy_shuffle ", 11) == 0) {
+			check_fy_shuffle(line);
 		} else {
 			fail("unknown vector kind", line);
 		}
@@ -168,16 +189,18 @@ static long replay_goldens(int *cases)
 	return total;
 }
 
+#define MAX_SEEN 64
+
 typedef struct Seen {
 	int count;
-	int64_t draw[8][3];
+	int64_t draw[MAX_SEEN][3];
 } Seen;
 
 static void record(void *ctx, int64_t min, int64_t max, int64_t r)
 {
 	Seen *seen = ctx;
 
-	if (seen->count == 8)
+	if (seen->count == MAX_SEEN)
 		fail("observer", "more draws than made");
 	seen->draw[seen->count][0] = min;
 	seen->draw[seen->count][1] = max;
@@ -228,6 +251,70 @@ static void check_reseed(void)
 		fail("reseed", "observer lost or draw differs");
 }
 
+static void check_fy_shuffle_draws(void)
+{
+	static const size_t counts[] = {0, 1, 2, 43};
+	size_t k;
+
+	for (k = 0; k < sizeof counts / sizeof counts[0]; k++) {
+		uint8_t perm[43] = {0};
+		Seen seen = {0};
+		RandoPrng prng = {0};
+		size_t n = counts[k];
+		int i;
+
+		prng.observe = record;
+		prng.observe_ctx = &seen;
+		rando_prng_seed(&prng, 1);
+		rando_fy_shuffle(&prng, perm, n, sizeof perm[0]);
+		if (seen.count != (int)n)
+			fail("fy_shuffle", "draws consumed differ from the element count");
+		for (i = 0; i < seen.count; i++)
+			if (seen.draw[i][0] != 0 || seen.draw[i][1] != (int64_t)n - 1 - i)
+				fail("fy_shuffle", "draw range is not (0, i) from the last index down");
+		if (n > 0 && seen.draw[n - 1][2] != 0)
+			fail("fy_shuffle", "final (0, 0) draw missing");
+	}
+}
+
+typedef struct Wide {
+	uint8_t tag;
+	uint32_t id;
+	uint16_t tail;
+} Wide;
+
+static void check_fy_shuffle_sizes(void)
+{
+	uint8_t bytes[43];
+	uint16_t halves[43];
+	Wide wides[43];
+	RandoPrng prng = {0};
+	int i;
+
+	for (i = 0; i < 43; i++) {
+		bytes[i] = (uint8_t)i;
+		halves[i] = (uint16_t)(1000 + i);
+		wides[i].tag = (uint8_t)~i;
+		wides[i].id = 100000u + (uint32_t)i;
+		wides[i].tail = (uint16_t)(7 * i);
+	}
+	rando_prng_seed(&prng, 3735928559u);
+	rando_fy_shuffle(&prng, bytes, 43, sizeof bytes[0]);
+	rando_prng_seed(&prng, 3735928559u);
+	rando_fy_shuffle(&prng, halves, 43, sizeof halves[0]);
+	rando_prng_seed(&prng, 3735928559u);
+	rando_fy_shuffle(&prng, wides, 43, sizeof wides[0]);
+	for (i = 0; i < 43; i++) {
+		int b = bytes[i];
+
+		if (halves[i] != 1000 + b)
+			fail("fy_shuffle", "uint16_t permutation differs");
+		if (wides[i].tag != (uint8_t)~b || wides[i].id != 100000u + (uint32_t)b ||
+		    wides[i].tail != 7 * b)
+			fail("fy_shuffle", "struct permutation differs");
+	}
+}
+
 int main(void)
 {
 	int vectors = check_vectors();
@@ -236,6 +323,8 @@ int main(void)
 
 	check_observer();
 	check_reseed();
+	check_fy_shuffle_draws();
+	check_fy_shuffle_sizes();
 
 	printf("test_prng: %d vectors, %ld golden draws in %d cases ok\n", vectors, draws, cases);
 	return 0;

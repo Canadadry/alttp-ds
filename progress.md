@@ -11,7 +11,7 @@
 - [ ] Phase 2 — C port, baseline
   - [ ] 2.1 PRNG and fy_shuffle, convergence gate claims, CI
     - [x] Chunk 1: C PRNG
-    - [ ] Chunk 2: fy_shuffle and the vector file
+    - [x] Chunk 2: fy_shuffle and the vector file
     - [ ] Chunk 3: shared case discovery
     - [ ] Chunk 4: claims and trace-prefix gate
     - [ ] Chunk 5: spoiler checks

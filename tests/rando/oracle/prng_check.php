@@ -7,6 +7,7 @@ if ($argc !== 2) {
     exit(2);
 }
 require $argv[1] . '/app/Helpers/number.php';
+require $argv[1] . '/app/Helpers/array.php';
 
 function fail(string $what, array $expected, array $actual): void
 {
@@ -36,6 +37,11 @@ foreach (file(__DIR__ . '/prng_vectors.txt', FILE_IGNORE_NEW_LINES | FILE_SKIP_E
             prng_seed($n[0]);
             $expected = array_slice($n, 3);
             $actual = array_map(fn () => get_random_int($n[1], $n[2]), $expected);
+            break;
+        case 'fy_shuffle':
+            prng_seed($n[0]);
+            $expected = array_slice($n, 2);
+            $actual = fy_shuffle($n[1] > 0 ? range(0, $n[1] - 1) : []);
             break;
         default:
             fwrite(STDERR, "prng: unknown vector line: $line\n");

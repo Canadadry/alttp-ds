@@ -61,3 +61,26 @@ int64_t rando_random_int(RandoPrng *prng, int64_t min, int64_t max)
 		prng->observe(prng->observe_ctx, min, max, result);
 	return result;
 }
+
+static void swap_bytes(unsigned char *a, unsigned char *b, size_t size)
+{
+	while (size--) {
+		unsigned char t = *a;
+
+		*a++ = *b;
+		*b++ = t;
+	}
+}
+
+void rando_fy_shuffle(RandoPrng *prng, void *base, size_t count, size_t size)
+{
+	unsigned char *bytes = base;
+	size_t i;
+
+	/* VT draws get_random_int(0, 0) for i = 0 too; skipping it desyncs every later draw. */
+	for (i = count; i-- > 0;) {
+		size_t r = (size_t)rando_random_int(prng, 0, (int64_t)i);
+
+		swap_bytes(bytes + i * size, bytes + r * size, size);
+	}
+}
