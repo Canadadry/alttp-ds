@@ -62,11 +62,25 @@ static const char *target_name(RandoItemId item)
 	return info->item_class == RANDO_ITEM_CLASS_ALIAS ? rando_item_info(info->alias_target)->name : info->name;
 }
 
-/* Every region named spoiler_name merges into one object. TODO: rom.genericKeys writes `Key` for a
- * key (state-retro). */
+/* How a region section names a placed item, suffix included: under rom.genericKeys an Item\Key is
+ * `Key` with no suffix (an alias such as ShopKey is not an Item\Key). Writes into buf, returns it. */
+static const char *placed_name(const RandoWorld *world, RandoItemId item, char *buf, size_t size)
+{
+	int len;
+
+	if (world->config.rom_generic_keys && rando_item_info(item)->item_class == RANDO_ITEM_CLASS_KEY)
+		return "Key";
+	len = snprintf(buf, size, "%s" WORLD_SUFFIX, target_name(item));
+	assert(len > 0 && (size_t)len < size && "spoiler: raise the item name buffer");
+	(void)len;
+	return buf;
+}
+
+/* Every region named spoiler_name merges into one object. */
 static void write_region_section(FILE *out, const RandoWorld *world, const char *spoiler_name)
 {
 	static Entry entries[RANDO_LOCATION_COUNT];
+	char name[KEY_MAX];
 	int n = 0, r, i;
 
 	for (r = 0; r < RANDO_REGION_COUNT; r++) {
@@ -97,7 +111,7 @@ static void write_region_section(FILE *out, const RandoWorld *world, const char 
 		if (entries[i].item == RANDO_ITEM_NONE)
 			string(out, "Nothing", "");
 		else
-			string(out, target_name(entries[i].item), WORLD_SUFFIX);
+			string(out, placed_name(world, (RandoItemId)entries[i].item, name, sizeof name), "");
 		fputs(i + 1 < n ? ",\n" : "\n", out);
 	}
 	indent(out, 1);
@@ -550,12 +564,13 @@ bool rando_spoiler_write_json(FILE *out, const RandoWorld *world, const RandoOpt
 	return fflush(out) == 0 && !ferror(out);
 }
 
-bool rando_spoiler_write_pool(FILE *out, const RandoPools *pools)
+bool rando_spoiler_write_pool(FILE *out, const RandoWorld *world, const RandoPools *pools)
 {
+	char name[KEY_MAX];
 	int list, i;
 
 	for (list = 0; list < RANDO_POOL_LIST_COUNT; list++)
 		for (i = 0; i < pools->count[list]; i++)
-			fprintf(out, "%s" WORLD_SUFFIX "\n", target_name((RandoItemId)pools->items[list][i]));
+			fprintf(out, "%s\n", placed_name(world, (RandoItemId)pools->items[list][i], name, sizeof name));
 	return fflush(out) == 0 && !ferror(out);
 }

@@ -307,12 +307,12 @@ static void check_equipped_order(void)
 			      "    },\n") != NULL);
 }
 
-static void write_pool(const RandoPools *pools)
+static void write_pool(const RandoWorld *world, const RandoPools *pools)
 {
 	FILE *f = tmpfile();
 
 	CHECK(f != NULL);
-	CHECK(rando_spoiler_write_pool(f, pools));
+	CHECK(rando_spoiler_write_pool(f, world, pools));
 	rewind(f);
 	read_stream(f, "pool", spoiler);
 	fclose(f);
@@ -322,9 +322,14 @@ static void write_pool(const RandoPools *pools)
 static void check_pool(void)
 {
 	static RandoPools pools;
+	static RandoWorld world;
+	RandoConfig config;
+
+	rando_config_init(&config);
+	rando_world_init(&world, RANDO_VARIANT_OPEN, &config);
 
 	memset(&pools, 0, sizeof pools);
-	write_pool(&pools);
+	write_pool(&world, &pools);
 	CHECK(spoiler[0] == '\0');
 
 	pools.items[RANDO_POOL_ITEMS][pools.count[RANDO_POOL_ITEMS]++] = RANDO_ITEM_Arrow;
@@ -332,9 +337,39 @@ static void check_pool(void)
 	pools.items[RANDO_POOL_ADVANCEMENT][pools.count[RANDO_POOL_ADVANCEMENT]++] = RANDO_ITEM_Hammer;
 	pools.items[RANDO_POOL_ADVANCEMENT][pools.count[RANDO_POOL_ADVANCEMENT]++] = RANDO_ITEM_Hookshot;
 	pools.items[RANDO_POOL_DUNGEON][pools.count[RANDO_POOL_DUNGEON]++] = RANDO_ITEM_KeyD3;
-	write_pool(&pools);
+	write_pool(&world, &pools);
 	if (strcmp(spoiler, "KeyD3:1\nHammer:1\nHookshot:1\nProgressiveSword:1\nArrow:1\n") != 0)
 		test_fail(TEST, "pool.txt\n%s", spoiler);
+}
+
+/* Under rom.genericKeys a region section and pool.txt write an Item\Key as `Key`, with no world suffix;
+ * a big key, the ShopKey alias (an ItemAlias, not an Item\Key) and the Shops section keep their names. */
+static void check_generic_key_names(RandoVariant variant, bool generic)
+{
+	static RandoWorld world;
+	static RandoPools pools;
+	RandoConfig config;
+
+	rando_config_init(&config);
+	rando_world_init(&world, variant, &config);
+	CHECK(world.config.rom_generic_keys == generic);
+	CHECK(rando_world_set_item(&world, RANDO_LOC_LINKS_UNCLE, RANDO_ITEM_KeyD1));
+	CHECK(rando_world_set_item(&world, RANDO_LOC_LINKS_HOUSE, RANDO_ITEM_BigKeyD1));
+	CHECK(rando_world_set_item(&world, RANDO_LOC_SAHASRAHLA, RANDO_ITEM_ShopKey));
+	rando_world_shop_set_active(&world, RANDO_SHOP_CAPACITY_UPGRADE, true);
+	rando_world_shop_add(&world, RANDO_SHOP_CAPACITY_UPGRADE, 0, RANDO_ITEM_ShopKey, 100);
+	write_world(&world);
+	CHECK(strstr(spoiler, generic ? "\"Link's Uncle:1\": \"Key\"" : "\"Link's Uncle:1\": \"KeyD1:1\"") != NULL);
+	CHECK(strstr(spoiler, "\"Link's House:1\": \"BigKeyD1:1\"") != NULL);
+	CHECK(strstr(spoiler, "\"Sahasrahla:1\": \"KeyGK:1\"") != NULL);
+	CHECK(strstr(spoiler, "\"item\": \"ShopKey:1\"") != NULL);
+
+	memset(&pools, 0, sizeof pools);
+	pools.items[RANDO_POOL_DUNGEON][pools.count[RANDO_POOL_DUNGEON]++] = RANDO_ITEM_KeyD1;
+	pools.items[RANDO_POOL_DUNGEON][pools.count[RANDO_POOL_DUNGEON]++] = RANDO_ITEM_BigKeyD1;
+	pools.items[RANDO_POOL_ITEMS][pools.count[RANDO_POOL_ITEMS]++] = RANDO_ITEM_Hammer;
+	write_pool(&world, &pools);
+	CHECK(strcmp(spoiler, generic ? "Key\nBigKeyD1:1\nHammer:1\n" : "KeyD1:1\nBigKeyD1:1\nHammer:1\n") == 0);
 }
 
 int main(void)
@@ -349,6 +384,8 @@ int main(void)
 	check_alias_names();
 	check_no_active_shop();
 	check_pool();
+	check_generic_key_names(RANDO_VARIANT_RETRO, true);
+	check_generic_key_names(RANDO_VARIANT_OPEN, false);
 	check_equipped_and_meta("cases/baseline");
 	check_equipped_and_meta("cases/crystals_ganon-random");
 	check_equipped_and_meta("cases/item_pool-crowd_control");

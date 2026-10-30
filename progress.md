@@ -84,7 +84,7 @@
   - [x] 3.10 crystals_ganon
   - [x] 3.11 state: standard
   - [x] 3.12 state: inverted
-  - [ ] 3.13 state: retro
+  - [x] 3.13 state: retro
   - [ ] 3.14 weapons
   - [x] 3.15 item_pool
   - [x] 3.16 item_functionality
@@ -113,8 +113,8 @@
   - [x] Chunk 7: Ganon's Tower, every row replayed
   - [x] Chunk 8: generator claim at all
   - [x] Step note
-- [ ] Step 3.13 chunks
+- [x] Step 3.13 chunks
   - [x] Chunk 1: Retro oracle fixtures
   - [x] Chunk 2: Retro world
   - [x] Chunk 3: setShops random path and generator
-  - [ ] Chunk 4: generic-key naming and claim at all
+  - [x] Chunk 4: generic-key naming and claim at all

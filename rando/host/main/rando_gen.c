@@ -32,7 +32,7 @@ static bool spoiler_json(FILE *out)
 
 static bool pool_txt(FILE *out)
 {
-	return rando_spoiler_write_pool(out, &gen.pools);
+	return rando_spoiler_write_pool(out, &gen.world, &gen.pools);
 }
 
 static bool write_file(const char *out_dir, const char *name, Writer writer)

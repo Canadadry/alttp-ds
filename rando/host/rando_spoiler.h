@@ -15,8 +15,9 @@
 bool rando_spoiler_write_json(FILE *out, const RandoWorld *world, const RandoOptions *options,
 			      const RandoPlaythrough *playthrough);
 
-/* Writes pool.txt: one `<getTarget()->getName()>:1` line per item, dungeon, advancement, nice, then
- * item pool, in list order. False on a stream error; the caller owns and closes out. */
-bool rando_spoiler_write_pool(FILE *out, const RandoPools *pools);
+/* Writes pool.txt: one line per item, dungeon, advancement, nice, then item pool, in list order, each
+ * named as the world's region sections name a placed item. False on a stream error; the caller owns
+ * and closes out. */
+bool rando_spoiler_write_pool(FILE *out, const RandoWorld *world, const RandoPools *pools);
 
 #endif

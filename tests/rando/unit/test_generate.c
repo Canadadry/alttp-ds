@@ -238,11 +238,14 @@ static void check_states(void)
 	CHECK(gen.world.variant == RANDO_VARIANT_INVERTED);
 	CHECK(gen.world.config.mode_state == RANDO_STATE_INVERTED);
 	check_golden_stop("state-inverted", &trace, "fillPrizes");
-	CHECK(generate("state", "retro", 1, &trace) == RANDO_INCOMPLETE);
+	rando_options_init(&options);
+	CHECK(rando_options_set(&options, "state", "retro"));
+	memset(&trace, 0, sizeof trace);
+	CHECK(rando_generate_until(&gen, &options, 1, 1, record, &trace, RANDO_STAGE_SET_MEDALLIONS)
+	      == RANDO_INCOMPLETE);
 	CHECK(gen.world.variant == RANDO_VARIANT_RETRO);
 	CHECK(gen.world.config.mode_state == RANDO_STATE_RETRO);
-	CHECK(trace.lines == 271);
-	check_golden_prefix("state-retro", &trace);
+	check_golden_stop("state-retro", &trace, "fillPrizes");
 	CHECK(generate("state", "standard", 1, &trace) == RANDO_INCOMPLETE);
 	CHECK(gen.world.variant == RANDO_VARIANT_STANDARD);
 	CHECK(gen.world.config.mode_state == RANDO_STATE_STANDARD);
