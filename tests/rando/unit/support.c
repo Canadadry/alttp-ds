@@ -319,9 +319,6 @@ int fixture_replay_predicates(const char *test, const PredicateColumn *columns, 
 	while (fixture_next(&fx)) {
 		const char *kind = fx.field[0];
 
-		/* TODO: replay the inverted config once the C port has the Inverted world (step 3.12). */
-		if (strcmp(fx.field[strcmp(kind, "pred") == 0 ? 2 : 1], "inverted") == 0)
-			continue;
 		if (strcmp(kind, "vector_config") == 0) {
 			if (nconfigs == PRED_CONFIGS_MAX || strlen(fx.field[1]) >= sizeof configs[0].name)
 				fixture_fail(&fx, "too many configs or name too long");

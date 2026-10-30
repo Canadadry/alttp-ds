@@ -224,13 +224,20 @@ static void check_crystals_order(void)
 	CHECK(gen.world.config.crystals_tower == trace.text[42] - '0');
 }
 
-/* Step 2.2 ports the Open and Standard worlds only. */
+/* Inverted's regions are ported up to setMedallions only: no earlier stage evaluates a rule. */
 static void check_states(void)
 {
+	RandoOptions options;
 	Trace trace;
 
-	CHECK(generate("state", "inverted", 1, &trace) == RANDO_UNSUPPORTED);
-	CHECK(trace.lines == 0);
+	rando_options_init(&options);
+	CHECK(rando_options_set(&options, "state", "inverted"));
+	memset(&trace, 0, sizeof trace);
+	CHECK(rando_generate_until(&gen, &options, 1, 1, record, &trace, RANDO_STAGE_SET_MEDALLIONS)
+	      == RANDO_INCOMPLETE);
+	CHECK(gen.world.variant == RANDO_VARIANT_INVERTED);
+	CHECK(gen.world.config.mode_state == RANDO_STATE_INVERTED);
+	check_golden_stop("state-inverted", &trace, "fillPrizes");
 	CHECK(generate("state", "retro", 1, &trace) == RANDO_UNSUPPORTED);
 	CHECK(trace.lines == 0);
 	CHECK(generate("state", "standard", 1, &trace) == RANDO_INCOMPLETE);
@@ -418,16 +425,27 @@ static void check_stage_table(void)
 
 static const char *const list_names[RANDO_POOL_LIST_COUNT] = {"dungeon", "advancement", "nice", "items"};
 
-/* No world variant until Phase 3 ports it; each `state` step removes its skip. */
-static const char *const skipped_cases[] = {"state-inverted", "state-retro"};
-#define SKIPPED_COUNT ((int)(sizeof skipped_cases / sizeof skipped_cases[0]))
+/* Cases the generator cannot run to the replayed stage yet; each `state` step removes its skip. */
+typedef struct Skipped {
+	const char *const *names;
+	int count;
+} Skipped;
 
-static int skipped_index(const char *name)
+static const char *const no_world[] = {"state-retro"};
+/* TODO: Inverted's region rules (step 3.12, chunk 8). */
+static const char *const no_world_rules[] = {"state-inverted", "state-retro"};
+static const Skipped pool_skips = {no_world, (int)(sizeof no_world / sizeof no_world[0])};
+static const Skipped prepared_skips = {no_world_rules, (int)(sizeof no_world_rules / sizeof no_world_rules[0])};
+
+#define SKIPPED_MAX 2
+typedef char skipped_fit[sizeof no_world_rules / sizeof no_world_rules[0] <= SKIPPED_MAX ? 1 : -1];
+
+static int skipped_index(const Skipped *skipped, const char *name)
 {
 	int i;
 
-	for (i = 0; i < SKIPPED_COUNT; i++)
-		if (strcmp(name, skipped_cases[i]) == 0)
+	for (i = 0; i < skipped->count; i++)
+		if (strcmp(name, skipped->names[i]) == 0)
 			return i;
 	return -1;
 }
@@ -453,9 +471,9 @@ static void check_list(Fixture *fx, const char *name, RandoPoolList list)
 /* Replays a pool_lists.txt-format fixture: per case, the generator stopped after last at attempt 0 must
  * hold the record's four lists in order, its draws the golden's up to next_stage (NULL: unchecked).
  * Returns the cases replayed. */
-static int check_pool_records(const char *path, RandoStage last, const char *next_stage)
+static int check_pool_records(const char *path, RandoStage last, const char *next_stage, const Skipped *skipped)
 {
-	int seen[SKIPPED_COUNT] = {0};
+	int seen[SKIPPED_MAX] = {0};
 	int cases = 0, i;
 	Fixture fx;
 
@@ -485,7 +503,7 @@ static int check_pool_records(const char *path, RandoStage last, const char *nex
 			if (!rando_options_set(&options, key, eq + 1))
 				fixture_fail(&fx, "unknown option");
 		}
-		skip = skipped_index(name);
+		skip = skipped_index(skipped, name);
 		if (skip < 0) {
 			memset(&trace, 0, sizeof trace);
 			if (rando_generate_until(&gen, &options, (uint32_t)seed, 1, record, &trace, last) !=
@@ -504,9 +522,9 @@ static int check_pool_records(const char *path, RandoStage last, const char *nex
 		}
 	}
 	fixture_close(&fx);
-	for (i = 0; i < SKIPPED_COUNT; i++)
+	for (i = 0; i < skipped->count; i++)
 		if (seen[i] != 1)
-			test_fail(TEST, "%s: case %s seen %d times, skipped once", path, skipped_cases[i],
+			test_fail(TEST, "%s: case %s seen %d times, skipped once", path, skipped->names[i],
 				  seen[i]);
 	return cases;
 }
@@ -535,8 +553,10 @@ int main(int argc, char **argv)
 	check_retry_identity(RANDO_FAULT_IS_WINNABLE);
 	printf(TEST ": seed 0 failed mid-fill, then at isWinnable, replayed baseline at attempt 1\n");
 	printf(TEST ": %d pool list records replayed, %d skipped (no world)\n",
-	       check_pool_records(FIXTURE_POOL_LISTS, RANDO_STAGE_GET_ADVANCEMENT_ITEMS, NULL), SKIPPED_COUNT);
-	printf(TEST ": %d prepared pool records replayed, %d skipped (no world)\n",
-	       check_pool_records(FIXTURE_PREPARED_POOLS, RANDO_STAGE_PREPARE_WORLD, "fill"), SKIPPED_COUNT);
+	       check_pool_records(FIXTURE_POOL_LISTS, RANDO_STAGE_GET_ADVANCEMENT_ITEMS, NULL, &pool_skips),
+	       pool_skips.count);
+	printf(TEST ": %d prepared pool records replayed, %d skipped (no world rules)\n",
+	       check_pool_records(FIXTURE_PREPARED_POOLS, RANDO_STAGE_PREPARE_WORLD, "fill", &prepared_skips),
+	       prepared_skips.count);
 	return 0;
 }

@@ -38,10 +38,48 @@ NO_RULES(fountains, "Region\\Standard\\Fountains");
 static const RandoRegionRules *const variants[RANDO_VARIANT_COUNT][RANDO_REGION_COUNT] = {
 	[RANDO_VARIANT_STANDARD] = {SHARED_REGIONS, [RANDO_REGION_ESCAPE] = &rando_rules_standard_escape},
 	[RANDO_VARIANT_OPEN] = {SHARED_REGIONS, [RANDO_REGION_ESCAPE] = &rando_rules_open_escape},
+	[RANDO_VARIANT_INVERTED] = {[RANDO_REGION_MEDALLIONS] = &medallions, [RANDO_REGION_FOUNTAINS] = &fountains},
+};
+
+/* TODO: goes with the NULL-slot assert once every Inverted region is ported (step 3.12, chunk 7). */
+static const char *const unported_inverted_classes[RANDO_REGION_COUNT] = {
+	"Region\\Inverted\\LightWorld\\NorthEast",
+	"Region\\Inverted\\LightWorld\\NorthWest",
+	"Region\\Inverted\\LightWorld\\South",
+	"Region\\Inverted\\HyruleCastleEscape",
+	"Region\\Inverted\\EasternPalace",
+	"Region\\Inverted\\DesertPalace",
+	"Region\\Inverted\\LightWorld\\DeathMountain\\West",
+	"Region\\Inverted\\LightWorld\\DeathMountain\\East",
+	"Region\\Inverted\\TowerOfHera",
+	"Region\\Inverted\\HyruleCastleTower",
+	"Region\\Inverted\\DarkWorld\\DeathMountain\\East",
+	"Region\\Inverted\\DarkWorld\\DeathMountain\\West",
+	"Region\\Inverted\\DarkWorld\\NorthEast",
+	"Region\\Inverted\\DarkWorld\\NorthWest",
+	"Region\\Inverted\\DarkWorld\\South",
+	"Region\\Inverted\\DarkWorld\\Mire",
+	"Region\\Inverted\\PalaceOfDarkness",
+	"Region\\Inverted\\SwampPalace",
+	"Region\\Inverted\\SkullWoods",
+	"Region\\Inverted\\ThievesTown",
+	"Region\\Inverted\\IcePalace",
+	"Region\\Inverted\\MiseryMire",
+	"Region\\Inverted\\TurtleRock",
+	"Region\\Inverted\\GanonsTower",
 };
 
 const RandoRegionRules *rando_region_rules(RandoVariant variant, RandoRegionId region)
 {
 	assert(variant < RANDO_VARIANT_COUNT && region < RANDO_REGION_COUNT);
+	assert(variants[variant][region] && "this Inverted region is not ported yet: no fallback to Standard");
 	return variants[variant][region];
+}
+
+const char *rando_region_vt_class(RandoVariant variant, RandoRegionId region)
+{
+	assert(variant < RANDO_VARIANT_COUNT && region < RANDO_REGION_COUNT);
+	if (variant == RANDO_VARIANT_INVERTED && !variants[variant][region])
+		return unported_inverted_classes[region];
+	return rando_region_rules(variant, region)->vt_class;
 }

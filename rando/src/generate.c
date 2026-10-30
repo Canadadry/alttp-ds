@@ -82,11 +82,21 @@ static bool run_attempt(RandoGen *gen, RandoStatus *status)
 	if (end_stage(gen, status))
 		return true;
 
-	if (gen->options.state == RANDO_OPTION_STATE_INVERTED || gen->options.state == RANDO_OPTION_STATE_RETRO) {
+	switch (gen->options.state) {
+	case RANDO_OPTION_STATE_STANDARD:
+		variant = RANDO_VARIANT_STANDARD;
+		break;
+	case RANDO_OPTION_STATE_INVERTED:
+		variant = RANDO_VARIANT_INVERTED;
+		break;
+	case RANDO_OPTION_STATE_RETRO:
 		*status = RANDO_UNSUPPORTED;
 		return true;
+	case RANDO_OPTION_STATE_OPEN:
+	default:
+		variant = RANDO_VARIANT_OPEN;
+		break;
 	}
-	variant = gen->options.state == RANDO_OPTION_STATE_STANDARD ? RANDO_VARIANT_STANDARD : RANDO_VARIANT_OPEN;
 	rando_config_from_options(&gen->options, crystals_ganon, crystals_tower, &config);
 	rando_world_init(&gen->world, variant, &config);
 	rando_prepare_start_equipment(&gen->world);

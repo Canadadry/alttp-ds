@@ -335,6 +335,7 @@ static const RandoLocationInfo location_table[RANDO_LOCATION_COUNT] = {
 	[RANDO_LOC_MISERY_MIRE_MEDALLION] = {"Misery Mire Medallion", RANDO_LOCATION_CLASS_MEDALLION, RANDO_ITEM_NONE},
 	[RANDO_LOC_WATERFALL_BOTTLE] = {"Waterfall Bottle", RANDO_LOCATION_CLASS_FOUNTAIN, RANDO_ITEM_NONE},
 	[RANDO_LOC_PYRAMID_BOTTLE] = {"Pyramid Bottle", RANDO_LOCATION_CLASS_FOUNTAIN, RANDO_ITEM_NONE},
+	[RANDO_LOC_BOMB_MERCHANT] = {"Bomb Merchant", RANDO_LOCATION_CLASS_PRIZE_EVENT, RANDO_ITEM_BigRedBomb},
 };
 
 static const RandoShopInfo shop_table[RANDO_SHOP_COUNT] = {
@@ -424,11 +425,6 @@ const RandoShopInfo *rando_shop_info(RandoShopId id)
 {
 	assert(id < RANDO_SHOP_COUNT);
 	return &shop_table[id];
-}
-
-const char *rando_region_vt_class(RandoVariant variant, RandoRegionId id)
-{
-	return rando_region_rules(variant, id)->vt_class;
 }
 
 RandoLocationId rando_location_find(const char *name)

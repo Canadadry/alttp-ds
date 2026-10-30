@@ -48,7 +48,47 @@ static void check_classic_layout(void)
 		CHECK(rando_layout_location_region(v, RANDO_LOC_ETHER_TABLET) == RANDO_REGION_WEST_DEATH_MOUNTAIN);
 		CHECK(region_holds(v, RANDO_REGION_WEST_DEATH_MOUNTAIN, RANDO_LOC_ETHER_TABLET));
 		CHECK(rando_layout_region_location_count(v, RANDO_REGION_GANONS_TOWER) == 28);
+		CHECK(rando_layout_location_region(v, RANDO_LOC_BOMB_MERCHANT) == RANDO_REGION_NONE);
 	}
+}
+
+/* World::factory('inverted'): Ganon, Link's House, Ether Tablet and Spectacle Rock move, Bomb Merchant
+ * is appended to South Light World. */
+static void check_inverted_layout(void)
+{
+	RandoVariant v = RANDO_VARIANT_INVERTED;
+
+	CHECK(rando_layout_location_count(v) == 237);
+	CHECK(rando_layout_location_region(v, RANDO_LOC_LINKS_HOUSE) == RANDO_REGION_SOUTH_DARK_WORLD);
+	CHECK(region_holds(v, RANDO_REGION_SOUTH_DARK_WORLD, RANDO_LOC_LINKS_HOUSE));
+	CHECK(!region_holds(v, RANDO_REGION_SOUTH_LIGHT_WORLD, RANDO_LOC_LINKS_HOUSE));
+	CHECK(rando_layout_location_region(v, RANDO_LOC_GANON) == RANDO_REGION_NORTH_EAST_LIGHT_WORLD);
+	CHECK(rando_layout_region_prize(v, RANDO_REGION_NORTH_EAST_LIGHT_WORLD) == RANDO_LOC_GANON);
+	CHECK(!region_holds(v, RANDO_REGION_NORTH_EAST_DARK_WORLD, RANDO_LOC_GANON));
+	CHECK(rando_layout_location_region(v, RANDO_LOC_BOMB_MERCHANT) == RANDO_REGION_SOUTH_LIGHT_WORLD);
+	CHECK(rando_layout_location_region(v, RANDO_LOC_ETHER_TABLET) == RANDO_REGION_EAST_DEATH_MOUNTAIN);
+	CHECK(rando_layout_location_region(v, RANDO_LOC_SPECTACLE_ROCK) == RANDO_REGION_EAST_DEATH_MOUNTAIN);
+	CHECK(rando_layout_region_location_count(v, RANDO_REGION_WEST_DEATH_MOUNTAIN) == 2);
+}
+
+static void check_inverted_init(void)
+{
+	RandoWorld world;
+	RandoConfig config;
+
+	rando_config_init(&config);
+	rando_world_init(&world, RANDO_VARIANT_INVERTED, &config);
+	CHECK(world.config.mode_state == RANDO_STATE_INVERTED);
+	CHECK(rando_world_item(&world, RANDO_LOC_GANON) == RANDO_ITEM_DefeatGanon);
+	CHECK(rando_world_item(&world, RANDO_LOC_BOMB_MERCHANT) == RANDO_ITEM_BigRedBomb);
+	CHECK(rando_world_shop_item(&world, RANDO_SHOP_DARK_WORLD_LAKE_HYLIA_SHOP, 0) == RANDO_ITEM_BluePotion);
+	CHECK(rando_world_shop_price(&world, RANDO_SHOP_DARK_WORLD_LAKE_HYLIA_SHOP, 0) == 160);
+	CHECK(rando_world_shop_item(&world, RANDO_SHOP_DARK_WORLD_LAKE_HYLIA_SHOP, 1) == RANDO_ITEM_BlueShield);
+
+	standard_world(&world);
+	CHECK(rando_world_item(&world, RANDO_LOC_BOMB_MERCHANT) == RANDO_ITEM_NONE);
+	CHECK(rando_world_shop_item(&world, RANDO_SHOP_DARK_WORLD_LAKE_HYLIA_SHOP, 0) == RANDO_ITEM_RedPotion);
+	CHECK(rando_world_shop_price(&world, RANDO_SHOP_DARK_WORLD_LAKE_HYLIA_SHOP, 0) == 150);
 }
 
 /* World::__construct: the constructor items, VT's default bosses, the shops' default inventory. */
@@ -372,8 +412,8 @@ static int collected_count(const RandoWorld *world)
 {
 	int n = 0, i, slot;
 
-	for (i = 0; i < RANDO_LOCATION_COUNT; i++)
-		n += rando_world_collected(world, (RandoLocationId)i);
+	for (i = 0; i < rando_layout_location_count(world->variant); i++)
+		n += rando_world_collected(world, rando_layout_location(world->variant, i));
 	for (i = 0; i < RANDO_SHOP_COUNT; i++)
 		for (slot = 0; slot < RANDO_SHOP_SLOTS; slot++)
 			n += rando_world_shop_collected(world, (RandoShopId)i, slot);
@@ -647,6 +687,8 @@ static RandoVariant variant_of(const Fixture *fx, const char *name)
 		return RANDO_VARIANT_STANDARD;
 	if (strcmp(name, "open") == 0)
 		return RANDO_VARIANT_OPEN;
+	if (strcmp(name, "inverted") == 0)
+		return RANDO_VARIANT_INVERTED;
 	fixture_fail(fx, "unknown variant");
 	return RANDO_VARIANT_COUNT;
 }
@@ -760,9 +802,6 @@ static int check_world_dump(void)
 
 	fixture_open(&fx, FIXTURE_WORLD_DUMP);
 	while (fixture_next(&fx)) {
-		/* TODO: replay the inverted records once the C port has the Inverted world (step 3.12). */
-		if (fx.nfields > 1 && strcmp(fx.field[1], "inverted") == 0)
-			continue;
 		if (strcmp(fx.field[0], "region") == 0) {
 			v = variant_of(&fx, fx.field[1]);
 			check_region_record(&fx, (RandoVariant)v, regions[v]++);
@@ -795,10 +834,12 @@ static void check_collected_set(const Fixture *fx, const RandoWorld *world, cons
 	int i, slot;
 
 	got[0] = '\0';
-	for (i = 0; i < RANDO_LOCATION_COUNT; i++)
-		if (rando_world_collected(world, (RandoLocationId)i))
-			n += (size_t)snprintf(got + n, sizeof got - n, "%s%s", n ? "|" : "",
-					      rando_location_info((RandoLocationId)i)->name);
+	for (i = 0; i < rando_layout_location_count(world->variant); i++) {
+		RandoLocationId l = rando_layout_location(world->variant, i);
+
+		if (rando_world_collected(world, l))
+			n += (size_t)snprintf(got + n, sizeof got - n, "%s%s", n ? "|" : "", rando_location_info(l)->name);
+	}
 	for (i = 0; i < RANDO_SHOP_COUNT; i++)
 		for (slot = 0; slot < RANDO_SHOP_SLOTS; slot++)
 			if (rando_world_shop_collected(world, (RandoShopId)i, slot))
@@ -903,7 +944,7 @@ static int check_collect_vectors(void)
 	fixture_open(&fx, FIXTURE_NOGLITCHES_ROWS);
 	while (fixture_next(&fx)) {
 		if (strcmp(fx.field[0], "collect_scenario") == 0) {
-			/* TODO: replay it once the C port has the Inverted world (step 3.12). */
+			/* TODO: replay it once every Inverted region has its rules (step 3.12, chunk 4). */
 			skipped = strcmp(fx.field[1], "inverted_merchant") == 0;
 			if (!skipped)
 				collect_scenario(&fx, &world);
@@ -1109,6 +1150,8 @@ int main(int argc, char **argv)
 	int rows, total;
 
 	check_classic_layout();
+	check_inverted_layout();
+	check_inverted_init();
 	check_init();
 	check_shop_kinds();
 	check_shop_active();

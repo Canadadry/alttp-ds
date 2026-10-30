@@ -11,6 +11,7 @@
 typedef enum RandoVariant {
 	RANDO_VARIANT_STANDARD,
 	RANDO_VARIANT_OPEN,
+	RANDO_VARIANT_INVERTED,
 	RANDO_VARIANT_COUNT,
 } RandoVariant;
 
@@ -46,7 +47,7 @@ typedef enum RandoRegionId {
 	RANDO_REGION_NONE = RANDO_REGION_COUNT,
 } RandoRegionId;
 
-/* VT's World::getLocations() order. */
+/* Standard's World::getLocations() order, then the locations only Inverted has. */
 typedef enum RandoLocationId {
 	RANDO_LOC_SAHASRAHLAS_HUT_LEFT,
 	RANDO_LOC_SAHASRAHLAS_HUT_MIDDLE,
@@ -284,6 +285,7 @@ typedef enum RandoLocationId {
 	RANDO_LOC_MISERY_MIRE_MEDALLION,
 	RANDO_LOC_WATERFALL_BOTTLE,
 	RANDO_LOC_PYRAMID_BOTTLE,
+	RANDO_LOC_BOMB_MERCHANT,
 	RANDO_LOCATION_COUNT,
 	RANDO_LOCATION_NONE = RANDO_LOCATION_COUNT,
 } RandoLocationId;
@@ -475,7 +477,8 @@ const char *rando_region_vt_class(RandoVariant variant, RandoRegionId id);
 
 /* The variant's world layout: its locations in VT's World::getLocations() order, and per region its
  * locations in VT order and its prize location (RANDO_LOCATION_NONE when it has none). A location's
- * region is RANDO_REGION_NONE when the variant's world does not have it. Each asserts its arguments
+ * region is RANDO_REGION_NONE when the variant's world does not have it. A prize location may lie in
+ * another region: Inverted North East Dark World keeps VT's removed Ganon. Each asserts its arguments
  * are in range. */
 int rando_layout_location_count(RandoVariant variant);
 RandoLocationId rando_layout_location(RandoVariant variant, int i);

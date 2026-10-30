@@ -106,7 +106,7 @@
 - [ ] Step 3.12 chunks
   - [x] Chunk 1: Inverted oracle fixtures
   - [x] Chunk 2: per-variant layout refactor
-  - [ ] Chunk 3: Inverted world
+  - [x] Chunk 3: Inverted world
   - [ ] Chunk 4: overworld and dungeon entries
   - [ ] Chunk 5: Light World dungeons, Swamp, Skull
   - [ ] Chunk 6: Turtle Rock

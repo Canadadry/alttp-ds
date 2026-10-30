@@ -48,11 +48,12 @@ static void hand_world(RandoWorld *world, const RandoConfig *config, const Rando
 	int i;
 
 	rando_world_init(world, RANDO_VARIANT_OPEN, config);
-	for (i = 0; i < RANDO_LOCATION_COUNT; i++) {
-		RandoLocationClass c = rando_location_info((RandoLocationId)i)->location_class;
+	for (i = 0; i < rando_layout_location_count(RANDO_VARIANT_OPEN); i++) {
+		RandoLocationId l = rando_layout_location(RANDO_VARIANT_OPEN, i);
+		RandoLocationClass c = rando_location_info(l)->location_class;
 		RandoItemId item = RANDO_ITEM_TwentyRupees;
 
-		if (rando_world_has_item(world, (RandoLocationId)i, RANDO_ITEM_NONE))
+		if (rando_world_has_item(world, l, RANDO_ITEM_NONE))
 			continue;
 		if (c == RANDO_LOCATION_CLASS_PRIZE_PENDANT)
 			item = RANDO_ITEM_PendantOfCourage;
@@ -60,7 +61,7 @@ static void hand_world(RandoWorld *world, const RandoConfig *config, const Rando
 			item = RANDO_ITEM_Crystal1;
 		else if (c == RANDO_LOCATION_CLASS_MEDALLION)
 			item = RANDO_ITEM_Ether;
-		CHECK(rando_world_set_item(world, (RandoLocationId)i, item));
+		CHECK(rando_world_set_item(world, l, item));
 	}
 	for (i = 0; i < n; i++)
 		CHECK(rando_world_set_item(world, empties[i], RANDO_ITEM_NONE));
@@ -87,8 +88,8 @@ static int count_empty(const RandoWorld *world)
 {
 	int i, n = 0;
 
-	for (i = 0; i < RANDO_LOCATION_COUNT; i++)
-		n += !rando_world_has_item(world, (RandoLocationId)i, RANDO_ITEM_NONE);
+	for (i = 0; i < rando_layout_location_count(world->variant); i++)
+		n += !rando_world_has_item(world, rando_layout_location(world->variant, i), RANDO_ITEM_NONE);
 	return n;
 }
 

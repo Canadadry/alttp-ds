@@ -460,7 +460,7 @@ void rando_place_bosses(RandoWorld *world)
 	rando_world_set_boss(world, RANDO_REGION_GANONS_TOWER, RANDO_BOSS_SLOT_BOSS, RANDO_BOSS_AGAHNIM2);
 }
 
-#define PRIZE_LOCATIONS 14
+#define PRIZE_LOCATIONS 15
 #define PRIZES 10
 #define PRIZE_PASSES 6
 
@@ -556,7 +556,8 @@ bool rando_fill_prizes(RandoWorld *world, RandoPrng *prng)
 			RandoLocationId location = rando_layout_location(world->variant, i);
 
 			if (rando_location_is_a(rando_location_info(location)->location_class, RANDO_LOCATION_CLASS_PRIZE)) {
-				assert(npool < PRIZE_LOCATIONS && "fillPrizes: more Prize locations than VT's 14");
+				assert(npool < PRIZE_LOCATIONS
+				       && "fillPrizes: more Prize locations than VT's 14 (Standard, Open) or 15 (Inverted)");
 				pool[npool++] = (uint8_t)location;
 			}
 		}

@@ -82,11 +82,16 @@ static const struct {
 
 static void derive_config(RandoConfig *c, RandoVariant variant)
 {
+	static const RandoState states[RANDO_VARIANT_COUNT] = {
+		[RANDO_VARIANT_STANDARD] = RANDO_STATE_STANDARD,
+		[RANDO_VARIANT_OPEN] = RANDO_STATE_OPEN,
+		[RANDO_VARIANT_INVERTED] = RANDO_STATE_INVERTED,
+	};
 	const ItemPoolValues *pool;
 	bool glitched;
 	int i;
 
-	c->mode_state = variant == RANDO_VARIANT_STANDARD ? RANDO_STATE_STANDARD : RANDO_STATE_OPEN;
+	c->mode_state = states[variant];
 	apply_logic_glitches(c);
 	switch (c->dungeon_items) {
 	case RANDO_DUNGEON_ITEMS_FULL:
@@ -139,6 +144,16 @@ static void derive_config(RandoConfig *c, RandoVariant variant)
 		c->item_count[RANDO_ITEM_TriforcePiece] = hunt_values[c->goal].triforce_pieces;
 }
 
+static const struct {
+	RandoVariant variant;
+	RandoShopId shop;
+	uint8_t slot;
+	RandoItemId item;
+	uint16_t price;
+} shop_overrides[] = {
+	{RANDO_VARIANT_INVERTED, RANDO_SHOP_DARK_WORLD_LAKE_HYLIA_SHOP, 0, RANDO_ITEM_BluePotion, 160},
+};
+
 void rando_world_init(RandoWorld *world, RandoVariant variant, const RandoConfig *config)
 {
 	int i, s;
@@ -159,6 +174,10 @@ void rando_world_init(RandoWorld *world, RandoVariant variant, const RandoConfig
 			world->shop_items[i][s] = (uint8_t)rando_shop_info((RandoShopId)i)->default_items[s];
 			world->shop_prices[i][s] = rando_shop_info((RandoShopId)i)->default_prices[s];
 		}
+	for (i = 0; i < (int)(sizeof shop_overrides / sizeof shop_overrides[0]); i++)
+		if (shop_overrides[i].variant == variant)
+			rando_world_shop_add(world, shop_overrides[i].shop, shop_overrides[i].slot, shop_overrides[i].item,
+					     shop_overrides[i].price);
 	for (i = 0; i < RANDO_REGION_COUNT; i++)
 		for (s = 0; s < RANDO_BOSS_SLOT_COUNT; s++)
 			world->bosses[i][s] = (uint8_t)rando_region_info((RandoRegionId)i)->default_bosses[s];
