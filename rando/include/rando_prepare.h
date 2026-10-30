@@ -22,6 +22,9 @@ void rando_set_shops(RandoWorld *world);
 /* One draw per Medallions location that holds no item yet; a filled one is skipped without a draw. */
 void rando_set_medallions(RandoWorld *world, RandoPrng *prng);
 
+/* One getBottle(true) draw per Fountains location that holds no item yet; a filled one is skipped without a draw. */
+void rando_set_fountains(RandoWorld *world, RandoPrng *prng);
+
 /* Randomizer::placeBosses with enemizer.bossShuffle none, the only path the matrix reaches: it draws nothing. */
 void rando_place_bosses(RandoWorld *world);
 

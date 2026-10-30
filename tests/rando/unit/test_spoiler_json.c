@@ -180,21 +180,23 @@ static void check_bosses_and_prizes(const char *case_dir)
 	CHECK(n == 10);
 }
 
-/* setMedallions decided both medallions (golden lines); setFountains has not run. */
+/* setMedallions decided both medallions and setFountains both bottles (golden lines). */
 static void check_special(void)
 {
 	write_case("cases/baseline");
 	section_block(spoiler, "Special", spoiler_block);
 	if (strcmp(spoiler_block, "    \"Special\": {\n"
 				 "        \"Misery Mire Medallion:1\": \"Ether:1\",\n"
-				 "        \"Pyramid Bottle:1\": \"Nothing\",\n"
+				 "        \"Pyramid Bottle:1\": \"BottleWithFairy:1\",\n"
 				 "        \"Turtle Rock Medallion:1\": \"Ether:1\",\n"
-				 "        \"Waterfall Bottle:1\": \"Nothing\"\n"
+				 "        \"Waterfall Bottle:1\": \"BottleWithBluePotion:1\"\n"
 				 "    }\n") != 0)
 		test_fail(TEST, "baseline: section Special\n%s", spoiler_block);
 	write_case("cases/crystals_ganon-random");
 	CHECK(strstr(spoiler, "        \"Misery Mire Medallion:1\": \"Quake:1\",\n") != NULL);
 	CHECK(strstr(spoiler, "        \"Turtle Rock Medallion:1\": \"Ether:1\",\n") != NULL);
+	CHECK(strstr(spoiler, "        \"Waterfall Bottle:1\": \"BottleWithFairy:1\"\n") != NULL);
+	CHECK(strstr(spoiler, "        \"Pyramid Bottle:1\": \"BottleWithRedPotion:1\",\n") != NULL);
 }
 
 static void check_file_layout(void)

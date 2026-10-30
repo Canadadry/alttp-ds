@@ -115,6 +115,20 @@ void rando_set_medallions(RandoWorld *world, RandoPrng *prng)
 	}
 }
 
+void rando_set_fountains(RandoWorld *world, RandoPrng *prng)
+{
+	const RandoRegionInfo *region = rando_region_info(RANDO_REGION_FOUNTAINS);
+	int i;
+
+	for (i = 0; i < region->nlocations; i++) {
+		RandoLocationId location = (RandoLocationId)(region->first_location + i);
+
+		if (rando_world_has_item(world, location, RANDO_ITEM_NONE))
+			continue;
+		place(world, location, rando_get_bottle(world, prng, true));
+	}
+}
+
 static const struct {
 	RandoRegionId region;
 	RandoBossSlot slot;

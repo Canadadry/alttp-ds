@@ -15,3 +15,4 @@ check setShops section Shops
 check setMedallions keys *Medallion:1
 check placeBosses section Bosses
 check fillPrizes keys *- Prize:1
+check setFountains keys *Bottle:1

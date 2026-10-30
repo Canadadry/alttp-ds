@@ -1,3 +1,4 @@
+#include "rando_options.h"
 #include "rando_pool.h"
 #include "rando_prepare.h"
 #include "support.h"
@@ -192,6 +193,126 @@ static void check_medallion_preset(void)
 	CHECK(draws == 1);
 	CHECK(rando_world_item(&world, RANDO_LOC_MISERY_MIRE_MEDALLION) == RANDO_ITEM_Bombos);
 	CHECK(rando_world_item(&world, RANDO_LOC_TURTLE_ROCK_MEDALLION) == by_index[rando_random_int(&twin, 0, 2)]);
+}
+
+static void functionality_world(RandoWorld *world, const char *functionality)
+{
+	RandoOptions options;
+	RandoConfig config;
+
+	rando_options_init(&options);
+	CHECK(rando_options_set(&options, "item_functionality", functionality));
+	rando_config_from_options(&options, 7, 7, &config);
+	rando_world_init(world, RANDO_VARIANT_OPEN, &config);
+}
+
+/* cases/baseline seed 1, attempt 0: draws 71 and 72 are 1..6 -> 3, 6; cases/item_functionality-hard: 1..5 -> 2, 2. */
+static void check_fountains_golden(void)
+{
+	RandoWorld world;
+	RandoPrng prng;
+
+	functionality_world(&world, "normal");
+	seeded(&prng, 1, 70);
+	rando_set_fountains(&world, &prng);
+	CHECK(rando_world_item(&world, RANDO_LOC_WATERFALL_BOTTLE) == RANDO_ITEM_BottleWithBluePotion);
+	CHECK(rando_world_item(&world, RANDO_LOC_PYRAMID_BOTTLE) == RANDO_ITEM_BottleWithFairy);
+
+	functionality_world(&world, "hard");
+	seeded(&prng, 1, 70);
+	rando_set_fountains(&world, &prng);
+	CHECK(rando_world_item(&world, RANDO_LOC_WATERFALL_BOTTLE) == RANDO_ITEM_BottleWithGreenPotion);
+	CHECK(rando_world_item(&world, RANDO_LOC_PYRAMID_BOTTLE) == RANDO_ITEM_BottleWithGreenPotion);
+}
+
+/* World::getBottle's list, indexed by get_random_int(1, 6), or (1, 5) without rom.CatchableFairies. */
+static const RandoItemId vt_bottles[] = {
+	RANDO_ITEM_Bottle,
+	RANDO_ITEM_BottleWithRedPotion,
+	RANDO_ITEM_BottleWithGreenPotion,
+	RANDO_ITEM_BottleWithBluePotion,
+	RANDO_ITEM_BottleWithBee,
+	RANDO_ITEM_BottleWithGoldBee,
+	RANDO_ITEM_BottleWithFairy,
+};
+
+static void check_fountain_index(const char *functionality, int64_t last)
+{
+	int seen[7] = {0, 0, 0, 0, 0, 0, 0};
+	uint32_t seed;
+	int64_t i;
+
+	for (seed = 0; seed < 64; seed++) {
+		RandoWorld world;
+		RandoPrng prng, twin;
+		int64_t waterfall, pyramid;
+
+		functionality_world(&world, functionality);
+		seeded(&prng, seed, 0);
+		seeded(&twin, seed, 0);
+		rando_set_fountains(&world, &prng);
+		waterfall = rando_random_int(&twin, 1, last);
+		pyramid = rando_random_int(&twin, 1, last);
+		CHECK(rando_world_item(&world, RANDO_LOC_WATERFALL_BOTTLE) == vt_bottles[waterfall]);
+		CHECK(rando_world_item(&world, RANDO_LOC_PYRAMID_BOTTLE) == vt_bottles[pyramid]);
+		seen[waterfall]++;
+		seen[pyramid]++;
+	}
+	CHECK(!seen[0]);
+	for (i = 1; i <= last; i++)
+		CHECK(seen[i]);
+	for (; i < 7; i++)
+		CHECK(!seen[i]);
+}
+
+typedef struct {
+	int n;
+	int64_t min, max;
+	bool mixed;
+} DrawRange;
+
+static void record_range(void *ctx, int64_t min, int64_t max, int64_t r)
+{
+	DrawRange *range = ctx;
+
+	(void)r;
+	if (range->n++ > 0 && (range->min != min || range->max != max))
+		range->mixed = true;
+	range->min = min;
+	range->max = max;
+}
+
+static void check_fountain_range(const char *functionality, int64_t last)
+{
+	RandoWorld world;
+	RandoPrng prng;
+	DrawRange range = {0, 0, 0, false};
+
+	functionality_world(&world, functionality);
+	seeded(&prng, 3, 0);
+	prng.observe = record_range;
+	prng.observe_ctx = &range;
+	rando_set_fountains(&world, &prng);
+	CHECK(range.n == 2);
+	CHECK(!range.mixed && range.min == 1 && range.max == last);
+}
+
+static void check_fountain_preset(void)
+{
+	RandoWorld world;
+	RandoPrng prng, twin;
+	int draws = 0;
+
+	functionality_world(&world, "normal");
+	CHECK(rando_world_set_item(&world, RANDO_LOC_PYRAMID_BOTTLE, RANDO_ITEM_Bottle));
+	seeded(&prng, 7, 0);
+	seeded(&twin, 7, 0);
+	prng.observe = count_draw;
+	prng.observe_ctx = &draws;
+	rando_set_fountains(&world, &prng);
+	CHECK(draws == 1);
+	CHECK(rando_world_item(&world, RANDO_LOC_PYRAMID_BOTTLE) == RANDO_ITEM_Bottle);
+	CHECK(rando_world_item(&world, RANDO_LOC_WATERFALL_BOTTLE) == vt_bottles[rando_random_int(&twin, 1, 6)]);
 }
 
 /* Randomizer::__construct: three hearts, ten bombs and thirty arrows, only into an empty collection. */
@@ -464,6 +585,12 @@ int main(int argc, char **argv)
 	check_medallions_golden();
 	check_medallion_index();
 	check_medallion_preset();
+	check_fountains_golden();
+	check_fountain_index("normal", 6);
+	check_fountain_index("hard", 5);
+	check_fountain_range("normal", 6);
+	check_fountain_range("hard", 5);
+	check_fountain_preset();
 	check_start_equipment();
 	check_goal_triforce();
 	check_goal_accessibility();

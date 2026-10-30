@@ -85,6 +85,8 @@ static bool run_attempt(RandoGen *gen, RandoStatus *status)
 		gen->stage = RANDO_STAGE_NONE;
 		return false;
 	}
+	gen->stage = RANDO_STAGE_SET_FOUNTAINS;
+	rando_set_fountains(&gen->world, &gen->prng);
 	gen->stage = RANDO_STAGE_NONE;
 
 	*status = RANDO_INCOMPLETE;
