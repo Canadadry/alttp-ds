@@ -3,7 +3,7 @@ CFLAGS := -std=c99 -Wall -Wextra -Werror
 RANDO := ../../rando
 BUILD := build
 
-UNIT_TESTS :=
+UNIT_TESTS := test_prng
 
 RANDO_SRC := $(wildcard $(RANDO)/src/*.c $(RANDO)/src/*/*.c)
 UNIT_BINS := $(addprefix $(BUILD)/,$(UNIT_TESTS))
