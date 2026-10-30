@@ -13,4 +13,4 @@
 - [x] Phase 3 — Docs
   - [x] 3.1 README
     - [x] README: saves, how to run, calico row
-- [ ] Human: on Delta, save, quit and reload; check a recent melonDS; a flashcart if possible
+- [x] Human: on Delta, save, quit and reload; check a recent melonDS; a flashcart if possible
