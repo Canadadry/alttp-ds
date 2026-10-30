@@ -61,7 +61,7 @@ ASFLAGS  := -g $(ARCH) -DARM9
 LDFLAGS   = -specs=ds_arm9.specs -g $(ARCH) -Wl,-Map,$(notdir $*.map) \
             -Wl,--wrap=FindIndexInMemblk,--wrap=ppu_runLine,--wrap=ZeldaReadSram,--wrap=ZeldaWriteSram
 
-LIBS := -lfat -lnds9 -lm
+LIBS := -lnds9 -lm
 
 LIBDIRS := $(LIBNDS) $(PORTLIBS)
 

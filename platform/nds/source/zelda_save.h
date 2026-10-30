@@ -1,13 +1,9 @@
 #pragma once
 
-/* Choose the .sav path from argv and TWiLight Menu++ settings.
- * Call after fatInitDefault and before ZeldaSaveMount. */
-void ZeldaSavePrepare(int argc, char **argv);
-
-/* Resolve the save and load it into g_zenv.sram. Call after ZeldaInitialize. */
+/* Load the save into g_zenv.sram. Call after ZeldaInitialize. */
 void ZeldaSaveMount(void);
 
-/* Write a dirty SRAM image. Safe to call every frame; returns without disk I/O when clean. */
+/* Write a dirty SRAM image. Safe to call every frame; returns without EEPROM access when clean. */
 void ZeldaSaveFlush(void);
 
 /* Short HUD word: off, new, loaded, saved, fail. */
