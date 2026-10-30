@@ -315,6 +315,167 @@ static void check_fountain_preset(void)
 	CHECK(rando_world_item(&world, RANDO_LOC_WATERFALL_BOTTLE) == vt_bottles[rando_random_int(&twin, 1, 6)]);
 }
 
+#define H RANDO_DROP_HEART
+#define RG RANDO_DROP_RUPEE_GREEN
+#define RB RANDO_DROP_RUPEE_BLUE
+#define RR RANDO_DROP_RUPEE_RED
+#define B1 RANDO_DROP_BOMB_REFILL_1
+#define B4 RANDO_DROP_BOMB_REFILL_4
+#define B8 RANDO_DROP_BOMB_REFILL_8
+#define MS RANDO_DROP_MAGIC_REFILL_SMALL
+#define MF RANDO_DROP_MAGIC_REFILL_FULL
+#define A5 RANDO_DROP_ARROW_REFILL_5
+#define A10 RANDO_DROP_ARROW_REFILL_10
+#define F RANDO_DROP_FAIRY
+
+/* VT's packs 0 to 6 after Randomizer::randomize() on cases/baseline attempt 0 (trace lines 73-79:
+ * 1 0 1 3 0 1 0), dumped from VT itself when step 2.3.5 was written. */
+static const RandoDrop baseline_packs[7][RANDO_PRIZE_PACK_SLOTS] = {
+	{MF, MS, MS, RB, MF, MS, H, MS},
+	{A5, H, A5, A10, A5, H, A5, A10},
+	{MS, RG, H, A5, MS, B1, RG, H},
+	{B1, B1, B1, B4, B1, B1, B8, B1},
+	{H, F, MF, RR, B8, H, RR, A10},
+	{H, H, H, H, RG, H, H, RG},
+	{RB, RG, RB, RR, RB, RG, RB, RB},
+};
+
+static void baseline_prize_world(RandoWorld *world, RandoPrng *prng)
+{
+	open_world(world, RANDO_ITEM_POOL_NORMAL);
+	seeded(prng, 1, 72);
+}
+
+static bool special_packs_empty(const RandoWorld *world)
+{
+	int p, s;
+
+	for (p = RANDO_PRIZE_PACK_PULL; p < RANDO_PRIZE_PACK_COUNT; p++)
+		for (s = 0; s < rando_prize_pack_slots((RandoPrizePack)p); s++)
+			if (rando_world_drop(world, (RandoPrizePack)p, s) != RANDO_DROP_NONE)
+				return false;
+	return true;
+}
+
+static void check_prize_packs_golden(void)
+{
+	RandoWorld world;
+	RandoPrng prng;
+	int p, s;
+
+	baseline_prize_world(&world, &prng);
+	rando_shuffle_prize_packs(&world, &prng);
+	for (p = 0; p < 7; p++)
+		for (s = 0; s < RANDO_PRIZE_PACK_SLOTS; s++)
+			CHECK(rando_world_drop(&world, (RandoPrizePack)p, s) == baseline_packs[p][s]);
+	CHECK(special_packs_empty(&world));
+}
+
+typedef struct {
+	int n;
+	int64_t max[8];
+	bool nonzero_min;
+} PackRanges;
+
+static void record_pack_range(void *ctx, int64_t min, int64_t max, int64_t r)
+{
+	PackRanges *ranges = ctx;
+
+	(void)r;
+	if (min != 0)
+		ranges->nonzero_min = true;
+	if (ranges->n < 8)
+		ranges->max[ranges->n] = max;
+	ranges->n++;
+}
+
+/* fy_shuffle over seven rows: 0..6 down to 0..0 (every golden's shufflePrizePacks lines). */
+static void check_prize_pack_range(void)
+{
+	RandoWorld world;
+	RandoPrng prng;
+	PackRanges ranges = {0, {0}, false};
+	int i;
+
+	open_world(&world, RANDO_ITEM_POOL_NORMAL);
+	seeded(&prng, 5, 0);
+	prng.observe = record_pack_range;
+	prng.observe_ctx = &ranges;
+	rando_shuffle_prize_packs(&world, &prng);
+	CHECK(ranges.n == 7 && !ranges.nonzero_min);
+	for (i = 0; i < 7; i++)
+		CHECK(ranges.max[i] == 6 - i);
+}
+
+/* VT's $random_vanilla_packs[$key][$i]: slots 0, 3 and 6 of each vanilla row tell the seven apart. */
+static const RandoDrop vanilla_marks[7][3] = {
+	{H, H, H}, {RB, RR, RB}, {MF, RB, H}, {B1, B4, B8}, {A5, A10, A5}, {MS, A5, RG}, {H, RR, RR},
+};
+
+static void check_prize_pack_index(void)
+{
+	int seen[7] = {0, 0, 0, 0, 0, 0, 0};
+	uint32_t seed;
+	int k;
+
+	for (seed = 0; seed < 64; seed++) {
+		RandoWorld world;
+		RandoPrng prng, twin;
+		uint8_t order[7] = {0, 1, 2, 3, 4, 5, 6};
+
+		open_world(&world, RANDO_ITEM_POOL_NORMAL);
+		seeded(&prng, seed, 0);
+		seeded(&twin, seed, 0);
+		rando_shuffle_prize_packs(&world, &prng);
+		rando_fy_shuffle(&twin, order, 7, 1);
+		for (k = 0; k < 7; k++) {
+			CHECK(rando_world_drop(&world, (RandoPrizePack)k, 0) == vanilla_marks[order[k]][0]);
+			CHECK(rando_world_drop(&world, (RandoPrizePack)k, 3) == vanilla_marks[order[k]][1]);
+			CHECK(rando_world_drop(&world, (RandoPrizePack)k, 6) == vanilla_marks[order[k]][2]);
+		}
+		seen[order[0]]++;
+	}
+	for (k = 0; k < 7; k++)
+		CHECK(seen[k]);
+}
+
+/* customPrizePacks: no draw, every pack stays empty. */
+static void check_prize_packs_custom(void)
+{
+	RandoWorld world;
+	RandoConfig config;
+	RandoPrng prng;
+	int draws = 0, p, s;
+
+	rando_config_init(&config);
+	CHECK(!config.custom_prize_packs);
+	config.custom_prize_packs = true;
+	rando_world_init(&world, RANDO_VARIANT_OPEN, &config);
+	seeded(&prng, 1, 0);
+	prng.observe = count_draw;
+	prng.observe_ctx = &draws;
+	rando_shuffle_prize_packs(&world, &prng);
+	CHECK(draws == 0);
+	for (p = 0; p < RANDO_PRIZE_PACK_COUNT; p++)
+		for (s = 0; s < rando_prize_pack_slots((RandoPrizePack)p); s++)
+			CHECK(rando_world_drop(&world, (RandoPrizePack)p, s) == RANDO_DROP_NONE);
+}
+
+/* shufflePrizePacks touches no location, shop or collected flag. */
+static void check_prize_packs_leave_world(void)
+{
+	RandoWorld world, before;
+	RandoPrng prng;
+
+	baseline_prize_world(&world, &prng);
+	before = world;
+	rando_shuffle_prize_packs(&world, &prng);
+	CHECK(memcmp(world.location_items, before.location_items, sizeof world.location_items) == 0);
+	CHECK(memcmp(world.shop_items, before.shop_items, sizeof world.shop_items) == 0);
+	CHECK(memcmp(world.collected, before.collected, sizeof world.collected) == 0);
+	CHECK(memcmp(world.shop_collected, before.shop_collected, sizeof world.shop_collected) == 0);
+}
+
 /* Randomizer::__construct: three hearts, ten bombs and thirty arrows, only into an empty collection. */
 static void check_start_equipment(void)
 {
@@ -591,6 +752,11 @@ int main(int argc, char **argv)
 	check_fountain_range("normal", 6);
 	check_fountain_range("hard", 5);
 	check_fountain_preset();
+	check_prize_packs_golden();
+	check_prize_pack_range();
+	check_prize_pack_index();
+	check_prize_packs_leave_world();
+	check_prize_packs_custom();
 	check_start_equipment();
 	check_goal_triforce();
 	check_goal_accessibility();

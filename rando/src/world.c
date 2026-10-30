@@ -153,6 +153,27 @@ void rando_world_set_boss(RandoWorld *world, RandoRegionId region, RandoBossSlot
 	world->bosses[region][slot] = (uint8_t)boss;
 }
 
+int rando_prize_pack_slots(RandoPrizePack pack)
+{
+	static const uint8_t slots[RANDO_PRIZE_PACK_COUNT] = {8, 8, 8, 8, 8, 8, 8, 3, 2, 1, 1};
+
+	assert(pack < RANDO_PRIZE_PACK_COUNT);
+	return slots[pack];
+}
+
+RandoDrop rando_world_drop(const RandoWorld *world, RandoPrizePack pack, int slot)
+{
+	assert(slot >= 0 && slot < rando_prize_pack_slots(pack));
+	return (RandoDrop)world->prize_pack_drops[pack][slot];
+}
+
+void rando_world_set_drop(RandoWorld *world, RandoPrizePack pack, int slot, RandoDrop drop)
+{
+	assert(slot >= 0 && slot < rando_prize_pack_slots(pack));
+	assert(drop > RANDO_DROP_NONE && drop < RANDO_DROP_COUNT && "VT's setDrop takes a Droppable, never null");
+	world->prize_pack_drops[pack][slot] = (uint8_t)drop;
+}
+
 RandoItemId rando_world_shop_item(const RandoWorld *world, RandoShopId shop, int slot)
 {
 	assert(shop < RANDO_SHOP_COUNT && slot >= 0 && slot < RANDO_SHOP_SLOTS);

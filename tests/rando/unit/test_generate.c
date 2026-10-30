@@ -89,7 +89,8 @@ static const struct {
 	{RANDO_LOC_TURTLE_ROCK_PRIZE, RANDO_ITEM_Crystal2},
 };
 
-/* tests/rando/cases/baseline: its trace through setFountains, its ten "- Prize:1" entries and two bottles. */
+/* tests/rando/cases/baseline: its trace through shufflePrizePacks, its ten "- Prize:1" entries and two bottles;
+ * packs 0 and 5 are VT's rows 2 and 0 (VT dump behind test_prepare's golden case). */
 static void check_baseline(void)
 {
 	Trace trace;
@@ -98,10 +99,13 @@ static void check_baseline(void)
 
 	CHECK(generate(NULL, NULL, 1, &trace) == RANDO_INCOMPLETE);
 	CHECK(gen.attempt == 0);
-	CHECK(trace.lines == 72);
+	CHECK(trace.lines == 79);
 	check_golden_prefix("baseline", &trace);
 	CHECK(strstr(trace.text, "0 6 setMedallions 0 2 -> 0\n0 7 fillPrizes 0 13 -> 12\n") != NULL);
 	CHECK(strstr(trace.text, "0 71 setFountains 1 6 -> 3\n0 72 setFountains 1 6 -> 6\n") != NULL);
+	CHECK(strstr(trace.text, "0 79 shufflePrizePacks 0 0 -> 0\n") != NULL);
+	CHECK(rando_world_drop(&gen.world, RANDO_PRIZE_PACK_0, 0) == RANDO_DROP_MAGIC_REFILL_FULL);
+	CHECK(rando_world_drop(&gen.world, RANDO_PRIZE_PACK_5, 0) == RANDO_DROP_HEART);
 	CHECK(rando_world_item(&gen.world, RANDO_LOC_WATERFALL_BOTTLE) == RANDO_ITEM_BottleWithBluePotion);
 	CHECK(rando_world_item(&gen.world, RANDO_LOC_PYRAMID_BOTTLE) == RANDO_ITEM_BottleWithFairy);
 	CHECK(rando_world_item(&gen.world, RANDO_LOC_TURTLE_ROCK_MEDALLION) == RANDO_ITEM_Ether);
@@ -122,7 +126,7 @@ static void check_random_ganon(void)
 	Trace trace;
 
 	CHECK(generate("crystals_ganon", "random", 1, &trace) == RANDO_INCOMPLETE);
-	CHECK(trace.lines == 73);
+	CHECK(trace.lines == 80);
 	check_golden_prefix("crystals_ganon-random", &trace);
 }
 
@@ -132,7 +136,7 @@ static void check_random_crystals(void)
 	Trace trace;
 
 	CHECK(generate("crystals_tower", "random", 1, &trace) == RANDO_INCOMPLETE);
-	CHECK(trace.lines == 73);
+	CHECK(trace.lines == 80);
 	check_golden_prefix("crystals_tower-random", &trace);
 	CHECK(strncmp(trace.text, "0 1 crystals 0 7 -> 5\n", 22) == 0);
 	CHECK(gen.world.config.crystals_tower == 5);
@@ -150,7 +154,7 @@ static void check_crystals_order(void)
 	CHECK(rando_options_set(&options, "crystals_tower", "random"));
 	memset(&trace, 0, sizeof trace);
 	CHECK(rando_generate(&gen, &options, 1, 1, record, &trace) == RANDO_INCOMPLETE);
-	CHECK(trace.lines == 74);
+	CHECK(trace.lines == 81);
 	CHECK(strncmp(trace.text, "0 1 crystals 0 7 -> 5\n0 2 crystals 0 7 -> ", 42) == 0);
 	CHECK(gen.world.config.crystals_ganon == 5);
 	CHECK(gen.world.config.crystals_tower == trace.text[42] - '0');
@@ -168,7 +172,7 @@ static void check_states(void)
 	CHECK(generate("state", "standard", 1, &trace) == RANDO_INCOMPLETE);
 	CHECK(gen.world.variant == RANDO_VARIANT_STANDARD);
 	CHECK(gen.world.config.mode_state == RANDO_STATE_STANDARD);
-	CHECK(trace.lines == 72);
+	CHECK(trace.lines == 79);
 	CHECK(!rando_items_has(&gen.world.pre_collected, RANDO_ITEM_RescueZelda));
 	CHECK(generate(NULL, NULL, 1, &trace) == RANDO_INCOMPLETE);
 	CHECK(gen.world.variant == RANDO_VARIANT_OPEN);
@@ -195,13 +199,13 @@ static void check_reseed(uint32_t seed)
 	prng.observe_ctx = &expected;
 	rando_random_int(&prng, 0, 6);
 	CHECK(generate(NULL, NULL, seed, &trace) == RANDO_INCOMPLETE);
-	CHECK(trace.lines == 72);
+	CHECK(trace.lines == 79);
 	CHECK(trace.text[strlen("0 1 getAdvancementItems 0 6 -> ")] - '0' == expected);
 
 	rando_options_init(&options);
 	CHECK(rando_generate(&gen, &options, seed, 0, NULL, NULL) == RANDO_INCOMPLETE);
 	CHECK(gen.attempt == 0);
-	CHECK(gen.draw == 72);
+	CHECK(gen.draw == 79);
 }
 
 /* The gate labels claims with stages.txt's names: a renamed or reordered stage fails here. */
@@ -301,7 +305,7 @@ static int check_pool_lists(void)
 		if (skip < 0) {
 			memset(&trace, 0, sizeof trace);
 			if (rando_generate(&gen, &options, (uint32_t)seed, 1, record, &trace) != RANDO_INCOMPLETE)
-				fixture_fail(&fx, "generation did not stop incomplete after setFountains");
+				fixture_fail(&fx, "generation did not stop incomplete after shufflePrizePacks");
 			check_golden_prefix(name, &trace);
 			cases++;
 		} else {

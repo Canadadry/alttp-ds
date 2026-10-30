@@ -665,6 +665,34 @@ static void check_set_boss(void)
 	CHECK(rando_world_boss(&world, RANDO_REGION_GANONS_TOWER, RANDO_BOSS_SLOT_MIDDLE) == RANDO_BOSS_LANMOLAS);
 }
 
+/* World::__construct: eleven empty prize packs, 0 to 6 with 8 slots, then pull 3, crab 2, stun 1, fish 1. */
+static void check_prize_packs_empty(void)
+{
+	static const int slots[RANDO_PRIZE_PACK_COUNT] = {8, 8, 8, 8, 8, 8, 8, 3, 2, 1, 1};
+	RandoWorld world;
+	int p, s;
+
+	standard_world(&world);
+	for (p = 0; p < RANDO_PRIZE_PACK_COUNT; p++) {
+		CHECK(rando_prize_pack_slots((RandoPrizePack)p) == slots[p]);
+		for (s = 0; s < slots[p]; s++)
+			CHECK(rando_world_drop(&world, (RandoPrizePack)p, s) == RANDO_DROP_NONE);
+	}
+}
+
+static void check_set_drop(void)
+{
+	RandoWorld world;
+
+	standard_world(&world);
+	rando_world_set_drop(&world, RANDO_PRIZE_PACK_6, 7, RANDO_DROP_FAIRY);
+	rando_world_set_drop(&world, RANDO_PRIZE_PACK_FISH, 0, RANDO_DROP_HEART);
+	CHECK(rando_world_drop(&world, RANDO_PRIZE_PACK_6, 7) == RANDO_DROP_FAIRY);
+	CHECK(rando_world_drop(&world, RANDO_PRIZE_PACK_6, 6) == RANDO_DROP_NONE);
+	CHECK(rando_world_drop(&world, RANDO_PRIZE_PACK_FISH, 0) == RANDO_DROP_HEART);
+	CHECK(rando_world_drop(&world, RANDO_PRIZE_PACK_STUN, 0) == RANDO_DROP_NONE);
+}
+
 static void hunt_pieces(RandoItems *items, int n)
 {
 	int i;
@@ -746,6 +774,8 @@ int main(int argc, char **argv)
 	check_can_fill_and_fill();
 	check_collect_items();
 	check_set_boss();
+	check_prize_packs_empty();
+	check_set_drop();
 	check_win_condition();
 	check_win_keeps_collected();
 	printf(TEST ": hand-written cases passed\n");

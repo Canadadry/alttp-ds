@@ -142,6 +142,7 @@ typedef struct RandoConfig {
 	bool can_transition_wrapped;
 	bool can_bunny_surf;
 	bool can_bunny_revive;
+	bool custom_prize_packs;
 } RandoConfig;
 
 /* Every key absent, as in a World built with no config. */

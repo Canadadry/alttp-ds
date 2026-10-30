@@ -374,6 +374,42 @@ typedef enum RandoBossSlot {
 
 #define RANDO_SHOP_SLOTS 3
 
+/* VT's Sprite table order: a drop's ROM sprite byte is 0xD7 + its id. */
+typedef enum RandoDrop {
+	RANDO_DROP_NONE,
+	RANDO_DROP_HEART,
+	RANDO_DROP_RUPEE_GREEN,
+	RANDO_DROP_RUPEE_BLUE,
+	RANDO_DROP_RUPEE_RED,
+	RANDO_DROP_BOMB_REFILL_1,
+	RANDO_DROP_BOMB_REFILL_4,
+	RANDO_DROP_BOMB_REFILL_8,
+	RANDO_DROP_MAGIC_REFILL_SMALL,
+	RANDO_DROP_MAGIC_REFILL_FULL,
+	RANDO_DROP_ARROW_REFILL_5,
+	RANDO_DROP_ARROW_REFILL_10,
+	RANDO_DROP_FAIRY,
+	RANDO_DROP_COUNT,
+} RandoDrop;
+
+/* VT's World::getPrizePacks() order. */
+typedef enum RandoPrizePack {
+	RANDO_PRIZE_PACK_0,
+	RANDO_PRIZE_PACK_1,
+	RANDO_PRIZE_PACK_2,
+	RANDO_PRIZE_PACK_3,
+	RANDO_PRIZE_PACK_4,
+	RANDO_PRIZE_PACK_5,
+	RANDO_PRIZE_PACK_6,
+	RANDO_PRIZE_PACK_PULL,
+	RANDO_PRIZE_PACK_CRAB,
+	RANDO_PRIZE_PACK_STUN,
+	RANDO_PRIZE_PACK_FISH,
+	RANDO_PRIZE_PACK_COUNT,
+} RandoPrizePack;
+
+#define RANDO_PRIZE_PACK_SLOTS 8
+
 typedef struct RandoLocationInfo {
 	const char *name;
 	RandoRegionId region;
@@ -420,6 +456,7 @@ typedef struct RandoWorld {
 	bool shop_active[RANDO_SHOP_COUNT];
 	uint16_t shop_prices[RANDO_SHOP_COUNT][RANDO_SHOP_SLOTS];
 	uint8_t bosses[RANDO_REGION_COUNT][RANDO_BOSS_SLOT_COUNT];
+	uint8_t prize_pack_drops[RANDO_PRIZE_PACK_COUNT][RANDO_PRIZE_PACK_SLOTS];
 	RandoItems pre_collected;
 	bool collected[RANDO_LOCATION_COUNT];
 	bool shop_collected[RANDO_SHOP_COUNT][RANDO_SHOP_SLOTS];
@@ -441,6 +478,9 @@ RandoLocationId rando_location_find(const char *name);
 RandoRegionId rando_region_find(const char *key);
 RandoShopId rando_shop_find(const char *name);
 
+/* Asserts the pack is below the count. */
+int rando_prize_pack_slots(RandoPrizePack pack);
+
 /* VT's instanceof between location classes. */
 bool rando_location_is_a(RandoLocationClass location_class, RandoLocationClass base);
 
@@ -459,6 +499,10 @@ int rando_world_shop_price(const RandoWorld *world, RandoShopId shop, int slot);
 void rando_world_shop_clear(RandoWorld *world, RandoShopId shop);
 /* Replaces what the slot held; the item may not be RANDO_ITEM_NONE. */
 void rando_world_shop_add(RandoWorld *world, RandoShopId shop, int slot, RandoItemId item, int price);
+/* Both assert the slot is below the pack's slot count. */
+RandoDrop rando_world_drop(const RandoWorld *world, RandoPrizePack pack, int slot);
+/* The drop may not be RANDO_DROP_NONE. */
+void rando_world_set_drop(RandoWorld *world, RandoPrizePack pack, int slot, RandoDrop drop);
 
 /* False where VT's setItem throws (a refused item class); the location is then unchanged, and the
  * caller fails the attempt as VT's retry loop does. RANDO_ITEM_NONE empties the location. */

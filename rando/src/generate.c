@@ -87,6 +87,8 @@ static bool run_attempt(RandoGen *gen, RandoStatus *status)
 	}
 	gen->stage = RANDO_STAGE_SET_FOUNTAINS;
 	rando_set_fountains(&gen->world, &gen->prng);
+	gen->stage = RANDO_STAGE_SHUFFLE_PRIZE_PACKS;
+	rando_shuffle_prize_packs(&gen->world, &gen->prng);
 	gen->stage = RANDO_STAGE_NONE;
 
 	*status = RANDO_INCOMPLETE;

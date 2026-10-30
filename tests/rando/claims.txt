@@ -2,16 +2,16 @@
 # that stage's last attempt-0 draw) or `<case> all` (trace, attempts and
 # spoiler.json match). <stage> is a stage of stages.txt with a draw in the
 # case's attempt 0. An unclaimed case is PENDING.
-baseline setFountains
-crystals_ganon-random setFountains
-crystals_tower-random setFountains
-item_functionality-hard setFountains
-item_functionality-expert setFountains
-item_pool-hard setFountains
-item_pool-expert setFountains
-item_pool-crowd_control setFountains
-state-standard setFountains
-goal-pedestal setFountains
-goal-triforce-hunt setFountains
-glitches-overworld_glitches setFountains
-weapons-swordless setFountains
+baseline shufflePrizePacks
+crystals_ganon-random shufflePrizePacks
+crystals_tower-random shufflePrizePacks
+item_functionality-hard shufflePrizePacks
+item_functionality-expert shufflePrizePacks
+item_pool-hard shufflePrizePacks
+item_pool-expert shufflePrizePacks
+item_pool-crowd_control shufflePrizePacks
+state-standard shufflePrizePacks
+goal-pedestal shufflePrizePacks
+goal-triforce-hunt shufflePrizePacks
+glitches-overworld_glitches shufflePrizePacks
+weapons-swordless shufflePrizePacks

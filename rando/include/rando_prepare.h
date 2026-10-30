@@ -25,6 +25,10 @@ void rando_set_medallions(RandoWorld *world, RandoPrng *prng);
 /* One getBottle(true) draw per Fountains location that holds no item yet; a filled one is skipped without a draw. */
 void rando_set_fountains(RandoWorld *world, RandoPrng *prng);
 
+/* Unless custom_prize_packs, exactly 7 draws: packs 0 to 6 get VT's vanilla rows in shuffled order.
+ * The four special packs are untouched. */
+void rando_shuffle_prize_packs(RandoWorld *world, RandoPrng *prng);
+
 /* Randomizer::placeBosses with enemizer.bossShuffle none, the only path the matrix reaches: it draws nothing. */
 void rando_place_bosses(RandoWorld *world);
 
