@@ -264,6 +264,36 @@ static void check_no_active_shop(void)
 			      "    ],\n") != NULL);
 }
 
+static void write_pool(const RandoPools *pools)
+{
+	FILE *f = tmpfile();
+
+	CHECK(f != NULL);
+	CHECK(rando_spoiler_write_pool(f, pools));
+	rewind(f);
+	read_stream(f, "pool", spoiler);
+	fclose(f);
+}
+
+/* One getTarget()->getName() line per item: dungeon, advancement, nice, then item pool. */
+static void check_pool(void)
+{
+	static RandoPools pools;
+
+	memset(&pools, 0, sizeof pools);
+	write_pool(&pools);
+	CHECK(spoiler[0] == '\0');
+
+	pools.items[RANDO_POOL_ITEMS][pools.count[RANDO_POOL_ITEMS]++] = RANDO_ITEM_Arrow;
+	pools.items[RANDO_POOL_NICE][pools.count[RANDO_POOL_NICE]++] = RANDO_ITEM_UncleSword;
+	pools.items[RANDO_POOL_ADVANCEMENT][pools.count[RANDO_POOL_ADVANCEMENT]++] = RANDO_ITEM_Hammer;
+	pools.items[RANDO_POOL_ADVANCEMENT][pools.count[RANDO_POOL_ADVANCEMENT]++] = RANDO_ITEM_Hookshot;
+	pools.items[RANDO_POOL_DUNGEON][pools.count[RANDO_POOL_DUNGEON]++] = RANDO_ITEM_KeyD3;
+	write_pool(&pools);
+	if (strcmp(spoiler, "KeyD3:1\nHammer:1\nHookshot:1\nProgressiveSword:1\nArrow:1\n") != 0)
+		test_fail(TEST, "pool.txt\n%s", spoiler);
+}
+
 int main(void)
 {
 	check_shops("cases/baseline");
@@ -275,6 +305,7 @@ int main(void)
 	check_file_layout();
 	check_alias_names();
 	check_no_active_shop();
+	check_pool();
 	printf(TEST ": hand-written cases passed\n");
 	return 0;
 }

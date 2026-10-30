@@ -2,16 +2,22 @@
 # that stage's last attempt-0 draw) or `<case> all` (trace, attempts and
 # spoiler.json match). <stage> is a stage of stages.txt with a draw in the
 # case's attempt 0. An unclaimed case is PENDING.
-baseline shufflePrizePacks
-crystals_ganon-random shufflePrizePacks
-crystals_tower-random shufflePrizePacks
-item_functionality-hard shufflePrizePacks
-item_functionality-expert shufflePrizePacks
-item_pool-hard shufflePrizePacks
-item_pool-expert shufflePrizePacks
-item_pool-crowd_control shufflePrizePacks
-state-standard shufflePrizePacks
+baseline prepareWorld
+crystals_ganon-random prepareWorld
+crystals_tower-random prepareWorld
+item_functionality-hard prepareWorld
+item_functionality-expert prepareWorld
+item_pool-hard prepareWorld
+item_pool-expert prepareWorld
+item_pool-crowd_control prepareWorld
+state-standard prepareWorld
 goal-pedestal shufflePrizePacks
 goal-triforce-hunt shufflePrizePacks
-glitches-overworld_glitches shufflePrizePacks
-weapons-swordless shufflePrizePacks
+glitches-overworld_glitches prepareWorld
+weapons-swordless prepareWorld
+item_placement-basic prepareWorld
+weapons-assured prepareWorld
+weapons-vanilla prepareWorld
+dungeon_items-mc prepareWorld
+dungeon_items-mcs prepareWorld
+dungeon_items-full prepareWorld

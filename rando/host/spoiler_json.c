@@ -252,3 +252,13 @@ bool rando_spoiler_write_json(FILE *out, const RandoWorld *world)
 	fputs("}\n", out);
 	return fflush(out) == 0 && !ferror(out);
 }
+
+bool rando_spoiler_write_pool(FILE *out, const RandoPools *pools)
+{
+	int list, i;
+
+	for (list = 0; list < RANDO_POOL_LIST_COUNT; list++)
+		for (i = 0; i < pools->count[list]; i++)
+			fprintf(out, "%s" WORLD_SUFFIX "\n", target_name((RandoItemId)pools->items[list][i]));
+	return fflush(out) == 0 && !ferror(out);
+}

@@ -20,19 +20,31 @@ enum {
 
 static RandoGen gen;
 
-static bool write_spoiler(const char *out_dir)
+typedef bool (*Writer)(FILE *out);
+
+static bool spoiler_json(FILE *out)
+{
+	return rando_spoiler_write_json(out, &gen.world);
+}
+
+static bool pool_txt(FILE *out)
+{
+	return rando_spoiler_write_pool(out, &gen.pools);
+}
+
+static bool write_file(const char *out_dir, const char *name, Writer writer)
 {
 	char path[RANDO_OUT_ERROR_MAX];
 	FILE *f;
 	bool ok;
 
-	snprintf(path, sizeof path, "%s/spoiler.json", out_dir);
+	snprintf(path, sizeof path, "%s/%s", out_dir, name);
 	f = fopen(path, "w");
 	if (!f) {
 		fprintf(stderr, "rando_gen: %s: %s\n", path, strerror(errno));
 		return false;
 	}
-	ok = rando_spoiler_write_json(f, &gen.world);
+	ok = writer(f);
 	if (fclose(f) != 0)
 		ok = false;
 	if (!ok)
@@ -67,7 +79,10 @@ int main(int argc, char **argv)
 		fprintf(stderr, "rando_gen: %s\n", out_error);
 		return EXIT_INPUT;
 	}
-	if ((status == RANDO_COMPLETE || status == RANDO_INCOMPLETE) && !write_spoiler(argv[2]))
+	if ((status == RANDO_COMPLETE || status == RANDO_INCOMPLETE)
+	    && !write_file(argv[2], "spoiler.json", spoiler_json))
+		return EXIT_INPUT;
+	if (status == RANDO_INCOMPLETE && !write_file(argv[2], "pool.txt", pool_txt))
 		return EXIT_INPUT;
 	switch (status) {
 	case RANDO_COMPLETE:
