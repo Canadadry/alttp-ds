@@ -650,6 +650,85 @@ static int region_locked_items(const char *file, const char *method)
 	return strcmp(method, "testRegionLockedItems") == 0;
 }
 
+/* placeBosses: Region::setBoss, and GanonsTower's level argument. */
+static void check_set_boss(void)
+{
+	RandoWorld world;
+
+	standard_world(&world);
+	rando_world_set_boss(&world, RANDO_REGION_ICE_PALACE, RANDO_BOSS_SLOT_BOSS, RANDO_BOSS_KHOLDSTARE);
+	rando_world_set_boss(&world, RANDO_REGION_HYRULE_CASTLE_TOWER, RANDO_BOSS_SLOT_BOSS, RANDO_BOSS_AGAHNIM);
+	rando_world_set_boss(&world, RANDO_REGION_GANONS_TOWER, RANDO_BOSS_SLOT_TOP, RANDO_BOSS_ARMOS_KNIGHTS);
+	CHECK(rando_world_boss(&world, RANDO_REGION_ICE_PALACE, RANDO_BOSS_SLOT_BOSS) == RANDO_BOSS_KHOLDSTARE);
+	CHECK(rando_world_boss(&world, RANDO_REGION_HYRULE_CASTLE_TOWER, RANDO_BOSS_SLOT_BOSS) == RANDO_BOSS_AGAHNIM);
+	CHECK(rando_world_boss(&world, RANDO_REGION_GANONS_TOWER, RANDO_BOSS_SLOT_TOP) == RANDO_BOSS_ARMOS_KNIGHTS);
+	CHECK(rando_world_boss(&world, RANDO_REGION_GANONS_TOWER, RANDO_BOSS_SLOT_MIDDLE) == RANDO_BOSS_LANMOLAS);
+}
+
+static void hunt_pieces(RandoItems *items, int n)
+{
+	int i;
+
+	rando_items_clear(items);
+	for (i = 0; i < n; i++)
+		rando_items_add(items, RANDO_ITEM_TriforcePiece);
+}
+
+/* World::__construct's win_condition: has('Triforce'), or North East Light World canEnter and goal
+ * triforce-hunt and has('TriforcePiece', item.Goal.Required). */
+static void check_win_condition(void)
+{
+	RandoWorld world;
+	RandoConfig config;
+	RandoItems items;
+
+	rando_config_init(&config);
+	rando_world_init(&world, RANDO_VARIANT_OPEN, &config);
+	rando_items_clear(&items);
+	rando_items_add(&items, RANDO_ITEM_Triforce);
+	CHECK(rando_world_check_win_condition(&world, &items));
+	rando_world_reset_collected(&world);
+	hunt_pieces(&items, 20);
+	rando_items_add(&items, RANDO_ITEM_RescueZelda);
+	CHECK(!rando_world_check_win_condition(&world, &items));
+
+	config.goal = RANDO_GOAL_TRIFORCE_HUNT;
+	config.item_goal_required = 20;
+	rando_world_init(&world, RANDO_VARIANT_OPEN, &config);
+	hunt_pieces(&items, 20);
+	rando_items_add(&items, RANDO_ITEM_RescueZelda);
+	CHECK(rando_world_region_can_enter(&world, RANDO_REGION_NORTH_EAST_LIGHT_WORLD, &items));
+	CHECK(rando_world_check_win_condition(&world, &items));
+	rando_world_reset_collected(&world);
+	hunt_pieces(&items, 19);
+	rando_items_add(&items, RANDO_ITEM_RescueZelda);
+	CHECK(!rando_world_check_win_condition(&world, &items));
+}
+
+/* checkWinCondition calls collectItems, which skips locations already collected: fillPrizes
+ * depends on the check not resetting them. */
+static void check_win_keeps_collected(void)
+{
+	RandoWorld world;
+	RandoConfig config;
+	RandoItems start, out;
+
+	rando_config_init(&config);
+	rando_world_init(&world, RANDO_VARIANT_OPEN, &config);
+	CHECK(rando_world_set_item(&world, RANDO_LOC_GANON, RANDO_ITEM_Triforce));
+	rando_items_all(&start);
+	rando_items_unset(&start, RANDO_ITEM_Triforce);
+	CHECK(!rando_items_has(&start, RANDO_ITEM_Triforce));
+	CHECK(rando_world_check_win_condition(&world, &start));
+	CHECK(rando_world_collected(&world, RANDO_LOC_GANON));
+	CHECK(!rando_world_check_win_condition(&world, &start));
+
+	rando_world_reset_collected(&world);
+	rando_world_collect_items(&world, &start, &out);
+	CHECK(rando_world_collected(&world, RANDO_LOC_GANON));
+	CHECK(!rando_world_check_win_condition(&world, &start));
+}
+
 int main(int argc, char **argv)
 {
 	int fixtures = test_fixtures_mode(TEST, argc, argv);
@@ -666,6 +745,9 @@ int main(int argc, char **argv)
 	check_region_can_fill();
 	check_can_fill_and_fill();
 	check_collect_items();
+	check_set_boss();
+	check_win_condition();
+	check_win_keeps_collected();
 	printf(TEST ": hand-written cases passed\n");
 	if (!fixtures)
 		return 0;

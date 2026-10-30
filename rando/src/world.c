@@ -145,6 +145,14 @@ RandoBossId rando_world_boss(const RandoWorld *world, RandoRegionId region, Rand
 	return (RandoBossId)world->bosses[region][slot];
 }
 
+void rando_world_set_boss(RandoWorld *world, RandoRegionId region, RandoBossSlot slot, RandoBossId boss)
+{
+	assert(region < RANDO_REGION_COUNT && slot < RANDO_BOSS_SLOT_COUNT && boss < RANDO_BOSS_COUNT);
+	assert((slot == RANDO_BOSS_SLOT_BOSS || region == RANDO_REGION_GANONS_TOWER)
+	       && "only Ganon's Tower has boss levels");
+	world->bosses[region][slot] = (uint8_t)boss;
+}
+
 RandoItemId rando_world_shop_item(const RandoWorld *world, RandoShopId shop, int slot)
 {
 	assert(shop < RANDO_SHOP_COUNT && slot >= 0 && slot < RANDO_SHOP_SLOTS);
@@ -377,6 +385,17 @@ void rando_world_collect_items(RandoWorld *world, const RandoItems *start, Rando
 		}
 		rando_items_merge(out, out, &found);
 	} while (nfound > 0);
+}
+
+bool rando_world_check_win_condition(RandoWorld *world, const RandoItems *collected)
+{
+	RandoItems items;
+
+	rando_world_collect_items(world, collected, &items);
+	return rando_items_has(&items, RANDO_ITEM_Triforce)
+		|| (rando_world_region_can_enter(world, RANDO_REGION_NORTH_EAST_LIGHT_WORLD, &items)
+		    && world->config.goal == RANDO_GOAL_TRIFORCE_HUNT
+		    && rando_items_has_n(&items, RANDO_ITEM_TriforcePiece, world->config.item_goal_required));
 }
 
 void rando_world_reset_collected(RandoWorld *world)

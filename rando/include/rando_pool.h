@@ -27,6 +27,10 @@ typedef struct RandoPools {
  * stays under RANDO_POOL_CAPACITY and that a random bottle only occurs in the advancement list. */
 void rando_pool_build(const RandoWorld *world, RandoPrng *prng, RandoPools *pools);
 
+/* rando_pool_build's walk of one list, each item added to items (both views) on top of what it
+ * holds; the same draws as the list's build. */
+void rando_pool_add_items(const RandoWorld *world, RandoPrng *prng, RandoPoolList list, RandoItems *items);
+
 /* VT's World::getBottle: one draw. */
 RandoItemId rando_get_bottle(const RandoWorld *world, RandoPrng *prng, bool filled);
 

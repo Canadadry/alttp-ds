@@ -449,6 +449,8 @@ void rando_world_init(RandoWorld *world, RandoVariant variant, const RandoConfig
 
 RandoItemId rando_world_item(const RandoWorld *world, RandoLocationId location);
 RandoBossId rando_world_boss(const RandoWorld *world, RandoRegionId region, RandoBossSlot slot);
+/* Ignores nboss_slots, which describes the constructor defaults only. */
+void rando_world_set_boss(RandoWorld *world, RandoRegionId region, RandoBossSlot slot, RandoBossId boss);
 RandoItemId rando_world_shop_item(const RandoWorld *world, RandoShopId shop, int slot);
 bool rando_world_shop_active(const RandoWorld *world, RandoShopId shop);
 void rando_world_shop_set_active(RandoWorld *world, RandoShopId shop, bool active);
@@ -477,6 +479,9 @@ bool rando_world_region_can_fill(const RandoWorld *world, RandoRegionId region, 
 
 /* World::collectItems: start may be NULL; out may not alias start. */
 void rando_world_collect_items(RandoWorld *world, const RandoItems *start, RandoItems *out);
+/* World::checkWinCondition: collects from collected (may be NULL) without resetting the locations
+ * already collected, so a location collected before adds nothing. */
+bool rando_world_check_win_condition(RandoWorld *world, const RandoItems *collected);
 void rando_world_reset_collected(RandoWorld *world);
 bool rando_world_collected(const RandoWorld *world, RandoLocationId location);
 bool rando_world_shop_collected(const RandoWorld *world, RandoShopId shop, int slot);

@@ -206,6 +206,66 @@ static void check_crowd_control(void)
 	CHECK(pools.items[RANDO_POOL_ITEMS][87] == RANDO_ITEM_TwentyRupees2);
 }
 
+typedef struct DrawLog {
+	int64_t min[8], max[8];
+	int n;
+} DrawLog;
+
+static void log_draw(void *ctx, int64_t min, int64_t max, int64_t r)
+{
+	DrawLog *log = ctx;
+
+	(void)r;
+	if (log->n < 8) {
+		log->min[log->n] = min;
+		log->max[log->n] = max;
+	}
+	log->n++;
+}
+
+static void list_as_items(const RandoPools *pools, RandoPoolList list, RandoItems *items)
+{
+	int i;
+
+	rando_items_clear(items);
+	for (i = 0; i < pools->count[list]; i++)
+		rando_items_add(items, (RandoItemId)pools->items[list][i]);
+}
+
+/* fillPrizes' assumed items: the getter's list added to a collection, from the same draws. */
+static void check_add_items(const char *functionality, RandoPoolList list, int ndraws, int64_t max)
+{
+	static RandoWorld world;
+	DrawLog log = {{0}, {0}, 0};
+	RandoPools pools;
+	RandoItems expected, added;
+	RandoPrng built, twin;
+	int i;
+
+	functionality_world(&world, functionality);
+	baseline_prng(&built);
+	baseline_prng(&twin);
+	rando_pool_build(&world, &built, &pools);
+	list_as_items(&pools, list, &expected);
+	twin.observe = log_draw;
+	twin.observe_ctx = &log;
+	rando_items_clear(&added);
+	rando_pool_add_items(&world, &twin, list, &added);
+	CHECK(memcmp(&added, &expected, sizeof added) == 0);
+	CHECK(log.n == ndraws);
+	for (i = 0; i < ndraws && i < 8; i++)
+		CHECK(log.min[i] == 0 && log.max[i] == max);
+	if (list == RANDO_POOL_ADVANCEMENT)
+		CHECK(memcmp(built.s, twin.s, sizeof built.s) == 0);
+}
+
+static void check_add_items_lists(void)
+{
+	check_add_items("normal", RANDO_POOL_ADVANCEMENT, 4, 6);
+	check_add_items("hard", RANDO_POOL_ADVANCEMENT, 4, 5);
+	check_add_items("normal", RANDO_POOL_DUNGEON, 0, 0);
+}
+
 int main(void)
 {
 	check_baseline_bottles();
@@ -213,6 +273,7 @@ int main(void)
 	check_bottle_ranges();
 	check_count_overrides();
 	check_crowd_control();
+	check_add_items_lists();
 	puts(TEST ": ok");
 	return 0;
 }

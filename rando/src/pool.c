@@ -189,13 +189,32 @@ static void assert_room(RandoPoolList list, int count)
 	(void)list;
 }
 
-static void build_list(const RandoWorld *world, RandoPrng *prng, RandoPools *pools, RandoPoolList list,
-		       const RandoPoolEntry *table, int nentries)
+/* Exactly one of list_items and collection is set. */
+typedef struct PoolSink {
+	uint8_t *list_items;
+	uint16_t *list_count;
+	RandoItems *collection;
+} PoolSink;
+
+static void walk_list(const RandoWorld *world, RandoPrng *prng, RandoPoolList list, PoolSink *sink)
 {
+	static const struct {
+		const RandoPoolEntry *entries;
+		int n;
+	} tables[RANDO_POOL_LIST_COUNT] = {
+#define TABLE(t) {t, (int)(sizeof t / sizeof t[0])}
+		TABLE(dungeon_table),
+		TABLE(advancement_table),
+		TABLE(nice_table),
+		TABLE(junk_table),
+#undef TABLE
+	};
+	const RandoPoolEntry *table;
 	int e, i;
 
-	pools->count[list] = 0;
-	for (e = 0; e < nentries; e++) {
+	assert(list < RANDO_POOL_LIST_COUNT);
+	table = tables[list].entries;
+	for (e = 0; e < tables[list].n; e++) {
 		int count = table[e].count;
 		int n;
 
@@ -205,23 +224,36 @@ static void build_list(const RandoWorld *world, RandoPrng *prng, RandoPools *poo
 		for (i = 0; i < n; i++) {
 			RandoItemId item = (RandoItemId)table[e].item;
 
-			assert_room(list, pools->count[list]);
 			if (item == POOL_RANDOM_BOTTLE) {
 				/* VT would label this draw with a stage the stage table lacks. */
 				assert(list == RANDO_POOL_ADVANCEMENT && "random bottle outside the advancement list");
 				item = rando_get_bottle(world, prng, false);
 			}
-			pools->items[list][pools->count[list]++] = (uint8_t)item;
+			if (sink->collection) {
+				rando_items_add(sink->collection, item);
+			} else {
+				assert_room(list, *sink->list_count);
+				sink->list_items[(*sink->list_count)++] = (uint8_t)item;
+			}
 		}
 	}
 }
 
-#define BUILD(list, table) build_list(world, prng, pools, list, table, (int)(sizeof table / sizeof table[0]))
-
 void rando_pool_build(const RandoWorld *world, RandoPrng *prng, RandoPools *pools)
 {
-	BUILD(RANDO_POOL_DUNGEON, dungeon_table);
-	BUILD(RANDO_POOL_ADVANCEMENT, advancement_table);
-	BUILD(RANDO_POOL_NICE, nice_table);
-	BUILD(RANDO_POOL_ITEMS, junk_table);
+	int list;
+
+	for (list = 0; list < RANDO_POOL_LIST_COUNT; list++) {
+		PoolSink sink = {pools->items[list], &pools->count[list], NULL};
+
+		pools->count[list] = 0;
+		walk_list(world, prng, (RandoPoolList)list, &sink);
+	}
+}
+
+void rando_pool_add_items(const RandoWorld *world, RandoPrng *prng, RandoPoolList list, RandoItems *items)
+{
+	PoolSink sink = {NULL, NULL, items};
+
+	walk_list(world, prng, list, &sink);
 }
