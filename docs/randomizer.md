@@ -265,3 +265,19 @@ None.
   43 configs seeds 2–200 (16 556 generations), all succeed on attempt 0. VT's failure paths
   (`Cannot Place Prize`, unwinnable) exist but never fire here. The plan's "at least one retry
   seed" is unmet; Phase 2 step 4's retry-seed claim is empty.
+
+### Step 2.1
+
+- C PRNG (`rando/include/rando_prng.h`, `rando/src/prng.c`): caller-owned `RandoPrng`, optional
+  per-draw observer, `rando_fy_shuffle`. `test_prng` checks 31 VT-verified vectors (9
+  `fy_shuffle`) and replays all 35 729 draws of the 44 golden traces.
+- Gate: `claims.txt` (empty), `stages.txt` (VT order: `crystals`, `getAdvancementItems`,
+  `setShops`, `setMedallions`, `placeBosses`, `fillPrizes`, `setFountains`,
+  `shufflePrizePacks`, `prepareWorld`, `fill` — `placeBosses` precedes `fillPrizes`, the PRD had
+  it reversed). Stage claims compare the trace prefix, then the due `section`/`keys`/`pool`
+  checks on the C partial `spoiler.json` and `pool.txt`; `all` claims compare everything.
+  Generator contract: `$RANDO_GEN <case_dir> <out_dir>`, default `build/rando_gen`.
+- Case discovery shared by `run_e2e.sh` and `gen_golden.sh` (`cases.sh`).
+- Deviation: the gate fixtures run in a separate `make -C tests/rando selftest` (~2 s), not in
+  `make test` (kept at ~50 ms, CLAUDE.md). CI (`rando-tests.yml`) runs `test`, `selftest`, `e2e`.
+- No case claimed: e2e is 44 pending.

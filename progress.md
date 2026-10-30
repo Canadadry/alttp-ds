@@ -9,7 +9,7 @@
     - [x] Chunk 1: case list
     - [x] Chunk 2: goldens
 - [ ] Phase 2 — C port, baseline
-  - [ ] 2.1 PRNG and fy_shuffle, convergence gate claims, CI
+  - [x] 2.1 PRNG and fy_shuffle, convergence gate claims, CI
     - [x] Chunk 1: C PRNG
     - [x] Chunk 2: fy_shuffle and the vector file
     - [x] Chunk 3: shared case discovery
