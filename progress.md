@@ -3,7 +3,7 @@
     - [x] Makefile passes -g ZLTP to ndstool
   - [ ] 1.2 The ARM9 reaches the EEPROM (probe)
     - [x] probe, chip present
-    - [ ] no chip, notes, probe removed
+    - [x] no chip, notes, probe removed
 - [ ] Phase 2 — Save through the EEPROM only
   - [ ] 2.1 Rewrite zelda_save.c for the EEPROM
   - [ ] 2.2 A save reaches the emulator's .sav

@@ -36,7 +36,6 @@
 #include "assets.h"
 #include "select_file.h"
 #include "zelda_save.h"
-#include "eeprom_probe.h"
 
 enum { kSramBytes = 8192, kSector = 512, kMelonIo = 0x4E4C454D };
 
@@ -1477,7 +1476,6 @@ void __wrap_ZeldaWriteSram(void)
 
 void ZeldaSaveMount(void)
 {
-	EepromProbe();
 	map_reset();
 	if (!g_zenv.sram) {
 		g_status = "off";

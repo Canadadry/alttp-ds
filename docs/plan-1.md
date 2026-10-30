@@ -30,11 +30,12 @@ This plan follows the boot fix already on branch `melonds-0.9.5-boot`, commits `
   The EEPROM holds exactly the bytes the `.sav` file held, so an old `.sav` can be copied as-is into an emulator's save slot.
 - **The public API stays.** `ZeldaSaveMount`, `ZeldaSaveFlush`, `ZeldaSaveStatus` (`off`, `new`, `loaded`, `saved`, `fail`), `__wrap_ZeldaWriteSram`, and every settings, spawn and button-map function keep their signatures and callers. `zelda_host.c` calls Mount and Flush.
 - **EEPROM access.**
-  - Use libnds `cardReadEeprom` and `cardWriteEeprom` (`nds/card.h`) with `addrtype` 2: 2-byte address, 32-byte pages.
+  - Reads use libnds `cardReadEeprom` and `cardEepromCommand` (`nds/card.h`) with `addrtype` 2: 2-byte address, 32-byte pages.
+  - Writes use our own page write, not libnds `cardWriteEeprom`: WREN, then `02` + 2-byte address + 32 data bytes, with chip-select hold cleared (`AUXSPICNT = CARD_ENABLE | CARD_SPI_ENABLE`) before the last data byte. Released melonDS (0.9.5 to 1.1) only commits a page on a byte sent with hold cleared; libnds releases hold through `AUXSPICNT` afterwards, so its writes never reach the `.sav` (step 1.2). Every busy and write-in-progress poll is bounded: `cardWriteEeprom`'s are not.
   - The ARM9 takes the card slot with `sysSetCardOwner(BUS_OWNER_ARM9)` around each access, then gives it back to the ARM7 (`sysSetCardOwner(BUS_OWNER_ARM7)`). Calico leaves the slot to the ARM7.
   - Mount reads all 8 KB once into `g_zenv.sram` and into a shadow copy.
   - Flush runs after the frame, as today. It writes only the 32-byte pages that differ from the shadow, then updates the shadow.
-  - If no EEPROM answers (for example, every byte reads `0xFF` and the status register reads `0xFF`), the status is `off` and nothing is written. If every byte is `0xFF` but the chip answers, it is a blank EEPROM and the status is `new`.
+  - A chip answers if and only if the status register has bit 1 set after WREN and clear after WRDI. Mount checks this before anything else; without a chip the status is `off` and nothing is ever written. melonDS without a chip reads `00` everywhere; a floating bus on hardware would read `FF` (bit 1 never clears). If the chip answers and every byte is `0xFF`, it is a blank EEPROM and the status is `new`.
 - **The three calico overrides in `platform/nds/calico/` stay as they are.**
 - **Accepted consequence.** On real hardware, the save depends on the flashcart's or nds-bootstrap's save emulation for an unknown game code. If one of them assumes something other than a 64 kbit EEPROM, saves will not work there. Nobody can verify this in an agent session. The README says it.
 - **Comments** follow `CLAUDE.md` § Comments. The header comment of `zelda_save.c` is rewritten to the new contract: the save is the cartridge's 8 KB EEPROM. All FAT, TWiLight and melonDS-folder-sync prose goes.
