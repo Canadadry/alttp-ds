@@ -207,8 +207,9 @@ static void prune(const RandoWorld *world)
 				continue;
 			set_shadow_item(p, RANDO_ITEM_NONE);
 			item_class = rando_item_info(pulled)->item_class;
-			if ((!c->region_wild_maps && item_class == RANDO_ITEM_CLASS_MAP)
-			    || (!c->region_wild_compasses && item_class == RANDO_ITEM_CLASS_COMPASS) || is_junk(pulled))
+			if (((item_class == RANDO_ITEM_CLASS_MAP || item_class == RANDO_ITEM_CLASS_COMPASS)
+			     && rando_dungeon_item_confined(c, item_class))
+			    || is_junk(pulled))
 				continue;
 			collectable_items(&items);
 			if (!rando_world_win_condition(&shadow, &items)) {

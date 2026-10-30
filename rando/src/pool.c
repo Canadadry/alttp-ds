@@ -1,6 +1,7 @@
 #include "rando_pool.h"
 
 #include <assert.h>
+#include <string.h>
 
 typedef char pool_item_fits_uint8[RANDO_ITEM_NONE <= UINT8_MAX ? 1 : -1];
 
@@ -171,10 +172,11 @@ RandoItemId rando_get_bottle(const RandoWorld *world, RandoPrng *prng, bool fill
 		RANDO_ITEM_BottleWithGoldBee,
 		RANDO_ITEM_BottleWithFairy,
 	};
-	/* Without CatchableFairies (hard and expert functionality) the fairy bottle is out of range. */
-	int64_t last = 6 - (world->config.rom_catchable_fairies ? 0 : 1);
+	const int64_t fairy = (int64_t)(sizeof bottles / sizeof bottles[0]) - 1;
 
-	return bottles[rando_random_int(prng, filled ? 1 : 0, last)];
+	assert(bottles[fairy] == RANDO_ITEM_BottleWithFairy
+	       && "getBottle: without CatchableFairies the draw drops the last bottle, which must be the fairy one");
+	return bottles[rando_random_int(prng, filled ? 1 : 0, world->config.rom_catchable_fairies ? fairy : fairy - 1)];
 }
 
 static void assert_room(RandoPoolList list, int count)
@@ -256,4 +258,33 @@ void rando_pool_add_items(const RandoWorld *world, RandoPrng *prng, RandoPoolLis
 	PoolSink sink = {NULL, NULL, items};
 
 	walk_list(world, prng, list, &sink);
+}
+
+void rando_pool_append(RandoPools *pools, RandoPoolList list, RandoItemId item)
+{
+	assert(list < RANDO_POOL_LIST_COUNT);
+	assert(pools->count[list] < RANDO_POOL_CAPACITY && "a pool list outgrew RANDO_POOL_CAPACITY");
+	pools->items[list][pools->count[list]++] = (uint8_t)item;
+}
+
+int rando_pool_find(const RandoPools *pools, RandoPoolList list, RandoItemId item)
+{
+	int i;
+
+	assert(list < RANDO_POOL_LIST_COUNT);
+	for (i = 0; i < pools->count[list]; i++)
+		if (pools->items[list][i] == item)
+			return i;
+	return -1;
+}
+
+bool rando_pool_remove_first(RandoPools *pools, RandoPoolList list, RandoItemId item)
+{
+	int i = rando_pool_find(pools, list, item);
+
+	if (i < 0)
+		return false;
+	memmove(pools->items[list] + i, pools->items[list] + i + 1, (size_t)(pools->count[list] - i - 1));
+	pools->count[list]--;
+	return true;
 }

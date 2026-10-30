@@ -33,9 +33,58 @@ static void apply_logic_glitches(RandoConfig *c)
 	}
 }
 
+typedef struct ItemCount {
+	uint8_t item;
+	int16_t count;
+} ItemCount;
+
+static const ItemCount crowd_control_counts[] = {
+	{RANDO_ITEM_BugCatchingNet, 0}, {RANDO_ITEM_HalfMagic, 0}, {RANDO_ITEM_CaneOfByrna, 0},
+	{RANDO_ITEM_Cape, 0},           {RANDO_ITEM_TwentyRupees2, 4},
+};
+
+/* overflow_count_shield RANDO_CONFIG_NULL: the key keeps its value. */
+typedef struct ItemPoolValues {
+	int overflow_count_shield;
+	bool shops_hard_mode;
+	const ItemCount *counts;
+	int ncounts;
+} ItemPoolValues;
+
+static const ItemPoolValues item_pool_values[] = {
+	[RANDO_ITEM_POOL_NORMAL] = {RANDO_CONFIG_NULL, false, NULL, 0},
+	[RANDO_ITEM_POOL_HARD] = {2, true, NULL, 0},
+	[RANDO_ITEM_POOL_EXPERT] = {1, true, NULL, 0},
+	[RANDO_ITEM_POOL_CROWD_CONTROL] = {0, false, crowd_control_counts,
+					   (int)(sizeof crowd_control_counts / sizeof crowd_control_counts[0])},
+};
+
+/* RANDO_CONFIG_NULL: normal functionality, nothing changes. */
+static const int functionality_bottle_fill_magic[] = {
+	[RANDO_ITEM_FUNCTIONALITY_NORMAL] = RANDO_CONFIG_NULL,
+	[RANDO_ITEM_FUNCTIONALITY_HARD] = 0x40,
+	[RANDO_ITEM_FUNCTIONALITY_EXPERT] = 0x20,
+};
+
+/* RANDO_CONFIG_NULL for the goals that are not hunts. */
+static const struct {
+	int8_t goal_required;
+	int8_t triforce_pieces;
+} hunt_values[] = {
+	[RANDO_GOAL_GANON] = {RANDO_CONFIG_NULL, RANDO_CONFIG_NULL},
+	[RANDO_GOAL_FAST_GANON] = {RANDO_CONFIG_NULL, RANDO_CONFIG_NULL},
+	[RANDO_GOAL_DUNGEONS] = {RANDO_CONFIG_NULL, RANDO_CONFIG_NULL},
+	[RANDO_GOAL_PEDESTAL] = {RANDO_CONFIG_NULL, RANDO_CONFIG_NULL},
+	[RANDO_GOAL_TRIFORCE_HUNT] = {20, 30},
+	[RANDO_GOAL_GANONHUNT] = {40, 50},
+	[RANDO_GOAL_COMPLETIONIST] = {RANDO_CONFIG_NULL, RANDO_CONFIG_NULL},
+};
+
 static void derive_config(RandoConfig *c, RandoVariant variant)
 {
+	const ItemPoolValues *pool;
 	bool glitched;
+	int i;
 
 	c->mode_state = variant == RANDO_VARIANT_STANDARD ? RANDO_STATE_STANDARD : RANDO_STATE_OPEN;
 	apply_logic_glitches(c);
@@ -61,54 +110,33 @@ static void derive_config(RandoConfig *c, RandoVariant variant)
 	c->rom_vanilla_compasses = c->rom_vanilla_compasses || (!c->region_wild_compasses && glitched);
 	c->rom_vanilla_maps = c->rom_vanilla_maps || (!c->region_wild_maps && glitched);
 	/* TODO: item.pool's overflow counts other than Shield. */
-	switch (c->item_pool) {
-	case RANDO_ITEM_POOL_HARD:
-		c->item_overflow_count_shield = 2;
+	assert((size_t)c->item_pool < sizeof item_pool_values / sizeof item_pool_values[0]);
+	assert((size_t)c->item_functionality
+	       < sizeof functionality_bottle_fill_magic / sizeof functionality_bottle_fill_magic[0]);
+	assert((size_t)c->goal < sizeof hunt_values / sizeof hunt_values[0]);
+	pool = &item_pool_values[c->item_pool];
+	if (pool->overflow_count_shield != RANDO_CONFIG_NULL)
+		c->item_overflow_count_shield = pool->overflow_count_shield;
+	if (pool->shops_hard_mode)
 		c->shops_hard_mode = true;
-		break;
-	case RANDO_ITEM_POOL_EXPERT:
-		c->item_overflow_count_shield = 1;
-		c->shops_hard_mode = true;
-		break;
-	case RANDO_ITEM_POOL_CROWD_CONTROL:
-		c->item_overflow_count_shield = 0;
-		c->item_count[RANDO_ITEM_BugCatchingNet] = 0;
-		c->item_count[RANDO_ITEM_HalfMagic] = 0;
-		c->item_count[RANDO_ITEM_CaneOfByrna] = 0;
-		c->item_count[RANDO_ITEM_Cape] = 0;
-		c->item_count[RANDO_ITEM_TwentyRupees2] = 4;
-		break;
-	case RANDO_ITEM_POOL_NORMAL:
-		break;
-	}
+	for (i = 0; i < pool->ncounts; i++)
+		c->item_count[pool->counts[i].item] = pool->counts[i].count;
 	/* TODO: item.functionality's rom.CapeMagicUsage.*, CaneOfByrnaInvulnerability,
 	 * PowderedSpriteFairyPrize, BottleFill.Health, CatchableBees, StunItems, SilversOnlyAtGanon,
 	 * NoFarieDrops. */
-	switch (c->item_functionality) {
-	case RANDO_ITEM_FUNCTIONALITY_HARD:
-		c->rom_bottle_fill_magic = 0x40;
+	if (functionality_bottle_fill_magic[c->item_functionality] != RANDO_CONFIG_NULL) {
+		c->rom_bottle_fill_magic = functionality_bottle_fill_magic[c->item_functionality];
 		c->rom_catchable_fairies = false;
-		break;
-	case RANDO_ITEM_FUNCTIONALITY_EXPERT:
-		c->rom_bottle_fill_magic = 0x20;
-		c->rom_catchable_fairies = false;
-		break;
-	case RANDO_ITEM_FUNCTIONALITY_NORMAL:
-		break;
 	}
 	c->region_require_better_bow = c->item_placement == RANDO_PLACEMENT_BASIC
 		|| c->mode_weapons == RANDO_WEAPONS_SWORDLESS;
 	c->region_require_better_sword = c->item_placement == RANDO_PLACEMENT_BASIC;
 	if (c->item_placement == RANDO_PLACEMENT_BASIC)
 		c->region_force_skull_woods_key = true;
-	if (c->item_goal_required == RANDO_CONFIG_NULL && c->goal == RANDO_GOAL_TRIFORCE_HUNT)
-		c->item_goal_required = 20;
-	if (c->item_goal_required == RANDO_CONFIG_NULL && c->goal == RANDO_GOAL_GANONHUNT)
-		c->item_goal_required = 40;
-	if (c->item_count[RANDO_ITEM_TriforcePiece] == RANDO_CONFIG_NULL && c->goal == RANDO_GOAL_TRIFORCE_HUNT)
-		c->item_count[RANDO_ITEM_TriforcePiece] = 30;
-	if (c->item_count[RANDO_ITEM_TriforcePiece] == RANDO_CONFIG_NULL && c->goal == RANDO_GOAL_GANONHUNT)
-		c->item_count[RANDO_ITEM_TriforcePiece] = 50;
+	if (c->item_goal_required == RANDO_CONFIG_NULL)
+		c->item_goal_required = hunt_values[c->goal].goal_required;
+	if (c->item_count[RANDO_ITEM_TriforcePiece] == RANDO_CONFIG_NULL)
+		c->item_count[RANDO_ITEM_TriforcePiece] = hunt_values[c->goal].triforce_pieces;
 }
 
 void rando_world_init(RandoWorld *world, RandoVariant variant, const RandoConfig *config)
@@ -290,11 +318,8 @@ bool rando_world_region_can_fill(const RandoWorld *world, RandoRegionId region, 
 	const RandoConfig *c = &world->config;
 	RandoItemClass item_class = rando_item_info(item)->item_class;
 
-	if (((!c->region_wild_keys && item_class == RANDO_ITEM_CLASS_KEY)
-	     || (!c->region_wild_big_keys && item_class == RANDO_ITEM_CLASS_BIG_KEY)
-	     || (item == RANDO_ITEM_KeyH2 && c->mode_state == RANDO_STATE_STANDARD && c->logic != RANDO_LOGIC_NO_LOGIC)
-	     || (!c->region_wild_maps && item_class == RANDO_ITEM_CLASS_MAP)
-	     || (!c->region_wild_compasses && item_class == RANDO_ITEM_CLASS_COMPASS))
+	if ((rando_dungeon_item_confined(c, item_class)
+	     || (item == RANDO_ITEM_KeyH2 && c->mode_state == RANDO_STATE_STANDARD && c->logic != RANDO_LOGIC_NO_LOGIC))
 	    && !is_region_item(rando_region_info(region), item))
 		return false;
 	return true;
@@ -491,20 +516,27 @@ int rando_world_collected_count(const RandoWorld *world)
 	return n;
 }
 
-bool rando_world_is_winnable(RandoWorld *world)
+void rando_world_collect_until_stable(RandoWorld *world, RandoItems *items)
 {
-	RandoItems assumed = world->pre_collected, found;
+	RandoItems found;
 	int found_locations = 0, current;
 
 	rando_world_reset_collected(world);
 	for (;;) {
-		rando_world_collect_other_items(world, &assumed, &found);
-		rando_items_merge(&assumed, &assumed, &found);
+		rando_world_collect_other_items(world, items, &found);
+		rando_items_merge(items, items, &found);
 		current = rando_world_collected_count(world);
 		if (current == found_locations)
 			break;
 		found_locations = current;
 	}
+}
+
+bool rando_world_is_winnable(RandoWorld *world)
+{
+	RandoItems assumed = world->pre_collected;
+
+	rando_world_collect_until_stable(world, &assumed);
 	return rando_world_win_condition(world, &assumed);
 }
 

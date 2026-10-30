@@ -6,6 +6,8 @@
 #include <stddef.h>
 #include <string.h>
 
+typedef char prize_location_ids_fit_uint8[RANDO_LOCATION_COUNT <= 256 ? 1 : -1];
+
 static void place(RandoWorld *world, RandoLocationId location, RandoItemId item)
 {
 	bool placed = rando_world_set_item(world, location, item);
@@ -53,18 +55,8 @@ void rando_prepare_goal(RandoWorld *world)
 
 static void drop_first_boots(RandoPools *pools)
 {
-	uint8_t *list = pools->items[RANDO_POOL_ADVANCEMENT];
-	uint16_t *count = &pools->count[RANDO_POOL_ADVANCEMENT];
-	uint16_t i;
-
-	for (i = 0; i < *count && list[i] != RANDO_ITEM_PegasusBoots; i++)
-		;
-	if (i == *count)
-		return;
-	memmove(list + i, list + i + 1, (size_t)(*count - i - 1));
-	(*count)--;
-	assert(pools->count[RANDO_POOL_ITEMS] < RANDO_POOL_CAPACITY);
-	pools->items[RANDO_POOL_ITEMS][pools->count[RANDO_POOL_ITEMS]++] = RANDO_ITEM_TwentyRupees;
+	if (rando_pool_remove_first(pools, RANDO_POOL_ADVANCEMENT, RANDO_ITEM_PegasusBoots))
+		rando_pool_append(pools, RANDO_POOL_ITEMS, RANDO_ITEM_TwentyRupees);
 }
 
 void rando_prepare_pre_collect(RandoWorld *world, RandoPools *pools)
@@ -88,6 +80,11 @@ static const RandoShopId shield_shops[] = {
 	RANDO_SHOP_DARK_WORLD_LAKE_HYLIA_SHOP,
 };
 
+static void add_at_default_price(RandoWorld *world, RandoShopId shop, int slot, RandoItemId item)
+{
+	rando_world_shop_add(world, shop, slot, item, rando_shop_info(shop)->default_prices[slot]);
+}
+
 void rando_set_shops(RandoWorld *world)
 {
 	const RandoConfig *c = &world->config;
@@ -103,10 +100,10 @@ void rando_set_shops(RandoWorld *world)
 	if (c->shops_hard_mode)
 		rando_world_shop_clear(world, RANDO_SHOP_CAPACITY_UPGRADE);
 	if (c->item_overflow_count_shield < 2)
-		rando_world_shop_add(world, RANDO_SHOP_DARK_WORLD_FOREST_SHOP, 0, shield, 500);
+		add_at_default_price(world, RANDO_SHOP_DARK_WORLD_FOREST_SHOP, 0, shield);
 	if (c->item_overflow_count_shield < 1)
 		for (j = 0; j < sizeof shield_shops / sizeof shield_shops[0]; j++)
-			rando_world_shop_add(world, shield_shops[j], 1, shield, 50);
+			add_at_default_price(world, shield_shops[j], 1, shield);
 
 	assert(!c->rom_generic_keys && !c->rom_rupee_bow &&
 	       "setShops: the retro shops' random path (generic keys, rupee bow, take-anys) is not ported");
@@ -186,11 +183,6 @@ static void push(uint8_t *items, uint16_t *count, RandoItemId item)
 	items[(*count)++] = (uint8_t)item;
 }
 
-static void push_pool(RandoPools *pools, RandoPoolList list, RandoItemId item)
-{
-	push(pools->items[list], &pools->count[list], item);
-}
-
 static RandoItemId pop(SideList *side)
 {
 	assert(side->count > 0);
@@ -202,22 +194,12 @@ static void merge_pool(RandoPools *pools, RandoPoolList list, const SideList *si
 	uint16_t i;
 
 	for (i = 0; i < side->count; i++)
-		push_pool(pools, list, (RandoItemId)side->items[i]);
+		rando_pool_append(pools, list, (RandoItemId)side->items[i]);
 }
 
 static RandoItemClass item_class(uint8_t item)
 {
 	return rando_item_info((RandoItemId)item)->item_class;
-}
-
-static bool in_pool(const RandoPools *pools, RandoPoolList list, RandoItemId item)
-{
-	uint16_t i;
-
-	for (i = 0; i < pools->count[list]; i++)
-		if (pools->items[list][i] == item)
-			return true;
-	return false;
 }
 
 static const RandoLocationId boss_heart_locations[] = {
@@ -266,8 +248,8 @@ static void swordless_silvers(RandoWorld *world, RandoPools *pools)
 		return;
 	if (world_items.values[RANDO_ITEM_SilverArrowUpgrade] || world_items.values[RANDO_ITEM_BowAndSilverArrows])
 		return;
-	if (!in_pool(pools, RANDO_POOL_NICE, RANDO_ITEM_SilverArrowUpgrade))
-		push_pool(pools, RANDO_POOL_ADVANCEMENT, RANDO_ITEM_SilverArrowUpgrade);
+	if (rando_pool_find(pools, RANDO_POOL_NICE, RANDO_ITEM_SilverArrowUpgrade) < 0)
+		rando_pool_append(pools, RANDO_POOL_ADVANCEMENT, RANDO_ITEM_SilverArrowUpgrade);
 }
 
 static void place_weapons(RandoWorld *world, RandoPools *pools, SideList *swords)
@@ -278,7 +260,7 @@ static void place_weapons(RandoWorld *world, RandoPools *pools, SideList *swords
 	switch (c->mode_weapons) {
 	case RANDO_WEAPONS_SWORDLESS:
 		for (i = 0; i < swords->count; i++)
-			push_pool(pools, RANDO_POOL_NICE, RANDO_ITEM_TwentyRupees2);
+			rando_pool_append(pools, RANDO_POOL_NICE, RANDO_ITEM_TwentyRupees2);
 		swordless_silvers(world, pools);
 		return;
 	case RANDO_WEAPONS_VANILLA:
@@ -290,7 +272,7 @@ static void place_weapons(RandoWorld *world, RandoPools *pools, SideList *swords
 			place(world, RANDO_LOC_MASTER_SWORD_PEDESTAL, pop(swords));
 		} else {
 			pop(swords);
-			push_pool(pools, RANDO_POOL_ITEMS, RANDO_ITEM_TwentyRupees);
+			rando_pool_append(pools, RANDO_POOL_ITEMS, RANDO_ITEM_TwentyRupees);
 		}
 		return;
 	default:
@@ -302,18 +284,18 @@ static void place_weapons(RandoWorld *world, RandoPools *pools, SideList *swords
 
 		if (c->mode_weapons == RANDO_WEAPONS_ASSURED) {
 			rando_world_add_pre_collected(world, uncle);
-			push_pool(pools, RANDO_POOL_ITEMS, RANDO_ITEM_FiftyRupees);
+			rando_pool_append(pools, RANDO_POOL_ITEMS, RANDO_ITEM_FiftyRupees);
 		} else {
-			push_pool(pools, RANDO_POOL_ADVANCEMENT, uncle);
+			rando_pool_append(pools, RANDO_POOL_ADVANCEMENT, uncle);
 		}
 	}
 	if (swords->count)
-		push_pool(pools, RANDO_POOL_ADVANCEMENT, pop(swords));
+		rando_pool_append(pools, RANDO_POOL_ADVANCEMENT, pop(swords));
 	if (c->region_require_better_sword && swords->count)
-		push_pool(pools, RANDO_POOL_ADVANCEMENT, pop(swords));
+		rando_pool_append(pools, RANDO_POOL_ADVANCEMENT, pop(swords));
 	if (swords->count && c->region_take_anys) {
 		pop(swords);
-		push_pool(pools, RANDO_POOL_ITEMS, RANDO_ITEM_TwentyRupees);
+		rando_pool_append(pools, RANDO_POOL_ITEMS, RANDO_ITEM_TwentyRupees);
 	}
 	merge_pool(pools, RANDO_POOL_NICE, swords);
 }
@@ -334,7 +316,7 @@ static void release_dungeon_items(const RandoConfig *c, RandoPools *pools, Rando
 		bool wild = wanted == RANDO_ITEM_CLASS_KEY ? wild_key(c, dungeon[i]) : item_class(dungeon[i]) == wanted;
 
 		if (wild)
-			push_pool(pools, RANDO_POOL_ADVANCEMENT, (RandoItemId)dungeon[i]);
+			rando_pool_append(pools, RANDO_POOL_ADVANCEMENT, (RandoItemId)dungeon[i]);
 		else
 			dungeon[keep++] = dungeon[i];
 	}
@@ -343,17 +325,8 @@ static void release_dungeon_items(const RandoConfig *c, RandoPools *pools, Rando
 
 static void force_skull_woods_key(RandoWorld *world, RandoPools *pools)
 {
-	uint8_t *dungeon = pools->items[RANDO_POOL_DUNGEON];
-	uint16_t *count = &pools->count[RANDO_POOL_DUNGEON];
-	uint16_t i;
-
-	for (i = 0; i < *count && dungeon[i] != RANDO_ITEM_KeyD3; i++)
-		;
-	if (i == *count)
-		return;
-	memmove(dungeon + i, dungeon + i + 1, (size_t)(*count - i - 1));
-	(*count)--;
-	place(world, RANDO_LOC_SKULL_WOODS_PINBALL_ROOM, RANDO_ITEM_KeyD3);
+	if (rando_pool_remove_first(pools, RANDO_POOL_DUNGEON, RANDO_ITEM_KeyD3))
+		place(world, RANDO_LOC_SKULL_WOODS_PINBALL_ROOM, RANDO_ITEM_KeyD3);
 }
 
 static void rupee_bow(RandoPools *pools)
@@ -371,7 +344,7 @@ static void rupee_bow(RandoPools *pools)
 	}
 	pools->count[RANDO_POOL_ITEMS] = keep;
 	while (replaced--)
-		push_pool(pools, RANDO_POOL_ITEMS, RANDO_ITEM_FiveRupees);
+		rando_pool_append(pools, RANDO_POOL_ITEMS, RANDO_ITEM_FiveRupees);
 }
 
 void rando_prepare_pools(RandoWorld *world, RandoPrng *prng, RandoPools *pools)
@@ -388,7 +361,7 @@ void rando_prepare_pools(RandoWorld *world, RandoPrng *prng, RandoPools *pools)
 	list = pools->items[RANDO_POOL_ADVANCEMENT];
 	for (i = 0, keep = 0; i < pools->count[RANDO_POOL_ADVANCEMENT]; i++) {
 		if (list[i] == RANDO_ITEM_SilverArrowUpgrade)
-			push_pool(pools, RANDO_POOL_NICE, RANDO_ITEM_SilverArrowUpgrade);
+			rando_pool_append(pools, RANDO_POOL_NICE, RANDO_ITEM_SilverArrowUpgrade);
 		else if (item_class(list[i]) == RANDO_ITEM_CLASS_SWORD)
 			push(swords.items, &swords.count, (RandoItemId)list[i]);
 		else if (item_class(list[i]) == RANDO_ITEM_CLASS_BOTTLE)
@@ -433,7 +406,7 @@ void rando_prepare_pools(RandoWorld *world, RandoPrng *prng, RandoPools *pools)
 	place_weapons(world, pools, &swords);
 
 	if (bottles.count)
-		push_pool(pools, RANDO_POOL_ADVANCEMENT, pop(&bottles));
+		rando_pool_append(pools, RANDO_POOL_ADVANCEMENT, pop(&bottles));
 	merge_pool(pools, RANDO_POOL_NICE, &bottles);
 
 	if (c->rom_rupee_bow)
@@ -576,32 +549,26 @@ bool rando_fill_prizes(RandoWorld *world, RandoPrng *prng)
 	int pass;
 
 	for (pass = 0; pass < PRIZE_PASSES; pass++) {
-		RandoLocationId pool[PRIZE_LOCATIONS], order[PRIZE_LOCATIONS];
+		uint8_t pool[PRIZE_LOCATIONS], order[PRIZE_LOCATIONS];
 		RandoLocationId crystals[PRIZE_LOCATIONS], pendants[PRIZE_LOCATIONS];
 		RandoItemId prizes[PRIZES];
-		int npool = 0, norder = 0, ncrystals = 0, npendants = 0, nprizes = 0, i, j;
+		int npool = 0, norder, ncrystals = 0, npendants = 0, nprizes = 0, i, j;
 
 		for (i = 0; i < RANDO_LOCATION_COUNT; i++)
 			if (rando_location_is_a(rando_location_info((RandoLocationId)i)->location_class,
 						RANDO_LOCATION_CLASS_PRIZE)) {
 				assert(npool < PRIZE_LOCATIONS && "fillPrizes: more Prize locations than VT's 14");
-				pool[npool++] = (RandoLocationId)i;
+				pool[npool++] = (uint8_t)i;
 			}
-		/* randomCollection: splice one draw per remaining location, the last one 0..0. */
-		while (npool > 0) {
-			int r = (int)rando_random_int(prng, 0, npool - 1);
-
-			order[norder++] = pool[r];
-			memmove(pool + r, pool + r + 1, (size_t)(npool - r - 1) * sizeof pool[0]);
-			npool--;
-		}
+		norder = rando_random_collection(prng, pool, npool, npool, order);
 		for (j = 0; j < norder; j++) {
-			RandoLocationClass location_class = rando_location_info(order[j])->location_class;
+			RandoLocationId location = (RandoLocationId)order[j];
+			RandoLocationClass location_class = rando_location_info(location)->location_class;
 
 			if (location_class == RANDO_LOCATION_CLASS_PRIZE_CRYSTAL)
-				crystals[ncrystals++] = order[j];
+				crystals[ncrystals++] = location;
 			else if (location_class == RANDO_LOCATION_CLASS_PRIZE_PENDANT)
-				pendants[npendants++] = order[j];
+				pendants[npendants++] = location;
 		}
 
 		for (j = 0; j < PRIZES; j++) {
@@ -609,7 +576,7 @@ bool rando_fill_prizes(RandoWorld *world, RandoPrng *prng)
 			int k;
 
 			for (k = 0; k < norder && !placed; k++)
-				placed = rando_world_has_item(world, order[k], prize_items[j]);
+				placed = rando_world_has_item(world, (RandoLocationId)order[k], prize_items[j]);
 			if (!placed)
 				prizes[nprizes++] = prize_items[j];
 		}

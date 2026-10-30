@@ -71,7 +71,7 @@
     - [x] Chunk 1: parallel e2e gate
     - [x] Chunk 2: claims
     - [x] Chunk 3: owed list and closed rows
-    - [ ] Chunk 4: refactor duplications
+    - [x] Chunk 4: refactor duplications
   - [ ] 3.1 glitches: overworld_glitches
   - [x] 3.2 glitches: hybrid_major_glitches
   - [ ] 3.3 glitches: major_glitches

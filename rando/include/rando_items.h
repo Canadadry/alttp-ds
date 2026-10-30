@@ -46,6 +46,8 @@ typedef struct RandoItemInfo {
 const RandoItemInfo *rando_item_info(RandoItemId id);
 /* Raw names only; RANDO_ITEM_NONE when unknown. */
 RandoItemId rando_item_find(const char *name);
+/* True for a key, big key, map or compass class whose region_wild_* flag is off. */
+bool rando_dungeon_item_confined(const RandoConfig *c, RandoItemClass item_class);
 
 /* VT's ItemCollection keeps two views that can disagree: counts is item_counts (has, count),
  * values is cached_values as a multiset (every filter-based predicate). unset and diff touch

@@ -1,6 +1,7 @@
 #include "rando_prng.h"
 
 #include <assert.h>
+#include <string.h>
 
 uint32_t rando_splitmix32(uint32_t x)
 {
@@ -83,4 +84,18 @@ void rando_fy_shuffle(RandoPrng *prng, void *base, size_t count, size_t size)
 
 		swap_bytes(bytes + i * size, bytes + r * size, size);
 	}
+}
+
+int rando_random_collection(RandoPrng *prng, uint8_t *ids, int n, int number, uint8_t *out)
+{
+	int k = 0;
+
+	while (number-- > 0 && n > 0) {
+		int r = (int)rando_random_int(prng, 0, n - 1);
+
+		out[k++] = ids[r];
+		memmove(ids + r, ids + r + 1, (size_t)(n - r - 1));
+		n--;
+	}
+	return k;
 }

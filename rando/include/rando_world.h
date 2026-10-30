@@ -552,6 +552,9 @@ bool rando_world_collected(const RandoWorld *world, RandoLocationId location);
 bool rando_world_shop_collected(const RandoWorld *world, RandoShopId shop, int slot);
 /* getCollectedLocationsCount: collected locations plus collected shop slots. */
 int rando_world_collected_count(const RandoWorld *world);
+/* Resets the collected state, then merges collectOtherItems into items until the collected count
+ * stops changing; items grows in place. */
+void rando_world_collect_until_stable(RandoWorld *world, RandoItems *items);
 /* WorldCollection::isWinnable for this world alone; changes the collected state only. */
 bool rando_world_is_winnable(RandoWorld *world);
 

@@ -31,6 +31,13 @@ void rando_pool_build(const RandoWorld *world, RandoPrng *prng, RandoPools *pool
  * holds; the same draws as the list's build. */
 void rando_pool_add_items(const RandoWorld *world, RandoPrng *prng, RandoPoolList list, RandoItems *items);
 
+/* Asserts the list stays under RANDO_POOL_CAPACITY. */
+void rando_pool_append(RandoPools *pools, RandoPoolList list, RandoItemId item);
+/* The index of the item's first occurrence in the list, -1 when absent. */
+int rando_pool_find(const RandoPools *pools, RandoPoolList list, RandoItemId item);
+/* Removes the item's first occurrence, shifting the rest down; false when absent. */
+bool rando_pool_remove_first(RandoPools *pools, RandoPoolList list, RandoItemId item);
+
 /* VT's World::getBottle: one draw. */
 RandoItemId rando_get_bottle(const RandoWorld *world, RandoPrng *prng, bool filled);
 

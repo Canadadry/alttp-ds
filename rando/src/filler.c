@@ -10,21 +10,6 @@ static bool is_empty(const RandoWorld *world, uint8_t location)
 	return !rando_world_has_item(world, (RandoLocationId)location, RANDO_ITEM_NONE);
 }
 
-/* Collection::randomCollection: ids[0..n) is consumed; returns the number written to out. */
-static int random_collection(RandoPrng *prng, uint8_t *ids, int n, int number, uint8_t *out)
-{
-	int k = 0;
-
-	while (number-- > 0 && n > 0) {
-		int r = (int)rando_random_int(prng, 0, n - 1);
-
-		out[k++] = ids[r];
-		memmove(ids + r, ids + r + 1, (size_t)(n - r - 1));
-		n--;
-	}
-	return k;
-}
-
 /* getEmptyLocations on state's order, in place; returns the new count. */
 static int keep_empty(const RandoWorld *world, RandoFillState *state)
 {
@@ -43,7 +28,7 @@ static void shuffle_locations(RandoPrng *prng, RandoFillState *state)
 	int n = state->count;
 
 	memcpy(ids, state->order, (size_t)n);
-	state->count = (uint16_t)random_collection(prng, ids, n, n, state->order);
+	state->count = (uint16_t)rando_random_collection(prng, ids, n, n, state->order);
 }
 
 static void place(RandoWorld *world, uint8_t location, RandoItemId item)
@@ -73,11 +58,7 @@ static bool can_skip_access_checks(const RandoWorld *world, RandoItemId item, co
 	const RandoConfig *c = &world->config;
 	RandoItemClass item_class = rando_item_info(item)->item_class;
 
-	return c->accessibility == RANDO_ACCESSIBILITY_NONE
-		&& (item_class != RANDO_ITEM_CLASS_KEY || c->region_wild_keys)
-		&& (item_class != RANDO_ITEM_CLASS_BIG_KEY || c->region_wild_big_keys)
-		&& (item_class != RANDO_ITEM_CLASS_MAP || c->region_wild_maps)
-		&& (item_class != RANDO_ITEM_CLASS_COMPASS || c->region_wild_compasses)
+	return c->accessibility == RANDO_ACCESSIBILITY_NONE && !rando_dungeon_item_confined(c, item_class)
 		&& rando_world_win_condition(world, assumed);
 }
 
@@ -85,7 +66,7 @@ static bool can_skip_access_checks(const RandoWorld *world, RandoItemId item, co
 static bool fill_items_in_locations(RandoWorld *world, RandoPrng *prng, const uint8_t *items, int nitems,
 				    const RandoFillState *locations, const RandoItems *base)
 {
-	RandoItems remaining, assumed, found;
+	RandoItems remaining, assumed;
 	uint8_t fillable[RANDO_LOCATION_COUNT];
 	int i, j, nempty = 0;
 
@@ -100,7 +81,7 @@ static bool fill_items_in_locations(RandoWorld *world, RandoPrng *prng, const ui
 	for (i = 0; i < nitems; i++) {
 		RandoItemId item = (RandoItemId)items[i];
 		RandoItemClass item_class = rando_item_info(item)->item_class;
-		int nfillable = 0, found_locations = 0, current;
+		int nfillable = 0;
 		bool check_access;
 
 		rando_items_remove(&remaining, item);
@@ -108,16 +89,8 @@ static bool fill_items_in_locations(RandoWorld *world, RandoPrng *prng, const ui
 			rando_items_merge(&assumed, &remaining, base);
 		else
 			assumed = remaining;
-		rando_world_reset_collected(world);
 		rando_items_merge(&assumed, &assumed, &world->pre_collected);
-		for (;;) {
-			rando_world_collect_other_items(world, &assumed, &found);
-			rando_items_merge(&assumed, &assumed, &found);
-			current = rando_world_collected_count(world);
-			if (current == found_locations)
-				break;
-			found_locations = current;
-		}
+		rando_world_collect_until_stable(world, &assumed);
 
 		check_access = !can_skip_access_checks(world, item, &assumed);
 		for (j = 0; j < locations->count; j++)
@@ -193,7 +166,7 @@ static void junk_fill(RandoWorld *world, RandoPrng *prng, RandoPools *pools)
 	for (i = 0; i < tower->nlocations; i++)
 		if (is_empty(world, (uint8_t)(tower->first_location + i)))
 			empty[nempty++] = (uint8_t)(tower->first_location + i);
-	nchosen = random_collection(prng, empty, nempty, number, chosen);
+	nchosen = rando_random_collection(prng, empty, nempty, number, chosen);
 
 	shuffle_list(prng, pools, RANDO_POOL_ITEMS);
 	/* array_splice($extra, 0, n): the trash is the front of the shuffled pool, popped from its end. */

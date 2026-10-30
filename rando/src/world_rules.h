@@ -76,12 +76,7 @@ static inline bool has_lamp(const RandoWorld *world, const RandoItems *items)
 
 static inline bool wild_or_not_dungeon_item(const RandoConfig *c, RandoItemId item)
 {
-	RandoItemClass k = rando_item_info(item)->item_class;
-
-	return !((!c->region_wild_keys && k == RANDO_ITEM_CLASS_KEY)
-		 || (!c->region_wild_big_keys && k == RANDO_ITEM_CLASS_BIG_KEY)
-		 || (!c->region_wild_maps && k == RANDO_ITEM_CLASS_MAP)
-		 || (!c->region_wild_compasses && k == RANDO_ITEM_CLASS_COMPASS));
+	return !rando_dungeon_item_confined(c, rando_item_info(item)->item_class);
 }
 
 static inline bool is_dungeon_item(RandoItemId item)

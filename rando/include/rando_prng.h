@@ -22,5 +22,8 @@ uint32_t rando_prng_next(RandoPrng *prng);
 int64_t rando_random_int(RandoPrng *prng, int64_t min, int64_t max);
 /* VT's fy_shuffle, in place on count elements of size bytes: exactly count draws. */
 void rando_fy_shuffle(RandoPrng *prng, void *base, size_t count, size_t size);
+/* VT's Collection::randomCollection: one draw per id taken. ids[0..n) is consumed; returns the
+ * number written to out, fewer than number when ids runs out. */
+int rando_random_collection(RandoPrng *prng, uint8_t *ids, int n, int number, uint8_t *out);
 
 #endif

@@ -185,6 +185,14 @@ static const RandoItemInfo item_table[RANDO_ITEM_COUNT] = {
 	{"ShopArrow", RANDO_ITEM_CLASS_ALIAS, 0, RANDO_ITEM_Arrow, false},
 };
 
+bool rando_dungeon_item_confined(const RandoConfig *c, RandoItemClass item_class)
+{
+	return (!c->region_wild_keys && item_class == RANDO_ITEM_CLASS_KEY)
+		|| (!c->region_wild_big_keys && item_class == RANDO_ITEM_CLASS_BIG_KEY)
+		|| (!c->region_wild_maps && item_class == RANDO_ITEM_CLASS_MAP)
+		|| (!c->region_wild_compasses && item_class == RANDO_ITEM_CLASS_COMPASS);
+}
+
 const RandoItemInfo *rando_item_info(RandoItemId id)
 {
 	assert(id < RANDO_ITEM_COUNT && "rando_item_info: not an item id");
