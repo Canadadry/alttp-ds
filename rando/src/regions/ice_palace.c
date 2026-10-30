@@ -1,5 +1,43 @@
 #include "../world_rules.h"
 
+#define FIRST RANDO_LOC_ICE_PALACE_BIG_KEY_CHEST
+#define NLOCATIONS (RANDO_LOC_ICE_PALACE_PRIZE - FIRST + 1)
+
+static bool can_take_damage(const RandoWorld *world, const RandoItems *items)
+{
+	return !world->config.region_cant_take_damage || has(items, RANDO_ITEM_CaneOfByrna)
+		|| has(items, RANDO_ITEM_Cape) || has(items, RANDO_ITEM_Hookshot);
+}
+
+static bool spike_room(const RandoWorld *world, const RandoItems *items)
+{
+	int big_keys = rando_world_has_item(world, RANDO_LOC_ICE_PALACE_SPIKE_ROOM, RANDO_ITEM_BigKeyD5)
+		+ rando_world_has_item(world, RANDO_LOC_ICE_PALACE_BIG_KEY_CHEST, RANDO_ITEM_BigKeyD5)
+		+ rando_world_has_item(world, RANDO_LOC_ICE_PALACE_MAP_CHEST, RANDO_ITEM_BigKeyD5);
+
+	return can_take_damage(world, items)
+		&& ((has(items, RANDO_ITEM_Hookshot) || has(items, RANDO_ITEM_ShopKey))
+		    || (has(items, RANDO_ITEM_KeyD5) && big_keys >= 1));
+}
+
+static bool big_key_chest(const RandoWorld *world, const RandoItems *items)
+{
+	return has(items, RANDO_ITEM_Hammer) && rando_items_can_lift_rocks(items)
+		&& can_take_damage(world, items)
+		&& rando_world_can_access(world, RANDO_LOC_ICE_PALACE_SPIKE_ROOM, items);
+}
+
+static bool freezor_chest(const RandoWorld *world, const RandoItems *items)
+{
+	return rando_items_can_melt_things(items, &world->config);
+}
+
+static bool big_chest(const RandoWorld *world, const RandoItems *items)
+{
+	(void)world;
+	return has(items, RANDO_ITEM_BigKeyD5);
+}
+
 static bool enter(const RandoWorld *world, const RandoItems *items)
 {
 	const RandoConfig *c = &world->config;
@@ -27,6 +65,49 @@ static bool enter(const RandoWorld *world, const RandoItems *items)
 				&& c->can_mirror_wrap && has(items, RANDO_ITEM_MagicMirror)))));
 }
 
+static bool boss(const RandoWorld *world, const RandoItems *items)
+{
+	const RandoConfig *c = &world->config;
+
+	return enter(world, items)
+		&& has(items, RANDO_ITEM_Hammer) && rando_items_can_lift_rocks(items)
+		&& boss_can_beat(world, RANDO_REGION_ICE_PALACE, items)
+		&& has(items, RANDO_ITEM_BigKeyD5)
+		&& ((c->item_placement != RANDO_PLACEMENT_BASIC
+		     && ((has(items, RANDO_ITEM_CaneOfSomaria) && has(items, RANDO_ITEM_KeyD5))
+			 || has_n(items, RANDO_ITEM_KeyD5, 2)))
+		    || (c->item_placement == RANDO_PLACEMENT_BASIC && has_n(items, RANDO_ITEM_KeyD5, 2)))
+		&& boss_has_wild_compass_and_map(world, RANDO_LOC_ICE_PALACE_BOSS, RANDO_ITEM_CompassD5,
+						 RANDO_ITEM_MapD5, items);
+}
+
+static bool boss_fill(RandoWorld *world, RandoItemId item, const RandoItems *items)
+{
+	(void)items;
+	return boss_fill_allows(world, item);
+}
+
+static bool boss_always_allow(const RandoWorld *world, RandoItemId item, const RandoItems *items)
+{
+	(void)items;
+	return boss_always_allows(world, item, RANDO_ITEM_CompassD5, RANDO_ITEM_MapD5);
+}
+
+static bool complete(const RandoWorld *world, const RandoItems *items)
+{
+	return rando_world_can_access(world, RANDO_LOC_ICE_PALACE_BOSS, items);
+}
+
+static const RandoLocationRules locations[NLOCATIONS] = {
+	[RANDO_LOC_ICE_PALACE_BIG_KEY_CHEST - FIRST] = {big_key_chest, NULL, NULL},
+	[RANDO_LOC_ICE_PALACE_MAP_CHEST - FIRST] = {big_key_chest, NULL, NULL},
+	[RANDO_LOC_ICE_PALACE_SPIKE_ROOM - FIRST] = {spike_room, NULL, NULL},
+	[RANDO_LOC_ICE_PALACE_FREEZOR_CHEST - FIRST] = {freezor_chest, NULL, NULL},
+	[RANDO_LOC_ICE_PALACE_BIG_CHEST - FIRST] = {big_chest, NULL, NULL},
+	[RANDO_LOC_ICE_PALACE_BOSS - FIRST] = {boss, boss_fill, boss_always_allow},
+	[RANDO_LOC_ICE_PALACE_PRIZE - FIRST] = {complete, NULL, NULL},
+};
+
 const RandoRegionRules rando_rules_ice_palace = {
-	"Region\\Standard\\IcePalace", enter, NULL, NULL, NULL,
+	"Region\\Standard\\IcePalace", enter, complete, locations, NULL,
 };

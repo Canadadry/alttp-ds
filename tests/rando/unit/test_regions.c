@@ -242,6 +242,221 @@ static void check_placement_and_weapons_in_dark_world_dungeons(void)
 	CHECK(rando_world_can_access(&world, RANDO_LOC_PALACE_OF_DARKNESS_DARK_BASEMENT_RIGHT, &items));
 }
 
+/* Ice Palace Spike Room and Misery Mire's torch rooms: itemInLocations and hasItem branches no row presets. */
+static void check_big_key_placement_lowers_ice_and_mire_key_counts(void)
+{
+	static const RandoItemId no_hookshot[] = {RANDO_ITEM_Hookshot, RANDO_ITEM_KeyD5};
+	RandoWorld world;
+	RandoItems items;
+
+	standard_world(&world);
+	all_items_except(&items, no_hookshot, 2);
+	rando_items_add(&items, RANDO_ITEM_KeyD5);
+	CHECK(!rando_world_can_access(&world, RANDO_LOC_ICE_PALACE_SPIKE_ROOM, &items));
+	CHECK(rando_world_set_item(&world, RANDO_LOC_ICE_PALACE_MAP_CHEST, RANDO_ITEM_BigKeyD5));
+	CHECK(rando_world_can_access(&world, RANDO_LOC_ICE_PALACE_SPIKE_ROOM, &items));
+
+	CHECK(rando_world_set_item(&world, RANDO_LOC_MISERY_MIRE_MEDALLION, RANDO_ITEM_Ether));
+	all_items_with_n(&items, RANDO_ITEM_KeyD6, 2);
+	CHECK(!rando_world_can_access(&world, RANDO_LOC_MISERY_MIRE_BIG_KEY_CHEST, &items));
+	CHECK(rando_world_can_fill(&world, RANDO_LOC_MISERY_MIRE_BIG_KEY_CHEST, RANDO_ITEM_BigKeyD6, &items, true));
+	CHECK(rando_world_set_item(&world, RANDO_LOC_MISERY_MIRE_COMPASS_CHEST, RANDO_ITEM_BigKeyD6));
+	CHECK(rando_world_can_access(&world, RANDO_LOC_MISERY_MIRE_BIG_KEY_CHEST, &items));
+}
+
+/* Ice Palace Spike Room's ShopKey shortcut, and region.cantTakeDamage there and at the Mire Spike Chest. */
+static void check_shop_key_and_damage_decide_ice_and_mire_spikes(void)
+{
+	static const RandoItemId no_hookshot[] = {RANDO_ITEM_Hookshot, RANDO_ITEM_KeyD5};
+	static const RandoItemId no_cape[] = {RANDO_ITEM_CaneOfByrna, RANDO_ITEM_Cape};
+	RandoConfig config;
+	RandoWorld world;
+	RandoItems items;
+
+	rando_config_init(&config);
+	rando_world_init(&world, RANDO_VARIANT_STANDARD, &config);
+	CHECK(rando_world_set_item(&world, RANDO_LOC_MISERY_MIRE_MEDALLION, RANDO_ITEM_Ether));
+	all_items_except(&items, no_hookshot, 2);
+	CHECK(!rando_world_can_access(&world, RANDO_LOC_ICE_PALACE_SPIKE_ROOM, &items));
+	rando_items_add(&items, RANDO_ITEM_ShopKey);
+	CHECK(rando_world_can_access(&world, RANDO_LOC_ICE_PALACE_SPIKE_ROOM, &items));
+	rando_items_unset(&items, RANDO_ITEM_CaneOfByrna);
+	rando_items_unset(&items, RANDO_ITEM_Cape);
+	CHECK(rando_world_can_access(&world, RANDO_LOC_ICE_PALACE_SPIKE_ROOM, &items));
+	all_items_except(&items, no_cape, 2);
+	CHECK(rando_world_can_access(&world, RANDO_LOC_MISERY_MIRE_SPIKE_CHEST, &items));
+
+	config.region_cant_take_damage = true;
+	rando_world_init(&world, RANDO_VARIANT_STANDARD, &config);
+	CHECK(rando_world_set_item(&world, RANDO_LOC_MISERY_MIRE_MEDALLION, RANDO_ITEM_Ether));
+	CHECK(!rando_world_can_access(&world, RANDO_LOC_MISERY_MIRE_SPIKE_CHEST, &items));
+	all_items_except(&items, no_hookshot, 2);
+	rando_items_add(&items, RANDO_ITEM_ShopKey);
+	rando_items_unset(&items, RANDO_ITEM_CaneOfByrna);
+	rando_items_unset(&items, RANDO_ITEM_Cape);
+	CHECK(!rando_world_can_access(&world, RANDO_LOC_ICE_PALACE_SPIKE_ROOM, &items));
+}
+
+static void turtle_rock_world(RandoWorld *world, const RandoConfig *config)
+{
+	rando_world_init(world, RANDO_VARIANT_STANDARD, config);
+	CHECK(rando_world_set_item(world, RANDO_LOC_TURTLE_ROCK_MEDALLION, RANDO_ITEM_Quake));
+}
+
+/* allItems holds too few hearts for the dungeon entries' hasHealth(12) under "basic". */
+static void add_basic_hearts(RandoItems *items)
+{
+	for (int i = 0; i < 9; i++)
+		rando_items_add(items, RANDO_ITEM_BossHeartContainer);
+}
+
+/* itemPlacement "basic": Ice Palace Boss wants two KeyD5, the Eye Bridge a laser guard (Cape, Byrna or shield). */
+static void check_basic_placement_in_ice_palace_and_turtle_rock(void)
+{
+	static const RandoItemId no_cape[] = {RANDO_ITEM_Cape};
+	static const RandoItemId no_guard[] = {RANDO_ITEM_Cape, RANDO_ITEM_CaneOfByrna};
+	RandoConfig config;
+	RandoWorld world;
+	RandoItems items;
+
+	rando_config_init(&config);
+	rando_world_init(&world, RANDO_VARIANT_STANDARD, &config);
+	all_items_with_n(&items, RANDO_ITEM_KeyD5, 1);
+	CHECK(rando_world_can_access(&world, RANDO_LOC_ICE_PALACE_BOSS, &items));
+	config.item_placement = RANDO_PLACEMENT_BASIC;
+	rando_world_init(&world, RANDO_VARIANT_STANDARD, &config);
+	CHECK(!rando_world_region_can_enter(&world, RANDO_REGION_ICE_PALACE, &items));
+	add_basic_hearts(&items);
+	CHECK(!rando_world_can_access(&world, RANDO_LOC_ICE_PALACE_BOSS, &items));
+	rando_items_add(&items, RANDO_ITEM_KeyD5);
+	CHECK(rando_world_can_access(&world, RANDO_LOC_ICE_PALACE_BOSS, &items));
+
+	turtle_rock_world(&world, &config);
+	all_items_except(&items, no_guard, 2);
+	add_basic_hearts(&items);
+	CHECK(rando_world_can_access(&world, RANDO_LOC_TURTLE_ROCK_EYE_BRIDGE_TOP_LEFT, &items));
+	config.item_overflow_count_shield = 2;
+	turtle_rock_world(&world, &config);
+	CHECK(!rando_world_can_access(&world, RANDO_LOC_TURTLE_ROCK_EYE_BRIDGE_TOP_LEFT, &items));
+	all_items_except(&items, no_cape, 1);
+	add_basic_hearts(&items);
+	CHECK(rando_world_can_access(&world, RANDO_LOC_TURTLE_ROCK_EYE_BRIDGE_TOP_LEFT, &items));
+	all_items_except(&items, no_guard, 2);
+	config.item_placement = RANDO_PLACEMENT_ADVANCED;
+	turtle_rock_world(&world, &config);
+	CHECK(rando_world_can_access(&world, RANDO_LOC_TURTLE_ROCK_EYE_BRIDGE_TOP_LEFT, &items));
+}
+
+/* Turtle Rock Big Key Chest: region.wildKeys key counts, its KeyD7 always-allow and accessibility fill rule. */
+static void check_turtle_rock_big_key_chest_keys(void)
+{
+	static const RandoItemId no_pearl[] = {RANDO_ITEM_MoonPearl, RANDO_ITEM_KeyD7};
+	RandoConfig config;
+	RandoWorld world;
+	RandoItems items;
+
+	rando_config_init(&config);
+	turtle_rock_world(&world, &config);
+	all_items_with_n(&items, RANDO_ITEM_KeyD7, 2);
+	CHECK(rando_world_can_access(&world, RANDO_LOC_TURTLE_ROCK_BIG_KEY_CHEST, &items));
+	config.region_wild_keys = true;
+	turtle_rock_world(&world, &config);
+	CHECK(!rando_world_can_access(&world, RANDO_LOC_TURTLE_ROCK_BIG_KEY_CHEST, &items));
+	CHECK(rando_world_can_fill(&world, RANDO_LOC_TURTLE_ROCK_BIG_KEY_CHEST, RANDO_ITEM_BigKeyD7, &items, true));
+	rando_items_add(&items, RANDO_ITEM_KeyD7);
+	CHECK(!rando_world_can_access(&world, RANDO_LOC_TURTLE_ROCK_BIG_KEY_CHEST, &items));
+	rando_items_add(&items, RANDO_ITEM_KeyD7);
+	CHECK(rando_world_can_access(&world, RANDO_LOC_TURTLE_ROCK_BIG_KEY_CHEST, &items));
+	rando_items_remove(&items, RANDO_ITEM_KeyD7);
+	CHECK(rando_world_set_item(&world, RANDO_LOC_TURTLE_ROCK_BIG_KEY_CHEST, RANDO_ITEM_KeyD7));
+	CHECK(rando_world_can_access(&world, RANDO_LOC_TURTLE_ROCK_BIG_KEY_CHEST, &items));
+
+	config.region_wild_keys = false;
+	turtle_rock_world(&world, &config);
+	all_items_except(&items, no_pearl, 2);
+	rando_items_add(&items, RANDO_ITEM_KeyD7);
+	rando_items_add(&items, RANDO_ITEM_KeyD7);
+	CHECK(!rando_world_can_fill(&world, RANDO_LOC_TURTLE_ROCK_BIG_KEY_CHEST, RANDO_ITEM_KeyD7, &items, true));
+	rando_items_add(&items, RANDO_ITEM_KeyD7);
+	CHECK(rando_world_can_fill(&world, RANDO_LOC_TURTLE_ROCK_BIG_KEY_CHEST, RANDO_ITEM_KeyD7, &items, true));
+	config.accessibility = RANDO_ACCESSIBILITY_LOCATIONS;
+	turtle_rock_world(&world, &config);
+	CHECK(!rando_world_can_fill(&world, RANDO_LOC_TURTLE_ROCK_BIG_KEY_CHEST, RANDO_ITEM_KeyD7, &items, false));
+}
+
+/* Turtle Rock Big Chest refuses its own big key even unchecked; Chain Chomps' upper path wants a KeyD7. */
+static void check_turtle_rock_big_chest_and_chain_chomps(void)
+{
+	RandoConfig config;
+	RandoWorld world;
+	RandoItems items;
+
+	rando_config_init(&config);
+	turtle_rock_world(&world, &config);
+	rando_items_clear(&items);
+	CHECK(!rando_world_can_fill(&world, RANDO_LOC_TURTLE_ROCK_BIG_CHEST, RANDO_ITEM_BigKeyD7, &items, false));
+	CHECK(rando_world_can_fill(&world, RANDO_LOC_TURTLE_ROCK_BIG_CHEST, RANDO_ITEM_KeyD7, &items, false));
+	all_items_with_n(&items, RANDO_ITEM_KeyD7, 0);
+	CHECK(!rando_world_can_access(&world, RANDO_LOC_TURTLE_ROCK_CHAIN_CHOMPS, &items));
+	rando_items_add(&items, RANDO_ITEM_KeyD7);
+	CHECK(rando_world_can_access(&world, RANDO_LOC_TURTLE_ROCK_CHAIN_CHOMPS, &items));
+}
+
+/* The Ice Palace, Misery Mire and Turtle Rock bosses: compass and map, bossNormalLocation, wild guards, completion. */
+static void check_ice_mire_and_turtle_rock_bosses(void)
+{
+	static const struct {
+		RandoRegionId region;
+		RandoLocationId boss, prize;
+		RandoItemId compass, map, key, needed;
+	} bosses[] = {
+		{RANDO_REGION_ICE_PALACE, RANDO_LOC_ICE_PALACE_BOSS, RANDO_LOC_ICE_PALACE_PRIZE, RANDO_ITEM_CompassD5,
+		 RANDO_ITEM_MapD5, RANDO_ITEM_KeyD5, RANDO_ITEM_Hammer},
+		{RANDO_REGION_MISERY_MIRE, RANDO_LOC_MISERY_MIRE_BOSS, RANDO_LOC_MISERY_MIRE_PRIZE, RANDO_ITEM_CompassD6,
+		 RANDO_ITEM_MapD6, RANDO_ITEM_KeyD6, RANDO_ITEM_CaneOfSomaria},
+		{RANDO_REGION_TURTLE_ROCK, RANDO_LOC_TURTLE_ROCK_BOSS, RANDO_LOC_TURTLE_ROCK_PRIZE, RANDO_ITEM_CompassD7,
+		 RANDO_ITEM_MapD7, RANDO_ITEM_KeyD7, RANDO_ITEM_Lamp},
+	};
+	RandoConfig config;
+	RandoWorld world;
+	RandoItems items;
+
+	for (size_t i = 0; i < sizeof bosses / sizeof bosses[0]; i++) {
+		rando_config_init(&config);
+		turtle_rock_world(&world, &config);
+		CHECK(rando_world_set_item(&world, RANDO_LOC_MISERY_MIRE_MEDALLION, RANDO_ITEM_Ether));
+		rando_items_clear(&items);
+		CHECK(rando_world_can_fill(&world, bosses[i].boss, bosses[i].compass, &items, true));
+		CHECK(rando_world_can_fill(&world, bosses[i].boss, bosses[i].map, &items, true));
+		CHECK(!rando_world_can_fill(&world, bosses[i].boss, bosses[i].key, &items, true));
+		CHECK(rando_world_can_fill(&world, bosses[i].boss, bosses[i].key, &items, false));
+		all_items_except(&items, NULL, 0);
+		CHECK(rando_world_region_can_complete(&world, bosses[i].region, &items));
+		CHECK(rando_world_can_access(&world, bosses[i].prize, &items));
+		all_items_with_n(&items, bosses[i].needed, 0);
+		CHECK(rando_world_region_can_enter(&world, bosses[i].region, &items));
+		CHECK(!rando_world_region_can_complete(&world, bosses[i].region, &items));
+		CHECK(!rando_world_can_access(&world, bosses[i].prize, &items));
+
+		config.region_boss_normal_location = false;
+		turtle_rock_world(&world, &config);
+		rando_items_clear(&items);
+		CHECK(!rando_world_can_fill(&world, bosses[i].boss, bosses[i].key, &items, false));
+		CHECK(!rando_world_can_fill(&world, bosses[i].boss, bosses[i].compass, &items, false));
+
+		config.region_wild_compasses = true;
+		config.region_wild_maps = true;
+		turtle_rock_world(&world, &config);
+		CHECK(rando_world_set_item(&world, RANDO_LOC_MISERY_MIRE_MEDALLION, RANDO_ITEM_Ether));
+		all_items_with_n(&items, bosses[i].compass, 0);
+		CHECK(!rando_world_can_access(&world, bosses[i].boss, &items));
+		CHECK(rando_world_set_item(&world, bosses[i].boss, bosses[i].compass));
+		CHECK(rando_world_can_access(&world, bosses[i].boss, &items));
+		all_items_with_n(&items, bosses[i].map, 0);
+		CHECK(!rando_world_can_access(&world, bosses[i].boss, &items));
+	}
+}
+
 /* The tests/NoGlitches files whose rows are replayed whole; each chunk of the region port adds its
  * own, and the last one removes the list. */
 static const char *const enabled_files[] = {
@@ -251,7 +466,8 @@ static const char *const enabled_files[] = {
 	"DarkWorld/DeathMountain/EastTest.php", "DarkWorld/DeathMountain/WestTest.php",
 	"EasternPalaceTest.php", "DesertPalaceTest.php", "TowerOfHeraTest.php", "HyruleCastleTowerTest.php",
 	"PalaceOfDarknessTest.php", "SwampPalaceTest.php", "SkullWoodsTest.php",
-	"ThievesTownTest.php", NULL,
+	"ThievesTownTest.php", "IcePalaceTest.php",
+	"MiseryMireTest.php", "TurtleRockTest.php", NULL,
 };
 
 /* Methods replayed in every file: their region rules are all ported. */
@@ -289,6 +505,12 @@ int main(int argc, char **argv)
 	check_locations_accessibility_refuses_keys_on_their_own_chests();
 	check_key_config_decides_swamp_entrance_and_pinball_room();
 	check_placement_and_weapons_in_dark_world_dungeons();
+	check_big_key_placement_lowers_ice_and_mire_key_counts();
+	check_shop_key_and_damage_decide_ice_and_mire_spikes();
+	check_basic_placement_in_ice_palace_and_turtle_rock();
+	check_turtle_rock_big_key_chest_keys();
+	check_turtle_rock_big_chest_and_chain_chomps();
+	check_ice_mire_and_turtle_rock_bosses();
 	printf(TEST ": hand-written cases passed\n");
 	if (!fixtures)
 		return 0;
