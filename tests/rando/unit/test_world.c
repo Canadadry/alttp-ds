@@ -195,6 +195,33 @@ static void check_derivations(void)
 	CHECK(world.config.item_overflow_replacement_shield == RANDO_ITEM_FiftyRupees);
 }
 
+static int glitch_flags_set(const RandoConfig *c, int overworld)
+{
+	int set = c->can_super_bunny + c->can_fake_flipper + c->can_super_speed + c->can_boots_clip
+		  + c->can_mirror_clip + c->can_water_walk + c->can_dungeon_revive;
+	int clear = !c->can_mirror_wrap + !c->can_owyba + !c->can_one_frame_clip_ow + !c->can_one_frame_clip_uw
+		    + !c->can_transition_wrapped + !c->can_bunny_surf + !c->can_bunny_revive;
+
+	return clear == 7 && set == (overworld ? 7 : 0);
+}
+
+/* config/logic.php's OverworldGlitches block, outside VT's $glitched_logic for the vanilla dungeon items. */
+static void check_overworld_glitches_derivation(void)
+{
+	RandoConfig input;
+	RandoWorld world;
+
+	rando_config_init(&input);
+	rando_world_init(&world, RANDO_VARIANT_STANDARD, &input);
+	CHECK(glitch_flags_set(&world.config, 0));
+
+	input.logic = RANDO_LOGIC_OVERWORLD_GLITCHES;
+	rando_world_init(&world, RANDO_VARIANT_STANDARD, &input);
+	CHECK(glitch_flags_set(&world.config, 1));
+	CHECK(!world.config.rom_vanilla_keys && !world.config.rom_vanilla_big_keys && !world.config.rom_vanilla_maps
+	      && !world.config.rom_vanilla_compasses);
+}
+
 /* User story 14's irregular cases of VT's location class tree. */
 static void check_location_classes(void)
 {
@@ -982,6 +1009,7 @@ int main(int argc, char **argv)
 	check_shop_prices();
 	check_shop_inventory();
 	check_derivations();
+	check_overworld_glitches_derivation();
 	check_location_classes();
 	check_set_item();
 	check_region_can_fill();
@@ -1002,11 +1030,11 @@ int main(int argc, char **argv)
 	if (!fixtures)
 		return 0;
 	printf(TEST ": %d world dump records checked\n", check_world_dump());
-	rows = fixture_replay_rows(TEST, region_locked_items, &total);
+	rows = fixture_replay_rows(TEST, FIXTURE_NOGLITCHES_ROWS, region_locked_items, &total);
 	if (rows != 450)
 		test_fail(TEST, "%d testRegionLockedItems rows replayed, the four classes and RegionTest have 450", rows);
 	printf(TEST ": %d of %d rows replayed (testRegionLockedItems)\n", rows, total);
-	rows = fixture_replay_rows(TEST, vanilla_dungeon_items, &total);
+	rows = fixture_replay_rows(TEST, FIXTURE_NOGLITCHES_ROWS, vanilla_dungeon_items, &total);
 	if (rows != 8)
 		test_fail(TEST, "%d testSetVanillaDungeonItems rows replayed, WorldTest has 8", rows);
 	printf(TEST ": %d of %d rows replayed (testSetVanillaDungeonItems)\n", rows, total);

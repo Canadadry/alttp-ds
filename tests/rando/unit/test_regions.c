@@ -667,10 +667,18 @@ static int every_row(const char *file, const char *method)
 	return 1;
 }
 
+static void replay_every_row(const char *path)
+{
+	int total, rows = fixture_replay_rows(TEST, path, every_row, &total);
+
+	if (rows != total || rows == 0)
+		test_fail(TEST, "%s: %d of %d rows replayed", path, rows, total);
+	printf(TEST ": all %d rows of %s replayed\n", rows, path);
+}
+
 int main(int argc, char **argv)
 {
 	int fixtures = test_fixtures_mode(TEST, argc, argv);
-	int rows, total;
 
 	check_nothing_required_to_enter_eastern_palace();
 	check_can_enter_tower_of_hera_with_everything();
@@ -701,9 +709,7 @@ int main(int argc, char **argv)
 	printf(TEST ": hand-written cases passed\n");
 	if (!fixtures)
 		return 0;
-	rows = fixture_replay_rows(TEST, every_row, &total);
-	if (rows != total)
-		test_fail(TEST, "%d of %d rows replayed", rows, total);
-	printf(TEST ": all %d rows replayed\n", rows);
+	replay_every_row(FIXTURE_NOGLITCHES_ROWS);
+	replay_every_row(FIXTURE_OVERWORLD_GLITCHES_ROWS);
 	return 0;
 }

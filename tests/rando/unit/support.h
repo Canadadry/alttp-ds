@@ -10,6 +10,7 @@
 #define FIXTURE_WORLD_DUMP "oracle/world_dump.txt"
 #define FIXTURE_PREDICATE_VECTORS "oracle/predicate_vectors.txt"
 #define FIXTURE_NOGLITCHES_ROWS "oracle/noglitches_rows.txt"
+#define FIXTURE_OVERWORLD_GLITCHES_ROWS "oracle/overworld_glitches_rows.txt"
 #define FIXTURE_POOL_LISTS "oracle/pool_lists.txt"
 #define FIXTURE_PREPARED_POOLS "oracle/prepared_pools.txt"
 
@@ -66,15 +67,17 @@ typedef struct PredicateColumn {
  * stores the number of values checked in *values. */
 int fixture_replay_predicates(const char *test, const PredicateColumn *columns, int ncolumns, long *values);
 
-/* Whether a row of that test file (under tests/NoGlitches, or tests/ for RegionTest.php and WorldTest.php) and
- * method is replayed. */
+/* Whether a row of that test file (relative to the fixture's VT tree, or tests/ for RegionTest.php and
+ * WorldTest.php) and method is replayed. */
 typedef int (*RowFilter)(const char *file, const char *method);
 
-/* Replays every row record the filter accepts: a fresh world of the row's variant, its config
- * overrides and preset items, then its query on its two-view item multiset; vanilla_dungeon_items
- * applies its overrides to the config the world is built from instead. On the first answer
- * that differs from VT's, prints the row's origin, query, expected and actual and exits 1.
- * Returns the number of rows replayed and stores the number of row records in *total. */
-int fixture_replay_rows(const char *test, RowFilter filter, int *total);
+/* Replays every row record of the fixture at path the filter accepts: a fresh world of the row's
+ * variant, built from a config holding only the row's logic override (so world init derives that
+ * logic's glitch flags, as VT resolves them lazily), then all its config overrides and preset items,
+ * then its query on its two-view item multiset; vanilla_dungeon_items applies every override to the
+ * config the world is built from instead. On the first answer that differs from VT's, prints the
+ * row's origin, query, expected and actual and exits 1. Returns the number of rows replayed and
+ * stores the number of row records in *total. */
+int fixture_replay_rows(const char *test, const char *path, RowFilter filter, int *total);
 
 #endif

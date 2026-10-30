@@ -505,6 +505,14 @@ static int replay_row(Fixture *fx)
 		rando_world_init(&world, variant, &config);
 		return vanilla_dungeon_items(&world.config);
 	}
+	for (i = 0; i < n; i++)
+		if (strncmp(parts[i], "logic=", 6) == 0) {
+			/* apply_overrides splits its entry in place; the pass after init needs it whole. */
+			char logic[FIXTURE_LINE_MAX], *entry = logic;
+
+			strcpy(logic, parts[i]);
+			apply_overrides(fx, &config, &entry, 1);
+		}
 	rando_world_init(&world, variant, &config);
 	apply_overrides(fx, &world.config, parts, n);
 	strcpy(preset_field, fx->field[ROW_PRESET]);
@@ -533,13 +541,13 @@ static int replay_row(Fixture *fx)
 	return 0;
 }
 
-int fixture_replay_rows(const char *test, RowFilter filter, int *total)
+int fixture_replay_rows(const char *test, const char *path, RowFilter filter, int *total)
 {
 	Fixture fx;
 	int run = 0;
 
 	*total = 0;
-	fixture_open(&fx, FIXTURE_NOGLITCHES_ROWS);
+	fixture_open(&fx, path);
 	while (fixture_next(&fx)) {
 		int want, got;
 
