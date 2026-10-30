@@ -5,10 +5,11 @@
 #define FIRST_SHOP RANDO_SHOP_DARK_DESERT_FAIRY
 #define NSHOPS (RANDO_SHOP_DARK_DESERT_HINT - FIRST_SHOP + 1)
 
-static bool dark_desert(const RandoWorld *world, const RandoItems *items)
+static bool dark_desert(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
 	const RandoConfig *c = &world->config;
 
+	(void)locations;
 	return has(items, RANDO_ITEM_MoonPearl)
 		|| ((c->can_owyba && rando_items_has_a_bottle(items))
 		    && (c->can_one_frame_clip_ow || rando_items_has_bottle(items, 2)
@@ -16,13 +17,13 @@ static bool dark_desert(const RandoWorld *world, const RandoItems *items)
 			|| (c->can_boots_clip && has(items, RANDO_ITEM_PegasusBoots))));
 }
 
-static bool mire_shed(const RandoWorld *world, const RandoItems *items)
+static bool mire_shed(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
-	return dark_desert(world, items)
+	return dark_desert(world, locations, items)
 		|| (world->config.can_super_bunny && has(items, RANDO_ITEM_MagicMirror));
 }
 
-static bool enter(const RandoWorld *world, const RandoItems *items)
+static bool enter(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
 	const RandoConfig *c = &world->config;
 
@@ -33,7 +34,7 @@ static bool enter(const RandoWorld *world, const RandoItems *items)
 		    || ((((has(items, RANDO_ITEM_MoonPearl) || (c->can_bunny_revive && rando_items_can_bunny_revive(items, c)))
 			  && (c->can_boots_clip && has(items, RANDO_ITEM_PegasusBoots)))
 			 || (c->can_mirror_wrap && has(items, RANDO_ITEM_MagicMirror)))
-			&& can_enter(world, RANDO_REGION_SOUTH_DARK_WORLD, items))
+			&& can_enter(world, locations, RANDO_REGION_SOUTH_DARK_WORLD, items))
 		    || (c->can_owyba && rando_items_has_a_bottle(items)));
 }
 

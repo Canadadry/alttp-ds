@@ -5,52 +5,59 @@
 #define FIRST_SHOP RANDO_SHOP_LIGHT_WORLD_LAKE_HYLIA_SHOP
 #define NSHOPS (RANDO_SHOP_KAKARIKO_GAMBLE_GAME - FIRST_SHOP + 1)
 
-static bool rupee_cave(const RandoWorld *world, const RandoItems *items)
+static bool rupee_cave(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
 	(void)world;
+	(void)locations;
 	return rando_items_can_lift_rocks(items);
 }
 
-static bool bonk_fairy_light(const RandoWorld *world, const RandoItems *items)
+static bool bonk_fairy_light(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
 	(void)world;
+	(void)locations;
 	return has(items, RANDO_ITEM_PegasusBoots);
 }
 
-static bool light_hype_fairy(const RandoWorld *world, const RandoItems *items)
+static bool light_hype_fairy(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
 	(void)world;
+	(void)locations;
 	return rando_items_can_bomb_things(items);
 }
 
-static bool capacity_upgrade(const RandoWorld *world, const RandoItems *items)
+static bool capacity_upgrade(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
 	const RandoConfig *c = &world->config;
 
+	(void)locations;
 	return (c->can_water_walk && has(items, RANDO_ITEM_PegasusBoots))
 		|| c->can_fake_flipper || has(items, RANDO_ITEM_Flippers);
 }
 
-static bool aginahs_cave(const RandoWorld *world, const RandoItems *items)
+static bool aginahs_cave(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
 	(void)world;
+	(void)locations;
 	return rando_items_can_bomb_things(items);
 }
 
-static bool mini_moldorm_cave(const RandoWorld *world, const RandoItems *items)
+static bool mini_moldorm_cave(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
+	(void)locations;
 	return rando_items_can_bomb_things(items) && rando_items_can_kill_most_things(items, &world->config, 5);
 }
 
-static bool hobo(const RandoWorld *world, const RandoItems *items)
+static bool hobo(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
 	const RandoConfig *c = &world->config;
 
+	(void)locations;
 	return (c->can_water_walk && has(items, RANDO_ITEM_PegasusBoots))
 		|| c->can_fake_flipper || has(items, RANDO_ITEM_Flippers);
 }
 
-static bool bombos_tablet(const RandoWorld *world, const RandoItems *items)
+static bool bombos_tablet(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
 	const RandoConfig *c = &world->config;
 
@@ -59,40 +66,41 @@ static bool bombos_tablet(const RandoWorld *world, const RandoItems *items)
 		    || (c->mode_weapons == RANDO_WEAPONS_SWORDLESS && has(items, RANDO_ITEM_Hammer)))
 		&& (c->can_one_frame_clip_ow
 		    || (c->can_boots_clip && has(items, RANDO_ITEM_PegasusBoots))
-		    || (has(items, RANDO_ITEM_MagicMirror) && can_enter(world, RANDO_REGION_SOUTH_DARK_WORLD, items)));
+		    || (has(items, RANDO_ITEM_MagicMirror) && can_enter(world, locations, RANDO_REGION_SOUTH_DARK_WORLD, items)));
 }
 
-static bool cave_45(const RandoWorld *world, const RandoItems *items)
+static bool cave_45(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
 	const RandoConfig *c = &world->config;
 
 	return c->can_one_frame_clip_ow
 		|| (c->can_boots_clip && has(items, RANDO_ITEM_PegasusBoots))
-		|| (has(items, RANDO_ITEM_MagicMirror) && can_enter(world, RANDO_REGION_SOUTH_DARK_WORLD, items));
+		|| (has(items, RANDO_ITEM_MagicMirror) && can_enter(world, locations, RANDO_REGION_SOUTH_DARK_WORLD, items));
 }
 
-static bool checkerboard_cave(const RandoWorld *world, const RandoItems *items)
+static bool checkerboard_cave(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
 	const RandoConfig *c = &world->config;
 
 	return rando_items_can_lift_rocks(items)
 		&& (c->can_one_frame_clip_ow
 		    || (c->can_boots_clip && has(items, RANDO_ITEM_PegasusBoots))
-		    || (has(items, RANDO_ITEM_MagicMirror) && can_enter(world, RANDO_REGION_MIRE, items)));
+		    || (has(items, RANDO_ITEM_MagicMirror) && can_enter(world, locations, RANDO_REGION_MIRE, items)));
 }
 
-static bool library(const RandoWorld *world, const RandoItems *items)
+static bool library(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
 	(void)world;
+	(void)locations;
 	return has(items, RANDO_ITEM_PegasusBoots);
 }
 
-static bool desert_ledge(const RandoWorld *world, const RandoItems *items)
+static bool desert_ledge(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
-	return can_enter(world, RANDO_REGION_DESERT_PALACE, items);
+	return can_enter(world, locations, RANDO_REGION_DESERT_PALACE, items);
 }
 
-static bool lake_hylia_island(const RandoWorld *world, const RandoItems *items)
+static bool lake_hylia_island(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
 	const RandoConfig *c = &world->config;
 
@@ -100,22 +108,24 @@ static bool lake_hylia_island(const RandoWorld *world, const RandoItems *items)
 		|| (c->can_boots_clip && has(items, RANDO_ITEM_PegasusBoots))
 		|| (has(items, RANDO_ITEM_MagicMirror) && c->can_water_walk && has(items, RANDO_ITEM_PegasusBoots)
 		    && (has(items, RANDO_ITEM_MoonPearl) || (c->can_owyba && rando_items_has_a_bottle(items)))
-		    && can_enter(world, RANDO_REGION_NORTH_WEST_DARK_WORLD, items))
+		    && can_enter(world, locations, RANDO_REGION_NORTH_WEST_DARK_WORLD, items))
 		|| (has(items, RANDO_ITEM_Flippers) && has(items, RANDO_ITEM_MagicMirror)
 		    && (c->can_bunny_surf
 			|| has(items, RANDO_ITEM_MoonPearl) || (c->can_owyba && rando_items_has_a_bottle(items)))
-		    && can_enter(world, RANDO_REGION_NORTH_EAST_DARK_WORLD, items));
+		    && can_enter(world, locations, RANDO_REGION_NORTH_EAST_DARK_WORLD, items));
 }
 
-static bool flute_spot(const RandoWorld *world, const RandoItems *items)
+static bool flute_spot(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
 	(void)world;
+	(void)locations;
 	return has(items, RANDO_ITEM_Shovel);
 }
 
-static bool enter(const RandoWorld *world, const RandoItems *items)
+static bool enter(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
 	(void)world;
+	(void)locations;
 	return has(items, RANDO_ITEM_RescueZelda);
 }
 

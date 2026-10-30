@@ -9,9 +9,10 @@ static bool pinball_room_fill(RandoWorld *world, RandoItemId item, const RandoIt
 	return !world->config.region_force_skull_woods_key || item == RANDO_ITEM_KeyD3;
 }
 
-static bool big_chest(const RandoWorld *world, const RandoItems *items)
+static bool big_chest(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
 	(void)world;
+	(void)locations;
 	return has(items, RANDO_ITEM_BigKeyD3);
 }
 
@@ -27,15 +28,16 @@ static bool big_chest_fill(RandoWorld *world, RandoItemId item, const RandoItems
 	return world->config.accessibility != RANDO_ACCESSIBILITY_LOCATIONS || item != RANDO_ITEM_BigKeyD3;
 }
 
-static bool bridge_room(const RandoWorld *world, const RandoItems *items)
+static bool bridge_room(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
+	(void)locations;
 	return has(items, RANDO_ITEM_FireRod)
 		&& (has(items, RANDO_ITEM_MoonPearl)
 		    || (world->config.can_dungeon_revive && has(items, RANDO_ITEM_PegasusBoots)
 			&& (has(items, RANDO_ITEM_MagicMirror) || rando_items_has_a_bottle(items))));
 }
 
-static bool enter(const RandoWorld *world, const RandoItems *items)
+static bool enter(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
 	const RandoConfig *c = &world->config;
 
@@ -46,13 +48,13 @@ static bool enter(const RandoWorld *world, const RandoItems *items)
 		&& (c->can_dungeon_revive || has(items, RANDO_ITEM_MoonPearl)
 		    || ((rando_items_has_a_bottle(items) && c->can_owyba)
 			|| (c->can_bunny_revive && rando_items_can_bunny_revive(items, c))))
-		&& can_enter(world, RANDO_REGION_NORTH_WEST_DARK_WORLD, items);
+		&& can_enter(world, locations, RANDO_REGION_NORTH_WEST_DARK_WORLD, items);
 }
 
-static bool boss(const RandoWorld *world, const RandoItems *items)
+static bool boss(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
-	return enter(world, items)
-		&& bridge_room(world, items)
+	return enter(world, locations, items)
+		&& bridge_room(world, locations, items)
 		&& (world->config.mode_weapons == RANDO_WEAPONS_SWORDLESS || rando_items_has_sword(items, 1))
 		&& has_n(items, RANDO_ITEM_KeyD3, 3)
 		&& boss_can_beat(world, RANDO_REGION_SKULL_WOODS, items)
@@ -72,8 +74,9 @@ static bool boss_always_allow(const RandoWorld *world, RandoItemId item, const R
 	return boss_always_allows(world, item, RANDO_ITEM_CompassD3, RANDO_ITEM_MapD3);
 }
 
-static bool complete(const RandoWorld *world, const RandoItems *items)
+static bool complete(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
+	(void)locations;
 	return rando_world_can_access(world, RANDO_LOC_SKULL_WOODS_BOSS, items);
 }
 

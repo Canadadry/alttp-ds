@@ -5,19 +5,21 @@
 #define FIRST_SHOP RANDO_SHOP_DARK_DEATH_MOUNTAIN_FAIRY
 #define NSHOPS 1
 
-static bool dark_death_mountain_fairy(const RandoWorld *world, const RandoItems *items)
+static bool dark_death_mountain_fairy(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
 	const RandoConfig *c = &world->config;
 
+	(void)locations;
 	return has(items, RANDO_ITEM_MoonPearl)
 		|| (c->can_owyba && rando_items_has_a_bottle(items)
 		    && ((has(items, RANDO_ITEM_PegasusBoots) && c->can_boots_clip) || c->can_one_frame_clip_ow));
 }
 
-static bool spike_cave(const RandoWorld *world, const RandoItems *items)
+static bool spike_cave(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
 	const RandoConfig *c = &world->config;
 
+	(void)locations;
 	return (has(items, RANDO_ITEM_MoonPearl)
 		|| (c->can_owyba && rando_items_has_a_bottle(items)
 		    && ((has(items, RANDO_ITEM_PegasusBoots) && c->can_boots_clip) || c->can_one_frame_clip_ow)
@@ -30,9 +32,9 @@ static bool spike_cave(const RandoWorld *world, const RandoItems *items)
 			&& has(items, RANDO_ITEM_CaneOfByrna)));
 }
 
-static bool enter(const RandoWorld *world, const RandoItems *items)
+static bool enter(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
-	return has(items, RANDO_ITEM_RescueZelda) && can_enter(world, RANDO_REGION_WEST_DEATH_MOUNTAIN, items);
+	return has(items, RANDO_ITEM_RescueZelda) && can_enter(world, locations, RANDO_REGION_WEST_DEATH_MOUNTAIN, items);
 }
 
 static const RandoLocationRules locations[NLOCATIONS] = {

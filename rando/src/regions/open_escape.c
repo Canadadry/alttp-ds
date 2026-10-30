@@ -6,21 +6,23 @@
 #define FIRST RANDO_LOC_SANCTUARY
 #define NLOCATIONS (RANDO_LOC_ZELDA - FIRST + 1)
 
-static bool lamp_or_advanced_fire_rod(const RandoWorld *world, const RandoItems *items)
+static bool lamp_or_advanced_fire_rod(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
+	(void)locations;
 	return has_lamp(world, items)
 		|| (world->config.item_placement == RANDO_PLACEMENT_ADVANCED && has(items, RANDO_ITEM_FireRod));
 }
 
-static bool sewers_secret_room(const RandoWorld *world, const RandoItems *items)
+static bool sewers_secret_room(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
 	return rando_items_can_lift_rocks(items)
-		|| (lamp_or_advanced_fire_rod(world, items)
+		|| (lamp_or_advanced_fire_rod(world, locations, items)
 		    && has(items, RANDO_ITEM_KeyH2) && rando_items_can_kill_most_things(items, &world->config, 5));
 }
 
-static bool key_and_kill_most_things(const RandoWorld *world, const RandoItems *items)
+static bool key_and_kill_most_things(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
+	(void)locations;
 	return has(items, RANDO_ITEM_KeyH2) && rando_items_can_kill_most_things(items, &world->config, 5);
 }
 

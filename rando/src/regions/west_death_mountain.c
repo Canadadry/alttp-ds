@@ -3,32 +3,35 @@
 #define FIRST RANDO_LOC_OLD_MAN
 #define NLOCATIONS (RANDO_LOC_SPECTACLE_ROCK - FIRST + 1)
 
-static bool old_man(const RandoWorld *world, const RandoItems *items)
+static bool old_man(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
+	(void)locations;
 	return has_lamp(world, items);
 }
 
-static bool ether_tablet(const RandoWorld *world, const RandoItems *items)
+static bool ether_tablet(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
 	return has(items, RANDO_ITEM_BookOfMudora)
 		&& (rando_items_has_sword(items, 2)
 		    || (world->config.mode_weapons == RANDO_WEAPONS_SWORDLESS && has(items, RANDO_ITEM_Hammer)))
-		&& can_enter(world, RANDO_REGION_TOWER_OF_HERA, items);
+		&& can_enter(world, locations, RANDO_REGION_TOWER_OF_HERA, items);
 }
 
-static bool spectacle_rock(const RandoWorld *world, const RandoItems *items)
+static bool spectacle_rock(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
 	const RandoConfig *c = &world->config;
 
+	(void)locations;
 	return has(items, RANDO_ITEM_MagicMirror)
 		|| (c->can_boots_clip && has(items, RANDO_ITEM_PegasusBoots))
 		|| c->can_one_frame_clip_ow;
 }
 
-static bool enter(const RandoWorld *world, const RandoItems *items)
+static bool enter(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
 	const RandoConfig *c = &world->config;
 
+	(void)locations;
 	return has(items, RANDO_ITEM_RescueZelda)
 		&& (rando_items_can_fly(items, c)
 		    || c->can_one_frame_clip_ow

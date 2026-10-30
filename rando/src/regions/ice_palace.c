@@ -3,42 +3,45 @@
 #define FIRST RANDO_LOC_ICE_PALACE_BIG_KEY_CHEST
 #define NLOCATIONS (RANDO_LOC_ICE_PALACE_PRIZE - FIRST + 1)
 
-static bool can_take_damage(const RandoWorld *world, const RandoItems *items)
+static bool can_take_damage(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
+	(void)locations;
 	return !world->config.region_cant_take_damage || has(items, RANDO_ITEM_CaneOfByrna)
 		|| has(items, RANDO_ITEM_Cape) || has(items, RANDO_ITEM_Hookshot);
 }
 
-static bool spike_room(const RandoWorld *world, const RandoItems *items)
+static bool spike_room(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
-	int big_keys = rando_world_has_item(world, RANDO_LOC_ICE_PALACE_SPIKE_ROOM, RANDO_ITEM_BigKeyD5)
-		+ rando_world_has_item(world, RANDO_LOC_ICE_PALACE_BIG_KEY_CHEST, RANDO_ITEM_BigKeyD5)
-		+ rando_world_has_item(world, RANDO_LOC_ICE_PALACE_MAP_CHEST, RANDO_ITEM_BigKeyD5);
+	int big_keys = rando_world_has_item(locations, RANDO_LOC_ICE_PALACE_SPIKE_ROOM, RANDO_ITEM_BigKeyD5)
+		+ rando_world_has_item(locations, RANDO_LOC_ICE_PALACE_BIG_KEY_CHEST, RANDO_ITEM_BigKeyD5)
+		+ rando_world_has_item(locations, RANDO_LOC_ICE_PALACE_MAP_CHEST, RANDO_ITEM_BigKeyD5);
 
-	return can_take_damage(world, items)
+	return can_take_damage(world, locations, items)
 		&& ((has(items, RANDO_ITEM_Hookshot) || has(items, RANDO_ITEM_ShopKey))
 		    || (has(items, RANDO_ITEM_KeyD5) && big_keys >= 1));
 }
 
-static bool big_key_chest(const RandoWorld *world, const RandoItems *items)
+static bool big_key_chest(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
 	return has(items, RANDO_ITEM_Hammer) && rando_items_can_lift_rocks(items)
-		&& can_take_damage(world, items)
+		&& can_take_damage(world, locations, items)
 		&& rando_world_can_access(world, RANDO_LOC_ICE_PALACE_SPIKE_ROOM, items);
 }
 
-static bool freezor_chest(const RandoWorld *world, const RandoItems *items)
+static bool freezor_chest(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
+	(void)locations;
 	return rando_items_can_melt_things(items, &world->config);
 }
 
-static bool big_chest(const RandoWorld *world, const RandoItems *items)
+static bool big_chest(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
 	(void)world;
+	(void)locations;
 	return has(items, RANDO_ITEM_BigKeyD5);
 }
 
-static bool enter(const RandoWorld *world, const RandoItems *items)
+static bool enter(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
 	const RandoConfig *c = &world->config;
 
@@ -51,7 +54,7 @@ static bool enter(const RandoWorld *world, const RandoItems *items)
 		&& (((has(items, RANDO_ITEM_MoonPearl) || c->can_dungeon_revive)
 		     && (has(items, RANDO_ITEM_Flippers) || c->can_fake_flipper)
 		     && rando_items_can_lift_dark_rocks(items))
-		    || (can_enter(world, RANDO_REGION_SOUTH_DARK_WORLD, items)
+		    || (can_enter(world, locations, RANDO_REGION_SOUTH_DARK_WORLD, items)
 			&& (((has(items, RANDO_ITEM_MoonPearl)
 			      || (rando_items_has_a_bottle(items) && c->can_owyba)
 			      || (c->can_bunny_revive && rando_items_can_bunny_revive(items, c)))
@@ -65,11 +68,11 @@ static bool enter(const RandoWorld *world, const RandoItems *items)
 				&& c->can_mirror_wrap && has(items, RANDO_ITEM_MagicMirror)))));
 }
 
-static bool boss(const RandoWorld *world, const RandoItems *items)
+static bool boss(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
 	const RandoConfig *c = &world->config;
 
-	return enter(world, items)
+	return enter(world, locations, items)
 		&& has(items, RANDO_ITEM_Hammer) && rando_items_can_lift_rocks(items)
 		&& boss_can_beat(world, RANDO_REGION_ICE_PALACE, items)
 		&& has(items, RANDO_ITEM_BigKeyD5)
@@ -93,8 +96,9 @@ static bool boss_always_allow(const RandoWorld *world, RandoItemId item, const R
 	return boss_always_allows(world, item, RANDO_ITEM_CompassD5, RANDO_ITEM_MapD5);
 }
 
-static bool complete(const RandoWorld *world, const RandoItems *items)
+static bool complete(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
+	(void)locations;
 	return rando_world_can_access(world, RANDO_LOC_ICE_PALACE_BOSS, items);
 }
 

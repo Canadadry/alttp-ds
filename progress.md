@@ -90,3 +90,7 @@
   - [x] 3.16 item_functionality
 - [ ] Phase 4 — Fits on the DS
   - [ ] 4.1 Measure on the host
+- [ ] Step 3.6 chunks
+  - [x] Chunk 1: two-world rule shape
+  - [ ] Chunk 2: playthrough world pairs, mcs at all
+  - [ ] Chunk 3: owed VT tests, measure, note

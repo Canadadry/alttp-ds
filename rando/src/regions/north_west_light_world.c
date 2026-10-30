@@ -5,21 +5,23 @@
 #define FIRST_SHOP RANDO_SHOP_LIGHT_WORLD_KAKARIKO_SHOP
 #define NSHOPS (RANDO_SHOP_BOMB_HUT - FIRST_SHOP + 1)
 
-static bool bomb_hut(const RandoWorld *world, const RandoItems *items)
+static bool bomb_hut(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
 	(void)world;
+	(void)locations;
 	return rando_items_can_bomb_things(items);
 }
 
-static bool master_sword_pedestal(const RandoWorld *world, const RandoItems *items)
+static bool master_sword_pedestal(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
+	(void)locations;
 	return (world->config.item_placement != RANDO_PLACEMENT_BASIC || has(items, RANDO_ITEM_BookOfMudora))
 		&& has(items, RANDO_ITEM_PendantOfPower)
 		&& has(items, RANDO_ITEM_PendantOfWisdom)
 		&& has(items, RANDO_ITEM_PendantOfCourage);
 }
 
-static bool kings_tomb(const RandoWorld *world, const RandoItems *items)
+static bool kings_tomb(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
 	const RandoConfig *c = &world->config;
 
@@ -29,18 +31,19 @@ static bool kings_tomb(const RandoWorld *world, const RandoItems *items)
 		    || c->can_one_frame_clip_ow
 		    || (c->can_super_speed && rando_items_can_spin_speed(items))
 		    || (has(items, RANDO_ITEM_MagicMirror)
-			&& can_enter(world, RANDO_REGION_NORTH_WEST_DARK_WORLD, items)
+			&& can_enter(world, locations, RANDO_REGION_NORTH_WEST_DARK_WORLD, items)
 			&& (has(items, RANDO_ITEM_MoonPearl) || (rando_items_has_a_bottle(items) && c->can_owyba)
 			    || (c->can_bunny_revive && rando_items_can_bunny_revive(items, c)))));
 }
 
-static bool pegasus_rocks(const RandoWorld *world, const RandoItems *items)
+static bool pegasus_rocks(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
 	(void)world;
+	(void)locations;
 	return has(items, RANDO_ITEM_PegasusBoots);
 }
 
-static bool magic_bat(const RandoWorld *world, const RandoItems *items)
+static bool magic_bat(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
 	const RandoConfig *c = &world->config;
 
@@ -50,43 +53,46 @@ static bool magic_bat(const RandoWorld *world, const RandoItems *items)
 			 && c->can_transition_wrapped
 			 && (has(items, RANDO_ITEM_Flippers) || c->can_fake_flipper)))
 		    || (has(items, RANDO_ITEM_MagicMirror)
-			&& ((c->can_mirror_wrap && can_enter(world, RANDO_REGION_NORTH_WEST_DARK_WORLD, items))
+			&& ((c->can_mirror_wrap && can_enter(world, locations, RANDO_REGION_NORTH_WEST_DARK_WORLD, items))
 			    || ((has(items, RANDO_ITEM_MoonPearl) || (rando_items_has_a_bottle(items) && c->can_owyba)
 				 || (c->can_bunny_revive && rando_items_can_bunny_revive(items, c)))
 				&& ((rando_items_can_lift_dark_rocks(items)
-				     && can_enter(world, RANDO_REGION_NORTH_WEST_DARK_WORLD, items))
+				     && can_enter(world, locations, RANDO_REGION_NORTH_WEST_DARK_WORLD, items))
 				    || (c->can_super_speed && rando_items_can_spin_speed(items)
 					&& (has(items, RANDO_ITEM_Flippers) || c->can_fake_flipper)
-					&& can_enter(world, RANDO_REGION_NORTH_EAST_DARK_WORLD, items)))))));
+					&& can_enter(world, locations, RANDO_REGION_NORTH_EAST_DARK_WORLD, items)))))));
 }
 
-static bool sick_kid(const RandoWorld *world, const RandoItems *items)
+static bool sick_kid(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
 	(void)world;
+	(void)locations;
 	return rando_items_has_a_bottle(items);
 }
 
-static bool lumberjack_tree(const RandoWorld *world, const RandoItems *items)
+static bool lumberjack_tree(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
 	(void)world;
+	(void)locations;
 	return has(items, RANDO_ITEM_DefeatAgahnim) && has(items, RANDO_ITEM_PegasusBoots);
 }
 
-static bool graveyard_ledge(const RandoWorld *world, const RandoItems *items)
+static bool graveyard_ledge(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
 	const RandoConfig *c = &world->config;
 
 	return (c->can_boots_clip && has(items, RANDO_ITEM_PegasusBoots))
 		|| (c->can_super_speed && rando_items_can_spin_speed(items))
 		|| c->can_one_frame_clip_ow
-		|| (has(items, RANDO_ITEM_MagicMirror) && can_enter(world, RANDO_REGION_NORTH_WEST_DARK_WORLD, items)
+		|| (has(items, RANDO_ITEM_MagicMirror) && can_enter(world, locations, RANDO_REGION_NORTH_WEST_DARK_WORLD, items)
 		    && (has(items, RANDO_ITEM_MoonPearl) || (rando_items_has_a_bottle(items) && c->can_owyba)
 			|| (c->can_bunny_revive && rando_items_can_bunny_revive(items, c))));
 }
 
-static bool enter(const RandoWorld *world, const RandoItems *items)
+static bool enter(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
 	(void)world;
+	(void)locations;
 	return has(items, RANDO_ITEM_RescueZelda);
 }
 

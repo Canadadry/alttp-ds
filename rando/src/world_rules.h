@@ -5,7 +5,12 @@
 
 #include <stddef.h>
 
-typedef bool (*RandoRule)(const RandoWorld *world, const RandoItems *items);
+/* world is VT's $this->world/$this->locations, locations is the closure's $locations. VT's
+ * $locations->itemInLocations, $locations["X"]->hasItem/getItem read locations;
+ * $this->locations["X"]->hasItem, config and bosses read world. $this->locations["X"]->canAccess($items)
+ * is rando_world_can_access(world, ...), $locations["X"]->canAccess($items) is
+ * rando_world_can_access(locations, ...), and getRegion(X)->canEnter passes (world, locations). */
+typedef bool (*RandoRule)(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items);
 typedef bool (*RandoAlwaysAllowRule)(const RandoWorld *world, RandoItemId item, const RandoItems *items);
 /* Non-const world: Link's Uncle's fill rule calls collect_items, which writes the memo. */
 typedef bool (*RandoFillRule)(RandoWorld *world, RandoItemId item, const RandoItems *items);
@@ -64,9 +69,13 @@ static inline bool has_n(const RandoItems *items, RandoItemId id, int at_least)
 	return rando_items_has_n(items, id, at_least);
 }
 
-static inline bool can_enter(const RandoWorld *world, RandoRegionId region, const RandoItems *items)
+bool rando_world_region_can_enter_with(const RandoWorld *world, const RandoWorld *locations, RandoRegionId region,
+				      const RandoItems *items);
+
+static inline bool can_enter(const RandoWorld *world, const RandoWorld *locations, RandoRegionId region,
+			     const RandoItems *items)
 {
-	return rando_world_region_can_enter(world, region, items);
+	return rando_world_region_can_enter_with(world, locations, region, items);
 }
 
 static inline bool has_lamp(const RandoWorld *world, const RandoItems *items)

@@ -524,6 +524,10 @@ bool rando_world_set_item(RandoWorld *world, RandoLocationId location, RandoItem
 bool rando_world_has_item(const RandoWorld *world, RandoLocationId location, RandoItemId item);
 
 bool rando_world_can_access(const RandoWorld *world, RandoLocationId location, const RandoItems *items);
+/* VT's canAccess($items, $locations): the location belongs to world, and its rules read the items
+ * VT reads from $locations in locations. */
+bool rando_world_can_access_with(const RandoWorld *world, const RandoWorld *locations, RandoLocationId location,
+				 const RandoItems *items);
 /* Any slot of the shop: its region's canEnter and the shop's own requirement. */
 bool rando_world_can_access_shop(const RandoWorld *world, RandoShopId shop, const RandoItems *items);
 /* Asserts the location's class accepts the item; the location's item is unchanged on return. */

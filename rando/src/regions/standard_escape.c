@@ -3,13 +3,15 @@
 #define FIRST RANDO_LOC_SANCTUARY
 #define NLOCATIONS (RANDO_LOC_ZELDA - FIRST + 1)
 
-static bool kill_escape_things_and_key(const RandoWorld *world, const RandoItems *items)
+static bool kill_escape_things_and_key(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
+	(void)locations;
 	return rando_items_can_kill_escape_things(items, &world->config) && has(items, RANDO_ITEM_KeyH2);
 }
 
-static bool kill_escape_things(const RandoWorld *world, const RandoItems *items)
+static bool kill_escape_things(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
+	(void)locations;
 	return rando_items_can_kill_escape_things(items, &world->config);
 }
 
@@ -29,8 +31,9 @@ static bool links_uncle_fill(RandoWorld *world, RandoItemId item, const RandoIte
 		&& wild_or_not_dungeon_item(&world->config, item);
 }
 
-static bool complete(const RandoWorld *world, const RandoItems *items)
+static bool complete(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
+	(void)locations;
 	return rando_world_can_access(world, RANDO_LOC_SANCTUARY, items);
 }
 

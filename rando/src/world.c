@@ -335,27 +335,39 @@ static const RandoLocationRules *location_rules(const RandoWorld *world, RandoLo
 	return &rules->locations[location - rando_region_info(region)->first_location];
 }
 
-bool rando_world_region_can_enter(const RandoWorld *world, RandoRegionId region, const RandoItems *items)
+bool rando_world_region_can_enter_with(const RandoWorld *world, const RandoWorld *locations, RandoRegionId region,
+				      const RandoItems *items)
 {
 	RandoRule rule = rando_region_rules(world->variant, region)->can_enter;
 
-	return !rule || rule(world, items);
+	return !rule || rule(world, locations, items);
+}
+
+bool rando_world_region_can_enter(const RandoWorld *world, RandoRegionId region, const RandoItems *items)
+{
+	return rando_world_region_can_enter_with(world, world, region, items);
 }
 
 bool rando_world_region_can_complete(const RandoWorld *world, RandoRegionId region, const RandoItems *items)
 {
 	RandoRule rule = rando_region_rules(world->variant, region)->can_complete;
 
-	return !rule || rule(world, items);
+	return !rule || rule(world, world, items);
+}
+
+bool rando_world_can_access_with(const RandoWorld *world, const RandoWorld *locations, RandoLocationId location,
+				 const RandoItems *items)
+{
+	const RandoLocationRules *rules = location_rules(world, location);
+
+	if (!rando_world_region_can_enter_with(world, locations, rando_location_info(location)->region, items))
+		return false;
+	return !rules || !rules->requirement || rules->requirement(world, locations, items);
 }
 
 bool rando_world_can_access(const RandoWorld *world, RandoLocationId location, const RandoItems *items)
 {
-	const RandoLocationRules *rules = location_rules(world, location);
-
-	if (!rando_world_region_can_enter(world, rando_location_info(location)->region, items))
-		return false;
-	return !rules || !rules->requirement || rules->requirement(world, items);
+	return rando_world_can_access_with(world, world, location, items);
 }
 
 bool rando_world_can_fill(RandoWorld *world, RandoLocationId location, RandoItemId item,
@@ -408,7 +420,7 @@ bool rando_world_can_access_shop(const RandoWorld *world, RandoShopId shop, cons
 	const RandoRegionRules *rules = rando_region_rules(world->variant, region);
 	RandoRule requirement = rules->shops ? rules->shops[shop - rando_region_info(region)->first_shop] : NULL;
 
-	return rando_world_region_can_enter(world, region, items) && (!requirement || requirement(world, items));
+	return rando_world_region_can_enter(world, region, items) && (!requirement || requirement(world, world, items));
 }
 
 /* found_total may be NULL. */

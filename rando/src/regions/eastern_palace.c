@@ -3,25 +3,29 @@
 #define FIRST RANDO_LOC_EASTERN_PALACE_COMPASS_CHEST
 #define NLOCATIONS (RANDO_LOC_EASTERN_PALACE_PRIZE - FIRST + 1)
 
-static bool enter(const RandoWorld *world, const RandoItems *items)
+static bool enter(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
 	(void)world;
+	(void)locations;
 	return has(items, RANDO_ITEM_RescueZelda);
 }
 
-static bool big_chest(const RandoWorld *world, const RandoItems *items)
+static bool big_chest(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
 	(void)world;
+	(void)locations;
 	return has(items, RANDO_ITEM_BigKeyP1);
 }
 
-static bool big_key_chest(const RandoWorld *world, const RandoItems *items)
+static bool big_key_chest(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
+	(void)locations;
 	return has_lamp(world, items);
 }
 
-static bool boss(const RandoWorld *world, const RandoItems *items)
+static bool boss(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
+	(void)locations;
 	return rando_items_can_shoot_arrows(items, &world->config, 1)
 		&& (has_lamp(world, items)
 		    || (world->config.item_placement == RANDO_PLACEMENT_ADVANCED && has(items, RANDO_ITEM_FireRod)))
@@ -43,8 +47,9 @@ static bool boss_always_allow(const RandoWorld *world, RandoItemId item, const R
 	return boss_always_allows(world, item, RANDO_ITEM_CompassP1, RANDO_ITEM_MapP1);
 }
 
-static bool complete(const RandoWorld *world, const RandoItems *items)
+static bool complete(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
+	(void)locations;
 	return rando_world_can_access(world, RANDO_LOC_EASTERN_PALACE_BOSS, items);
 }
 

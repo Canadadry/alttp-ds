@@ -3,7 +3,7 @@
 #define FIRST RANDO_LOC_DESERT_PALACE_BIG_CHEST
 #define NLOCATIONS (RANDO_LOC_DESERT_PALACE_PRIZE - FIRST + 1)
 
-static bool enter(const RandoWorld *world, const RandoItems *items)
+static bool enter(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
 	const RandoConfig *c = &world->config;
 
@@ -11,42 +11,46 @@ static bool enter(const RandoWorld *world, const RandoItems *items)
 		&& (has(items, RANDO_ITEM_BookOfMudora)
 		    || (c->can_boots_clip && has(items, RANDO_ITEM_PegasusBoots))
 		    || c->can_one_frame_clip_ow
-		    || (has(items, RANDO_ITEM_MagicMirror) && can_enter(world, RANDO_REGION_MIRE, items)));
+		    || (has(items, RANDO_ITEM_MagicMirror) && can_enter(world, locations, RANDO_REGION_MIRE, items)));
 }
 
-static bool big_chest(const RandoWorld *world, const RandoItems *items)
+static bool big_chest(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
 	(void)world;
+	(void)locations;
 	return has(items, RANDO_ITEM_BigKeyP2);
 }
 
-static bool big_key_chest(const RandoWorld *world, const RandoItems *items)
+static bool big_key_chest(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
+	(void)locations;
 	return has(items, RANDO_ITEM_KeyP2) && rando_items_can_kill_most_things(items, &world->config, 5);
 }
 
-static bool compass_chest(const RandoWorld *world, const RandoItems *items)
+static bool compass_chest(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
 	(void)world;
+	(void)locations;
 	return has(items, RANDO_ITEM_KeyP2);
 }
 
-static bool torch(const RandoWorld *world, const RandoItems *items)
+static bool torch(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
 	(void)world;
+	(void)locations;
 	return has(items, RANDO_ITEM_PegasusBoots);
 }
 
-static bool boss(const RandoWorld *world, const RandoItems *items)
+static bool boss(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
 	const RandoConfig *c = &world->config;
 
-	return enter(world, items)
+	return enter(world, locations, items)
 		&& (rando_items_can_lift_rocks(items)
 		    || (c->can_boots_clip && has(items, RANDO_ITEM_PegasusBoots))
 		    || (c->can_super_speed && rando_items_can_spin_speed(items))
 		    || c->can_one_frame_clip_ow
-		    || (has(items, RANDO_ITEM_MagicMirror) && can_enter(world, RANDO_REGION_MIRE, items)))
+		    || (has(items, RANDO_ITEM_MagicMirror) && can_enter(world, locations, RANDO_REGION_MIRE, items)))
 		&& rando_items_can_light_torches(items)
 		&& has(items, RANDO_ITEM_BigKeyP2) && has(items, RANDO_ITEM_KeyP2)
 		&& boss_can_beat(world, RANDO_REGION_DESERT_PALACE, items)
@@ -66,8 +70,9 @@ static bool boss_always_allow(const RandoWorld *world, RandoItemId item, const R
 	return boss_always_allows(world, item, RANDO_ITEM_CompassP2, RANDO_ITEM_MapP2);
 }
 
-static bool complete(const RandoWorld *world, const RandoItems *items)
+static bool complete(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
+	(void)locations;
 	return rando_world_can_access(world, RANDO_LOC_DESERT_PALACE_BOSS, items);
 }
 

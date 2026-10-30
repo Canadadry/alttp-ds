@@ -12,10 +12,11 @@ static bool pearl_or_owyba_or_bunny_revive(const RandoConfig *c, const RandoItem
 		|| (c->can_bunny_revive && rando_items_can_bunny_revive(items, c));
 }
 
-static bool dark_world_potion_shop(const RandoWorld *world, const RandoItems *items)
+static bool dark_world_potion_shop(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
 	const RandoConfig *c = &world->config;
 
+	(void)locations;
 	return (c->can_bunny_revive && rando_items_can_bunny_revive(items, c))
 		|| ((has(items, RANDO_ITEM_MoonPearl) || (c->can_owyba && rando_items_has_a_bottle(items)))
 		    && (c->can_one_frame_clip_ow
@@ -24,15 +25,17 @@ static bool dark_world_potion_shop(const RandoWorld *world, const RandoItems *it
 			|| rando_items_can_lift_rocks(items)));
 }
 
-static bool dark_world_hint(const RandoWorld *world, const RandoItems *items)
+static bool dark_world_hint(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
+	(void)locations;
 	return pearl_or_owyba_or_bunny_revive(&world->config, items);
 }
 
-static bool catfish(const RandoWorld *world, const RandoItems *items)
+static bool catfish(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
 	const RandoConfig *c = &world->config;
 
+	(void)locations;
 	return ((c->can_bunny_revive && rando_items_can_bunny_revive(items, c))
 		|| has(items, RANDO_ITEM_MoonPearl) || (c->can_owyba && rando_items_has_a_bottle(items)))
 		&& (c->can_one_frame_clip_ow
@@ -40,12 +43,12 @@ static bool catfish(const RandoWorld *world, const RandoItems *items)
 		    || rando_items_can_lift_rocks(items));
 }
 
-static bool pyramid_fairy(const RandoWorld *world, const RandoItems *items)
+static bool pyramid_fairy(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
 	const RandoConfig *c = &world->config;
 
 	return (has(items, RANDO_ITEM_Crystal5) && has(items, RANDO_ITEM_Crystal6)
-		&& can_enter(world, RANDO_REGION_SOUTH_DARK_WORLD, items)
+		&& can_enter(world, locations, RANDO_REGION_SOUTH_DARK_WORLD, items)
 		&& ((has(items, RANDO_ITEM_MoonPearl) && has(items, RANDO_ITEM_Hammer))
 		    || (c->can_owyba && rando_items_has_a_bottle(items))
 		    || (has(items, RANDO_ITEM_MagicMirror) && has(items, RANDO_ITEM_DefeatAgahnim))))
@@ -55,20 +58,20 @@ static bool pyramid_fairy(const RandoWorld *world, const RandoItems *items)
 			|| (c->can_boots_clip && has(items, RANDO_ITEM_PegasusBoots))));
 }
 
-static bool pyramid_fairy_sword(const RandoWorld *world, const RandoItems *items)
+static bool pyramid_fairy_sword(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
-	return rando_items_has_sword(items, 1) && pyramid_fairy(world, items);
+	return rando_items_has_sword(items, 1) && pyramid_fairy(world, locations, items);
 }
 
-static bool pyramid_fairy_bow(const RandoWorld *world, const RandoItems *items)
+static bool pyramid_fairy_bow(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
-	return rando_items_can_shoot_arrows(items, &world->config, 1) && pyramid_fairy(world, items);
+	return rando_items_can_shoot_arrows(items, &world->config, 1) && pyramid_fairy(world, locations, items);
 }
 
 /* VT sets this requirement in initalize only when region.swordsInPool holds then. */
-static bool pyramid_fairy_left_right(const RandoWorld *world, const RandoItems *items)
+static bool pyramid_fairy_left_right(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
-	return !world->config.region_swords_in_pool || pyramid_fairy(world, items);
+	return !world->config.region_swords_in_pool || pyramid_fairy(world, locations, items);
 }
 
 static int crystals(const RandoItems *items)
@@ -78,10 +81,11 @@ static int crystals(const RandoItems *items)
 		+ has(items, RANDO_ITEM_Crystal7);
 }
 
-static bool ganon(const RandoWorld *world, const RandoItems *items)
+static bool ganon(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
 	const RandoConfig *c = &world->config;
 
+	(void)locations;
 	if (c->goal == RANDO_GOAL_GANONHUNT && !has_n(items, RANDO_ITEM_TriforcePiece, c->item_goal_required))
 		return false;
 	if (c->goal == RANDO_GOAL_DUNGEONS
@@ -116,7 +120,7 @@ static bool ganon(const RandoWorld *world, const RandoItems *items)
 			    || (has(items, RANDO_ITEM_FireRod) && rando_items_can_extend_magic(items, c, 2)))));
 }
 
-static bool enter(const RandoWorld *world, const RandoItems *items)
+static bool enter(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
 	const RandoConfig *c = &world->config;
 
@@ -125,7 +129,7 @@ static bool enter(const RandoWorld *world, const RandoItems *items)
 		    || c->can_one_frame_clip_ow
 		    || (has(items, RANDO_ITEM_MoonPearl) && (c->can_boots_clip && has(items, RANDO_ITEM_PegasusBoots)))
 		    || (has(items, RANDO_ITEM_MagicMirror) && c->can_mirror_clip
-			&& can_enter(world, RANDO_REGION_WEST_DEATH_MOUNTAIN, items)
+			&& can_enter(world, locations, RANDO_REGION_WEST_DEATH_MOUNTAIN, items)
 			&& ((c->can_boots_clip && has(items, RANDO_ITEM_PegasusBoots))
 			    || (c->can_bunny_revive && rando_items_can_bunny_revive(items, c))
 			    || (c->can_super_speed && rando_items_can_spin_speed(items))
@@ -136,10 +140,10 @@ static bool enter(const RandoWorld *world, const RandoItems *items)
 			&& ((c->can_super_speed && rando_items_can_spin_speed(items))
 			    || (c->can_boots_clip && has(items, RANDO_ITEM_PegasusBoots))
 			    || c->can_mirror_clip)
-			&& can_enter(world, RANDO_REGION_WEST_DEATH_MOUNTAIN, items))
+			&& can_enter(world, locations, RANDO_REGION_WEST_DEATH_MOUNTAIN, items))
 		    || (has(items, RANDO_ITEM_Hammer) && rando_items_can_lift_rocks(items) && has(items, RANDO_ITEM_MoonPearl))
 		    || ((rando_items_can_lift_dark_rocks(items)
-			 || (can_enter(world, RANDO_REGION_WEST_DEATH_MOUNTAIN, items)
+			 || (can_enter(world, locations, RANDO_REGION_WEST_DEATH_MOUNTAIN, items)
 			     && ((c->can_super_speed && rando_items_can_spin_speed(items))
 				 || (has(items, RANDO_ITEM_MagicMirror) && c->can_mirror_clip))))
 			&& has(items, RANDO_ITEM_MoonPearl)

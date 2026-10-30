@@ -571,6 +571,95 @@ static void check_ganons_tower_default_bosses(void)
 	CHECK(rando_world_can_access(&world, RANDO_LOC_GANONS_TOWER_MOLDORM_CHEST, &items));
 }
 
+/* Spike Room's $locations->itemInLocations reads the locations world, not the location's own. */
+static void check_spike_room_reads_big_key_from_locations_world(void)
+{
+	static const RandoItemId no_hookshot[] = {RANDO_ITEM_Hookshot, RANDO_ITEM_KeyD5};
+	RandoWorld with_key, without_key;
+	RandoItems items;
+
+	standard_world(&with_key);
+	standard_world(&without_key);
+	CHECK(rando_world_set_item(&with_key, RANDO_LOC_ICE_PALACE_MAP_CHEST, RANDO_ITEM_BigKeyD5));
+	all_items_except(&items, no_hookshot, 2);
+	rando_items_add(&items, RANDO_ITEM_KeyD5);
+	CHECK(rando_world_can_access_with(&without_key, &with_key, RANDO_LOC_ICE_PALACE_SPIKE_ROOM, &items));
+	CHECK(!rando_world_can_access_with(&with_key, &without_key, RANDO_LOC_ICE_PALACE_SPIKE_ROOM, &items));
+}
+
+/* $this->locations["Ice Palace - Spike Room"]->canAccess($items) resets $locations to the self world. */
+static void check_nested_spike_room_reads_big_key_from_own_world(void)
+{
+	static const RandoItemId no_hookshot[] = {RANDO_ITEM_Hookshot, RANDO_ITEM_KeyD5};
+	RandoWorld with_key, without_key;
+	RandoItems items;
+
+	standard_world(&with_key);
+	standard_world(&without_key);
+	CHECK(rando_world_set_item(&with_key, RANDO_LOC_ICE_PALACE_MAP_CHEST, RANDO_ITEM_BigKeyD5));
+	all_items_except(&items, no_hookshot, 2);
+	rando_items_add(&items, RANDO_ITEM_KeyD5);
+	CHECK(rando_world_can_access_with(&with_key, &without_key, RANDO_LOC_ICE_PALACE_BIG_KEY_CHEST, &items));
+	CHECK(!rando_world_can_access_with(&without_key, &with_key, RANDO_LOC_ICE_PALACE_BIG_KEY_CHEST, &items));
+}
+
+static void check_thieves_town_big_chest_reads_key_from_locations_world(void)
+{
+	RandoWorld with_key, without_key;
+	RandoItems items;
+
+	standard_world(&with_key);
+	standard_world(&without_key);
+	CHECK(rando_world_set_item(&with_key, RANDO_LOC_THIEVES_TOWN_BIG_CHEST, RANDO_ITEM_KeyD4));
+	all_items_with_n(&items, RANDO_ITEM_KeyD4, 0);
+	CHECK(rando_world_can_access_with(&without_key, &with_key, RANDO_LOC_THIEVES_TOWN_BIG_CHEST, &items));
+	CHECK(!rando_world_can_access_with(&with_key, &without_key, RANDO_LOC_THIEVES_TOWN_BIG_CHEST, &items));
+}
+
+/* $this->locations["Eastern Palace - Boss"]->hasItem(CompassP1) reads the self world. */
+static void check_wild_compass_on_boss_read_from_own_world(void)
+{
+	RandoConfig config;
+	RandoWorld with_compass, without_compass;
+	RandoItems items;
+
+	rando_config_init(&config);
+	config.region_wild_compasses = true;
+	config.region_wild_maps = true;
+	rando_world_init(&with_compass, RANDO_VARIANT_STANDARD, &config);
+	rando_world_init(&without_compass, RANDO_VARIANT_STANDARD, &config);
+	CHECK(rando_world_set_item(&with_compass, RANDO_LOC_EASTERN_PALACE_BOSS, RANDO_ITEM_CompassP1));
+	all_items_with_n(&items, RANDO_ITEM_CompassP1, 0);
+	CHECK(rando_world_can_access_with(&with_compass, &without_compass, RANDO_LOC_EASTERN_PALACE_BOSS, &items));
+	CHECK(!rando_world_can_access_with(&without_compass, &with_compass, RANDO_LOC_EASTERN_PALACE_BOSS, &items));
+}
+
+static void check_single_world_access_is_access_with_itself(void)
+{
+	static const RandoLocationId sample[] = {
+		RANDO_LOC_ICE_PALACE_SPIKE_ROOM, RANDO_LOC_ICE_PALACE_BIG_KEY_CHEST, RANDO_LOC_THIEVES_TOWN_BIG_CHEST,
+		RANDO_LOC_PALACE_OF_DARKNESS_HARMLESS_HELLWAY, RANDO_LOC_GANONS_TOWER_MAP_CHEST,
+	};
+	static const RandoItemId no_hookshot[] = {RANDO_ITEM_Hookshot, RANDO_ITEM_KeyD5};
+	RandoWorld worlds[2];
+	RandoItems items;
+
+	standard_world(&worlds[0]);
+	standard_world(&worlds[1]);
+	CHECK(rando_world_set_item(&worlds[1], RANDO_LOC_ICE_PALACE_MAP_CHEST, RANDO_ITEM_BigKeyD5));
+	CHECK(rando_world_set_item(&worlds[1], RANDO_LOC_THIEVES_TOWN_BIG_CHEST, RANDO_ITEM_KeyD4));
+	CHECK(rando_world_set_item(&worlds[1], RANDO_LOC_PALACE_OF_DARKNESS_HARMLESS_HELLWAY, RANDO_ITEM_KeyD1));
+	CHECK(rando_world_set_item(&worlds[1], RANDO_LOC_GANONS_TOWER_MAP_CHEST, RANDO_ITEM_KeyA2));
+	all_items_except(&items, no_hookshot, 2);
+	rando_items_add(&items, RANDO_ITEM_KeyD5);
+	rando_items_add(&items, RANDO_ITEM_KeyD1);
+	rando_items_add(&items, RANDO_ITEM_KeyA2);
+	for (int w = 0; w < 2; w++)
+		for (size_t i = 0; i < sizeof sample / sizeof sample[0]; i++)
+			CHECK(rando_world_can_access(&worlds[w], sample[i], &items)
+			      == rando_world_can_access_with(&worlds[w], &worlds[w], sample[i], &items));
+}
+
 static int every_row(const char *file, const char *method)
 {
 	(void)file;
@@ -604,6 +693,11 @@ int main(int argc, char **argv)
 	check_basic_placement_in_ganons_tower();
 	check_ganons_tower_moldorm_chest_and_completion();
 	check_ganons_tower_default_bosses();
+	check_spike_room_reads_big_key_from_locations_world();
+	check_nested_spike_room_reads_big_key_from_own_world();
+	check_thieves_town_big_chest_reads_key_from_locations_world();
+	check_wild_compass_on_boss_read_from_own_world();
+	check_single_world_access_is_access_with_itself();
 	printf(TEST ": hand-written cases passed\n");
 	if (!fixtures)
 		return 0;

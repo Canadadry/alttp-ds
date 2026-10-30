@@ -3,15 +3,17 @@
 #define FIRST RANDO_LOC_THIEVES_TOWN_ATTIC
 #define NLOCATIONS (RANDO_LOC_THIEVES_TOWN_PRIZE - FIRST + 1)
 
-static bool attic(const RandoWorld *world, const RandoItems *items)
+static bool attic(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
 	(void)world;
+	(void)locations;
 	return has(items, RANDO_ITEM_KeyD4) && has(items, RANDO_ITEM_BigKeyD4);
 }
 
-static bool big_chest(const RandoWorld *world, const RandoItems *items)
+static bool big_chest(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
-	if (rando_world_has_item(world, RANDO_LOC_THIEVES_TOWN_BIG_CHEST, RANDO_ITEM_KeyD4))
+	(void)world;
+	if (rando_world_has_item(locations, RANDO_LOC_THIEVES_TOWN_BIG_CHEST, RANDO_ITEM_KeyD4))
 		return has(items, RANDO_ITEM_Hammer) && has(items, RANDO_ITEM_BigKeyD4);
 	return has(items, RANDO_ITEM_Hammer) && has(items, RANDO_ITEM_KeyD4) && has(items, RANDO_ITEM_BigKeyD4);
 }
@@ -28,13 +30,14 @@ static bool big_chest_fill(RandoWorld *world, RandoItemId item, const RandoItems
 	return world->config.accessibility != RANDO_ACCESSIBILITY_LOCATIONS || item != RANDO_ITEM_KeyD4;
 }
 
-static bool blinds_cell(const RandoWorld *world, const RandoItems *items)
+static bool blinds_cell(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
 	(void)world;
+	(void)locations;
 	return has(items, RANDO_ITEM_BigKeyD4);
 }
 
-static bool enter(const RandoWorld *world, const RandoItems *items)
+static bool enter(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
 	const RandoConfig *c = &world->config;
 
@@ -45,13 +48,13 @@ static bool enter(const RandoWorld *world, const RandoItems *items)
 		&& (has(items, RANDO_ITEM_MoonPearl)
 		    || (rando_items_has_a_bottle(items) && c->can_owyba)
 		    || (c->can_bunny_revive && rando_items_can_spin_speed(items)))
-		&& can_enter(world, RANDO_REGION_NORTH_WEST_DARK_WORLD, items);
+		&& can_enter(world, locations, RANDO_REGION_NORTH_WEST_DARK_WORLD, items);
 }
 
-static bool boss(const RandoWorld *world, const RandoItems *items)
+static bool boss(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
-	return enter(world, items)
-		&& attic(world, items)
+	return enter(world, locations, items)
+		&& attic(world, locations, items)
 		&& boss_can_beat(world, RANDO_REGION_THIEVES_TOWN, items)
 		&& boss_has_wild_compass_and_map(world, RANDO_LOC_THIEVES_TOWN_BOSS, RANDO_ITEM_CompassD4,
 						 RANDO_ITEM_MapD4, items);
@@ -69,8 +72,9 @@ static bool boss_always_allow(const RandoWorld *world, RandoItemId item, const R
 	return boss_always_allows(world, item, RANDO_ITEM_CompassD4, RANDO_ITEM_MapD4);
 }
 
-static bool complete(const RandoWorld *world, const RandoItems *items)
+static bool complete(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
+	(void)locations;
 	return rando_world_can_access(world, RANDO_LOC_THIEVES_TOWN_BOSS, items);
 }
 

@@ -3,28 +3,30 @@
 #define FIRST RANDO_LOC_PALACE_OF_DARKNESS_SHOOTER_ROOM
 #define NLOCATIONS (RANDO_LOC_PALACE_OF_DARKNESS_PRIZE - FIRST + 1)
 
-static bool arrows(const RandoWorld *world, const RandoItems *items)
+static bool arrows(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
+	(void)locations;
 	return rando_items_can_shoot_arrows(items, &world->config, 1);
 }
 
-static bool keys_or_more(const RandoWorld *world, const RandoItems *items, bool lamp, int keys)
+static bool keys_or_more(const RandoWorld *world, const RandoWorld *locations,
+			 const RandoItems *items, bool lamp, int keys)
 {
-	bool shortcut = has(items, RANDO_ITEM_Hammer) && arrows(world, items) && (!lamp || has_lamp(world, items));
+	bool shortcut = has(items, RANDO_ITEM_Hammer) && arrows(world, locations, items) && (!lamp || has_lamp(world, items));
 
 	return has_n(items, RANDO_ITEM_KeyD1, (shortcut || world->config.region_wild_keys) ? keys + 1 : keys);
 }
 
-static bool needs_arrows(const RandoWorld *world, const RandoItems *items)
+static bool needs_arrows(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
-	return arrows(world, items);
+	return arrows(world, locations, items);
 }
 
-static bool big_key_chest(const RandoWorld *world, const RandoItems *items)
+static bool big_key_chest(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
-	if (rando_world_has_item(world, RANDO_LOC_PALACE_OF_DARKNESS_BIG_KEY_CHEST, RANDO_ITEM_KeyD1))
+	if (rando_world_has_item(locations, RANDO_LOC_PALACE_OF_DARKNESS_BIG_KEY_CHEST, RANDO_ITEM_KeyD1))
 		return has(items, RANDO_ITEM_KeyD1);
-	return keys_or_more(world, items, true, 5);
+	return keys_or_more(world, locations, items, true, 5);
 }
 
 static bool key_d1_always_allow(const RandoWorld *world, RandoItemId item, const RandoItems *items)
@@ -46,41 +48,41 @@ static bool no_key_d1_fill(RandoWorld *world, RandoItemId item, const RandoItems
 	return item != RANDO_ITEM_KeyD1;
 }
 
-static bool key_or_shortcut(const RandoWorld *world, const RandoItems *items)
+static bool key_or_shortcut(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
-	return has(items, RANDO_ITEM_KeyD1) || (arrows(world, items) && has(items, RANDO_ITEM_Hammer));
+	return has(items, RANDO_ITEM_KeyD1) || (arrows(world, locations, items) && has(items, RANDO_ITEM_Hammer));
 }
 
-static bool big_chest(const RandoWorld *world, const RandoItems *items)
+static bool big_chest(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
-	return has_lamp(world, items) && has(items, RANDO_ITEM_BigKeyD1) && keys_or_more(world, items, false, 5);
+	return has_lamp(world, items) && has(items, RANDO_ITEM_BigKeyD1) && keys_or_more(world, locations, items, false, 5);
 }
 
-static bool compass_chest(const RandoWorld *world, const RandoItems *items)
+static bool compass_chest(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
-	return keys_or_more(world, items, true, 3);
+	return keys_or_more(world, locations, items, true, 3);
 }
 
-static bool harmless_hellway(const RandoWorld *world, const RandoItems *items)
+static bool harmless_hellway(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
-	if (rando_world_has_item(world, RANDO_LOC_PALACE_OF_DARKNESS_HARMLESS_HELLWAY, RANDO_ITEM_KeyD1))
-		return keys_or_more(world, items, true, 3);
-	return keys_or_more(world, items, true, 5);
+	if (rando_world_has_item(locations, RANDO_LOC_PALACE_OF_DARKNESS_HARMLESS_HELLWAY, RANDO_ITEM_KeyD1))
+		return keys_or_more(world, locations, items, true, 3);
+	return keys_or_more(world, locations, items, true, 5);
 }
 
-static bool dark_basement(const RandoWorld *world, const RandoItems *items)
+static bool dark_basement(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
 	return (has_lamp(world, items)
 		|| (world->config.item_placement == RANDO_PLACEMENT_ADVANCED && has(items, RANDO_ITEM_FireRod)))
-		&& keys_or_more(world, items, true, 3);
+		&& keys_or_more(world, locations, items, true, 3);
 }
 
-static bool dark_maze(const RandoWorld *world, const RandoItems *items)
+static bool dark_maze(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
-	return has_lamp(world, items) && keys_or_more(world, items, false, 5);
+	return has_lamp(world, items) && keys_or_more(world, locations, items, false, 5);
 }
 
-static bool enter(const RandoWorld *world, const RandoItems *items)
+static bool enter(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
 	const RandoConfig *c = &world->config;
 
@@ -91,16 +93,16 @@ static bool enter(const RandoWorld *world, const RandoItems *items)
 		&& (((has(items, RANDO_ITEM_MoonPearl)
 		      || ((c->can_owyba && rando_items_has_a_bottle(items))
 			  || (c->can_bunny_revive && rando_items_can_bunny_revive(items, c))))
-		     && can_enter(world, RANDO_REGION_NORTH_EAST_DARK_WORLD, items))
+		     && can_enter(world, locations, RANDO_REGION_NORTH_EAST_DARK_WORLD, items))
 		    || (c->can_one_frame_clip_uw && c->can_dungeon_revive
-			&& can_enter(world, RANDO_REGION_WEST_DEATH_MOUNTAIN, items)));
+			&& can_enter(world, locations, RANDO_REGION_WEST_DEATH_MOUNTAIN, items)));
 }
 
-static bool boss(const RandoWorld *world, const RandoItems *items)
+static bool boss(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
-	return enter(world, items)
+	return enter(world, locations, items)
 		&& boss_can_beat(world, RANDO_REGION_PALACE_OF_DARKNESS, items)
-		&& has(items, RANDO_ITEM_Hammer) && has_lamp(world, items) && arrows(world, items)
+		&& has(items, RANDO_ITEM_Hammer) && has_lamp(world, items) && arrows(world, locations, items)
 		&& has(items, RANDO_ITEM_BigKeyD1) && has_n(items, RANDO_ITEM_KeyD1, 6)
 		&& boss_has_wild_compass_and_map(world, RANDO_LOC_PALACE_OF_DARKNESS_BOSS, RANDO_ITEM_CompassD1,
 						 RANDO_ITEM_MapD1, items);
@@ -118,8 +120,9 @@ static bool boss_always_allow(const RandoWorld *world, RandoItemId item, const R
 	return boss_always_allows(world, item, RANDO_ITEM_CompassD1, RANDO_ITEM_MapD1);
 }
 
-static bool complete(const RandoWorld *world, const RandoItems *items)
+static bool complete(const RandoWorld *world, const RandoWorld *locations, const RandoItems *items)
 {
+	(void)locations;
 	return rando_world_can_access(world, RANDO_LOC_PALACE_OF_DARKNESS_BOSS, items);
 }
 
