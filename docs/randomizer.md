@@ -111,6 +111,14 @@ every claim of a finished step holds, and nothing that held before has broken. A
 step has claimed yet is reported as pending, not as `DIVERGENT`, so it never sends `check-e2e`
 into `fix-bug`.
 
+Claims only ratchet up: a claim never moves down, and each step raises the earlier steps' claims
+to its own stage when they hold.
+
+`make -C tests/rando e2e` stays under 0.5 s on the host, and every step note records its time. A
+step whose new claims or checks would break that budget first restructures the gate, in its own
+commit, so that a claim's cost no longer grows with its number of due checks; `make selftest`
+proves the verdicts and messages unchanged.
+
 ### Comparison
 
 - The output is VT's spoiler JSON (`World::getSpoiler()`). Before diffing, both sides are
@@ -199,7 +207,9 @@ VT draws from the RNG, read from `Randomizer::randomize()`.
    6. **`prepareWorld`'s own work:** the rest of the item pool and its shuffles. Checks that the
       pool's items equal those the golden spoiler places, minus the pre-filled ones.
 4. **`RandomAssumed` fill, `isWinnable()` and the retry loop.** Claims the baseline case: full
-   spoiler equality and the same `attempts`; also claims the retry-seed cases. No golden has a
+   spoiler equality and the same `attempts`; also claims the retry-seed cases. Every earlier
+   stage claim is raised to `all` if it holds; one that does not stays at its stage and the step
+   note names it for its Phase 3 row. No golden has a
    failed attempt (step 1.2 note), so the loop is also verified by the identity "attempt k of
    seed s is attempt 0 of seed s+k": seed 0 with attempt 0 forced to fail (host-only injection,
    once mid-fill, once at `isWinnable()`) must reproduce the baseline golden, with `attempts` 1.
@@ -316,3 +326,19 @@ None.
   `getAdvancementItems`; e2e is 5 pass, 39 pending, ~0.1 s (it now runs the generator).
 - Not covered: the ganon-before-tower crystal order (no case has both counts random; taken
   from VT's code) and the retry path (no stage fails yet, step 2.4).
+
+### Step 2.3.2
+
+- World: shop kind, default prices, active flag and per-slot prices; `shops_hard_mode` and the
+  shield overflow replacement item in the config. `RandoWorld` is 2 652 bytes.
+- `rando_prepare.h`: `rando_set_shops` (draw-free path; retro's random path asserts until
+  Phase 3) and `rando_set_medallions` (Turtle Rock, then Misery Mire). All 42 supported cases
+  match their golden trace through `setMedallions`.
+- Host-only `rando/host/spoiler_json.c` writes the region sections and `Shops` in the oracle's
+  normalized layout; `rando_gen` writes `spoiler.json` on complete or incomplete runs.
+- Gate: `check setShops section Shops`, `check setMedallions keys *Medallion:1`. Eight claims at
+  `setMedallions` (the five from 2.3.1 plus `item_pool-hard`, `-expert`, `-crowd_control`): 8
+  pass, 36 pending. Breaks of the medallion order and the HardMode clear flag exactly the
+  expected cases.
+- e2e grew from ~0.1 s to ~0.29 s: the generator takes ~2 ms per case, the rest is the gate's
+  per-check awk passes over `spoiler.json` (~25 ms per claim with checks).

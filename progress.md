@@ -32,7 +32,7 @@
       - [x] Chunk 3: item pools
       - [x] Chunk 4: generator
       - [x] Chunk 5: driver and claims
-    - [ ] 2.3.2 setMedallions (with setShops baseline path)
+    - [x] 2.3.2 setMedallions (with setShops baseline path)
       - [x] Chunk 1: shops in the world, HardMode in the config
       - [x] Chunk 2: setShops and setMedallions stages
       - [x] Chunk 3: spoiler writer
