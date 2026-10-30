@@ -373,3 +373,21 @@ None.
   `test_prepare` pins baseline's 56 drops against a one-off VT dump (not committed).
 - All 42 supported cases match their golden trace through `shufflePrizePacks`. The 13 claims move
   up, none added: 13 pass, 31 pending; e2e ~0.11 s; `make test` ~56 ms. `RandoWorld` 2 744 bytes.
+
+### Step 2.3.6
+
+- Oracle: `dump_pools.php` also writes VT's four lists after `prepareWorld`
+  (`prepared_pools.txt`); goldens and existing fixtures byte-identical.
+- Gate: the `pool` check counts in-scope entries the C spoiler already fills as pre-fills
+  (compared by value, removed from the golden multiset). H-2-10 corrected: the golden's placed
+  items exclude `*- Prize:1` too, and three goals (`pedestal`, `triforce-hunt`, `ganonhunt`)
+  have more pool items than free locations, which VT leaves unplaced.
+- C: `rando_generate_until` (stop after a stage); the Boots edit in `rando_prepare_pre_collect`;
+  `rando_prepare_pools` (every branch of VT's `prepareWorld` after `shufflePrizePacks`; four
+  new region config fields); `rando_gen` writes `pool.txt`. All 42 supported cases match VT's
+  prepared lists and their golden trace through `prepareWorld` (232 draws for baseline).
+  `RandoWorld` 2 748 bytes, `RandoGen` 3 896.
+- Claims: 17 at `prepareWorld` (six new: `item_placement-basic`, `weapons-assured`,
+  `-vanilla`, `dungeon_items-mc`, `-mcs`, `-full`), `goal-pedestal` and `goal-triforce-hunt` at
+  `shufflePrizePacks` (surplus pool items). 19 pass, 25 pending; e2e ~0.17 s; `make test` ~62 ms.
+- Phase 2 step 3 is done.

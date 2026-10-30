@@ -25,7 +25,7 @@
     - [x] Chunk 6: PoD, Swamp, Skull Woods, Thieves' Town
     - [x] Chunk 7: Ice Palace, Misery Mire, Turtle Rock
     - [x] Chunk 8: Ganon's Tower and full row count
-  - [ ] 2.3 Pre-fill RNG consumers
+  - [x] 2.3 Pre-fill RNG consumers
     - [x] 2.3.1 getAdvancementItems, generator driver and trace
       - [x] Chunk 1: oracle pool fixture
       - [x] Chunk 2: options, derivations and case reader
@@ -47,7 +47,7 @@
       - [x] setFountains stage, check and claims
     - [x] 2.3.5 shufflePrizePacks
       - [x] shufflePrizePacks stage and claims
-    - [ ] 2.3.6 prepareWorld item pool and shuffles
+    - [x] 2.3.6 prepareWorld item pool and shuffles
       - [x] Chunk 1: prepared pools fixture
       - [x] Chunk 2: generalized pool check
       - [x] Chunk 3: generate_until and the Boots edit
