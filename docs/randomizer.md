@@ -589,3 +589,23 @@ None.
   (inverted, retro). Owes no VT test.
 - `make measure`: ARM 80.6 KB, stack peak 6 328 B, `glitches-no_logic` 0.9 ms, max case 22 ms
   (`item_placement-basic`, still over A-3); `make test` ~90 ms, e2e ~0.22 s.
+
+### Step 3.12
+
+- Extractor: VT's three Inverted trees (`inverted_rows.txt` 3 571 rows, `inverted_overworld_glitches_rows.txt`
+  1 446, `inverted_major_glitches_rows.txt` 2 247; VT agrees with every test), the inverted world
+  dump, an `inverted` predicate config and the `inverted_merchant` collect scenario. A test boss
+  absent from the reference world (ThievesTownTest's Dummy Boss) is a preset entry
+  `boss:<region>=<boss>`; C replays it with a test-only rule-less boss. Goldens byte-identical.
+- Regions and locations lost their spans: a const per-variant layout (`layouts.c`) gives each
+  region its locations and prize and each location its region and rule slot. Inverted adds the
+  Bomb Merchant (237 locations), Ganon as North East Light World's prize, the Lake Hylia Blue Potion
+  at 160. Dungeon boss and completion rules call `can_enter` for the current entry rule.
+- Eleven Inverted overworld files, Inverted Turtle Rock in its own file, other dungeons as parent
+  tables with VT's re-set rules. VT quirks kept: `hasABottle(2)`, bare `cantTakeDamage` false,
+  `has('PegasusBoot')` false, PoD's always-true `getRegion`, Bob's Chest without "basic".
+- `state-inverted` claimed at `all`: 43 pass, 1 pending (retro). Its seed exercises no Inverted
+  Ganon's Tower override; only the rows prove them.
+- `make measure`: ARM code+rodata 112.5 KB (80.6 KB at step 3.4; A-2's 128 KB leaves 18.5 KB),
+  host -O2 127.9 KB, stack peak 6 328 B, max case 18 ms (`item_placement-basic`, still over A-3);
+  `make test` ~88 ms, `logic` ~0.38 s, e2e ~0.19 s.

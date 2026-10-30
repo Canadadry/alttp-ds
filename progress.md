@@ -112,3 +112,4 @@
   - [x] Chunk 6: Turtle Rock
   - [x] Chunk 7: Ganon's Tower, every row replayed
   - [x] Chunk 8: generator claim at all
+  - [x] Step note
