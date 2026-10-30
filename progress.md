@@ -37,7 +37,7 @@
       - [x] Chunk 2: setShops and setMedallions stages
       - [x] Chunk 3: spoiler writer
       - [x] Chunk 4: driver, gate and claims
-    - [ ] 2.3.3 fillPrizes (with placeBosses baseline path)
+    - [x] 2.3.3 fillPrizes (with placeBosses baseline path)
       - [x] Chunk 1: gate restructure
       - [x] Chunk 2: library support
       - [x] Chunk 3: prologue and placeBosses

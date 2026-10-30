@@ -342,3 +342,18 @@ None.
   expected cases.
 - e2e grew from ~0.1 s to ~0.29 s: the generator takes ~2 ms per case, the rest is the gate's
   per-check awk passes over `spoiler.json` (~25 ms per claim with checks).
+
+### Step 2.3.3
+
+- Gate restructured first (own commit): one awk pass per claim evaluates all due checks; output
+  byte-identical, `make selftest` unchanged; e2e 0.28 s → 0.07 s at 8 claims.
+- Prologue: `rando_prepare_start_equipment` (VT's default 3 `BossHeartContainer`,
+  `BombUpgrade10`, 3 `ArrowUpgrade10` — not in the PRD; without it `item_placement-basic` fails
+  every win check), the goal's Triforce and completionist accessibility, the Boots/`RescueZelda`
+  pre-collect. The pool-list edit for Boots waits for 2.3.6 (`TODO`).
+- `rando_place_bosses` (no-shuffle path), `rando_fill_prizes` (14 locations and 10 prizes
+  shuffled, candidates from the end, up to six passes; `Cannot Place Prize` is a false return,
+  the generator's first failed-attempt path, unit-tested only). All 42 supported cases match their
+  golden trace through `fillPrizes` (70 draws for baseline).
+- Spoiler `Bosses`; checks `section Bosses` (placeBosses) and `keys *- Prize:1` (fillPrizes). 13
+  claims at `fillPrizes`: 13 pass, 31 pending; e2e ~0.11 s; `make test` ~57 ms.
