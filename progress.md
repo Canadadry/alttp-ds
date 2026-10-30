@@ -74,7 +74,7 @@
     - [x] Chunk 4: refactor duplications
   - [x] 3.1 glitches: overworld_glitches
   - [x] 3.2 glitches: hybrid_major_glitches
-  - [ ] 3.3 glitches: major_glitches
+  - [x] 3.3 glitches: major_glitches
   - [ ] 3.4 glitches: no_logic
   - [x] 3.5 item_placement
   - [x] 3.6 dungeon_items

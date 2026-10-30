@@ -566,3 +566,15 @@ None.
   fixture, catches a missing derived flag. No row exercises `canSuperSpeed`.
 - `glitches-overworld_glitches` already at `all`. `make test` 74–93 ms, `logic` ~0.2 s, e2e ~0.16 s;
   library unchanged.
+
+### Step 3.3
+
+- `tests/MajorGlitches` → `major_glitches_rows.txt` (1 923 rows, 40 of 41 methods:
+  `testDungeonItemWrite` is ROM-only), VT agrees with every test; goldens and fixtures
+  byte-identical. The C port matched every row, no rule fix; the reader ignores
+  `rom.freeItemMenu`. A `make test` case pins world init's twelve MajorGlitches flags and four
+  `rom.vanilla*` flags (the fixture alone cannot see a missing derived flag; e2e can).
+- `canBootsClip` and `canSuperSpeed` decide no MajorGlitches row. For roadmap item 2:
+  MajorGlitches turns on VT's `rom.vanilla*` substitution, so the item given in game is not always
+  the item placed.
+- `make test` ~70–89 ms, `logic` ~0.22 s, e2e ~0.18 s; library unchanged.
