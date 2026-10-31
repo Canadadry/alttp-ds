@@ -27,7 +27,7 @@ The goals behind every rule below:
 - **Base ROM: Zelda no Densetsu: Kamigami no Triforce, Japanese v1.0**, MD5 `03a63945398191337e896e5771f77173`. VT requires it (`resources/lang/en/start.php`); the patched game is in English. A US ROM is not supported.
 - **VT is frozen** at `sporchia/alttp_vt_randomizer` `219fcafd029dab597b8db400efafd8f56f8b4edb`, the commit the oracle pins (`tests/rando/oracle/gen_golden.sh`), with no tracking of later alttpr.com updates. That commit's ROM build is `Rom::BUILD = '2024-02-18'`, `Rom::HASH = 'edc01f3db798ae4dfe21101311598d44'` (MD5 of the JP ROM, resized to 2 MiB, with the base patch applied).
 - **The base patch** (z3randomizer's compiled ASM and English text, applied before any seed write) **is committed to the repository and shipped in the app.** The user accepted that it may contain data derived from the game. Its source:
-  - alttpr.com serves it as a BPS at `/bps/<hash>.bps` (`routes/web.php`, `resources/js/components/VTRomLoader.vue`).
+  - alttpr.com serves the current build's patch as a BPS at `/bps/<hash>.bps` (`routes/web.php`, `resources/js/components/VTRomLoader.vue`); as of Oct 2026 the `edc01f3d…` one returns 404 (Phase 0).
   - Otherwise it can be built with asar from `KatDevsGames/z3randomizer` `dcb0a2b42d14445f7994a0e9e4d63cbecf4b98d3` (v31.2.2, VT's `composer.json`) on the resized JP ROM: `LTTP_RND_GeneralBugfixes.asm`, `--fix-checksum=off` (`app/Console/Commands/UpdateBuildRecord.php`).
   - Either way, applying it to the JP ROM must give MD5 `edc01f3d…`.
 - **Generation settings: all of alttpr.com's**, the eleven of `rando/include/rando_options.h` (glitches, item_placement, dungeon_items, accessibility, goal, crystals_tower, crystals_ganon, state, weapons, item_pool, item_functionality), plus the hints on/off toggle (`spoil.Hints`).
@@ -73,39 +73,54 @@ The goals behind every rule below:
 
 ## 3. Phases and steps
 
+### Phase 0 — The one input the agent cannot make
+
+1. **Obtain the base patch for build `edc01f3d…`.** As of Oct 2026, `https://alttpr.com/bps/edc01f3db798ae4dfe21101311598d44.bps` returns 404, and `https://alttpr.com/base_rom/settings` points to a later build (`79bbb4ad…`), which is wrong for the frozen VT. Try archived copies of the `edc01f3d…` BPS (the Wayback Machine, community mirrors). Otherwise, building it needs the JP ROM, which the agent never has. Two allowed outcomes:
+   - (a) The BPS is committed as `data/base.bps`, with its source URL and VT commit in the commit message. Its header checks pass: target size 2,097,152, and source CRC32 equal to the JP 1.0 ROM's CRC32.
+   - (b) The step note asks the user to produce it, with the exact commands: resize the JP ROM to 2 MiB, run asar `--fix-checksum=off LTTP_RND_GeneralBugfixes.asm` from z3randomizer `dcb0a2b4`, create a BPS from the JP ROM to the result, and check that the result's MD5 is `edc01f3d…`.
+
+   In either case, the step note asks the user to confirm that the patch applied to their JP ROM gives MD5 `edc01f3d…`. The user does this in parallel with Phase 1, which does not need the patch.
+
 ### Phase 1 — The ROM writer matches VT, host only
 
-1. **Oracle records the write log.** Extend `tests/rando/oracle/vt.patch` and `oracle_case.php` so each case also runs `World::writeToRom` on a sourceless `Rom`, with the case's heart beep (VT default `half` unless the case sets it). It records every write after the base patch as `cases/<case>/rom_writes.txt`, one `<hex address> <hex bytes>` line per write, in call order. `updateChecksum` is excluded. Regenerate the goldens in their own commit (the case list's output changes on purpose). Verified by: `gen_golden.sh` is reproducible (two runs, identical files), and `make -C tests/rando e2e` stays green on the existing outputs.
-2. **Golden cases for the new settings and for combinations.** Add cases for hints off, each heart beep value, and enough multi-setting combinations to cover what the UI allows at once. At least: every state × every glitches value, dungeon_items full with every state, triforce-hunt and ganonhunt with every state. List every combination where the C generator returns `RANDO_UNSUPPORTED`, and either port it or record it as a UI restriction (Phase 4 greys it out). Commit the case list and goldens on their own. Verified by: the goldens exist and every new case is either green in `e2e` or listed as unsupported.
-3. **`rando_rom` module: the C port of `World::writeToRom` and the `Rom` setters it calls** (with `Text`, `Credits`, `InitialSram`, `Dialog` as needed). It writes through a caller-supplied write callback, so the host logs writes and the app writes into a buffer; no allocation. `e2e` gains the write-log diff: one `DIVERGENT <case>` line per case whose log differs. Port by sub-area (items and locations, settings and flags, text and hints, credits, initial SRAM), each with its unit test `tests/rando/unit/test_rom_<area>.c` registered in `UNIT_TESTS`. Verified by: every case's `rom_writes.txt` matches, `e2e` timing does not regress, and `test` stays fast.
-4. **Checksum and heart beep.** Port `Rom::updateChecksum` and `setHeartBeepSpeed`. Verified by: a unit test checks the checksum algorithm against a synthetic 2 MiB buffer whose expected sum is computed independently, and the heart-beep byte matches the golden cases of step 2.
-5. skill: check-e2e — the whole case list, write logs included.
+1. **The oracle runs the post-fill code and records the write log.**
+   - `tests/rando/oracle/vt.patch` turns `setTexts`, `randomizeCredits` and `HintService::applyHints` back on (today it comments them out). It labels their PRNG draws, and the draws `writeToRom` itself makes (`setDiggingGameRng`, `writeRNGBlock`, the `fy_shuffle` calls in `Location::getHint` and `Location/Prize.php`), as new stages in `stages.txt`.
+   - `oracle_case.php` runs `World::writeToRom` on a sourceless `Rom`, with the case's heart beep. It records every write as `cases/<case>/rom_writes.txt`: one `<hex address> <hex bytes> <Rom method>` line per write, in call order, tagged by the backtrace the same way `prng_stage` tags draws. `updateChecksum` is excluded.
+   - The case format gains a hints key and a heart-beep key; their defaults are VT's `on` and `half`.
+   - Regenerate the goldens in their own commit.
 
-### Phase 2 — Base patch and full ROM assembly, host only
+   Verified by:
+   - `gen_golden.sh` is reproducible (two runs give identical files);
+   - `make -C tests/rando e2e` stays green, with the existing claims held at their current stage (`fill`) instead of `all`.
+2. **Golden cases for the new settings and for combinations.**
+   - Add cases for hints off and each heart-beep value. Add enough multi-setting combinations to cover what the UI allows at once: at least every state × every glitches value, dungeon_items full with every state, and triforce-hunt and ganonhunt with every state.
+   - Only the single-setting cases join `e2e`. The combination cases go into a separate target, `make -C tests/rando e2e-combos`, run by this plan's steps and by its final check.
+   - List every combination where the C generator returns `RANDO_UNSUPPORTED`, and either port it or record it as a UI restriction (Phase 3 greys it out).
+   - Commit the case list and goldens on their own.
 
-1. **Obtain the base patch and commit it.** Fetch `https://alttpr.com/bps/edc01f3db798ae4dfe21101311598d44.bps`. If the URL differs, find the real one from VT's `routes/web.php` and `base_rom/settings`. Commit it as `data/base.bps`, with its source URL and VT commit in the commit message. Verified by: the BPS header's target size is 2,097,152 and its source CRC32 is the JP 1.0 ROM's CRC32. The human check (apply to a real JP ROM, MD5 `edc01f3d…`) is listed in §4.
-2. **BPS applier in C** (no allocation, caller buffers, source and target CRC32 checks). Verified by: unit tests on small hand-built BPS files covering every BPS action and each CRC failure.
-3. **ROM assembly pipeline**: check the source MD5 (`03a63945…`), resize to 2 MiB, apply the base patch, check MD5 `edc01f3d…`, generate, run `rando_rom`, apply the heart beep, update the checksum, and write the `.sfc`. A host CLI `rando_patch --base <jp.sfc> --out <file> [settings]` does it end to end. Verified by:
+   Verified by:
+   - the goldens exist, and every new case is green or listed as unsupported;
+   - `e2e`'s time grows only by its new single-setting cases (budget: per-case time unchanged ±10%, measured with `make -C tests/rando measure` before and after, numbers in the step note).
+3. **Port the post-fill draws** (texts, credits, hints, `writeToRom`'s own draws) into the C generator. Verified by every case's claim moving back to `all` in `claims.txt`, with `e2e` and `e2e-combos` green.
+4. **`rando_rom` skeleton and claims by write group.** The `rando_rom` module writes through a caller-supplied write callback (the host logs writes, the app writes into a buffer), with no allocation. `claims.txt` gains write-log claims by setter group, the way it claims trace stages: a case claims the log prefix up to a group. The groups follow `writeToRom`'s call order, where texts, credits and SRAM are only buffered until `writeCredits`, `writeText` and `writeInitialSram` at the end: items and locations, settings, credits, text, initial SRAM, then the trailing `setTotalItemCount`. `e2e` prints one `DIVERGENT <case>` line per case whose claimed prefix differs. Verified by the `selftest` target covering a synthetic divergence in a claimed group, and a pass on an unclaimed one.
+5. **Port the items and locations writes.** Verified by every case's claim reaching that group, plus `tests/rando/unit/test_rom_items.c`.
+6. **Port the settings and flags writes** (the `Rom` setters `writeToRom` calls). Verified by every case's claim reaching that group, plus `test_rom_settings.c`.
+7. **Port the credits writes** (`Credits`). Verified by every case's claim reaching that group, plus `test_rom_credits.c`.
+8. **Port the text, dialog and hints writes** (`Text`, `Dialog`). Verified by every case's claim reaching that group, plus `test_rom_text.c`.
+9. **Port the initial SRAM writes** (`InitialSram`), so the full log matches. Verified by every case claiming the whole write log, plus `test_rom_sram.c`.
+10. **Checksum and heart beep.** Port `Rom::updateChecksum` and `setHeartBeepSpeed`. Verified by a unit test of the checksum algorithm on a synthetic 2 MiB buffer whose expected sum is computed independently, and by the heart-beep byte matching the step 2 cases.
+11. skill: check-e2e — the whole case list, write logs included; then `e2e-combos`.
+
+### Phase 2 — Full ROM assembly, host only
+
+1. **BPS applier in C** (no allocation, caller buffers, source and target CRC32 checks). Verified by unit tests on small hand-built BPS files covering every BPS action and each CRC failure.
+2. **ROM assembly pipeline**: check the source MD5 (`03a63945…`), resize to 2 MiB, apply the base patch, check MD5 `edc01f3d…`, generate, run `rando_rom`, apply the heart beep, update the checksum, and write the `.sfc`. A host CLI `rando_patch --base <jp.sfc> --out <file> [settings]` does it end to end. As in VT's `rom.js`, the BPS applies to the unresized 1 MiB JP ROM, not the 2 MiB copy. Verified by:
    - a host test with a **synthetic** base ROM and a synthetic BPS, which checks the order of operations and each error path (wrong MD5, bad BPS, write failure);
-   - a test that the written ROM equals the base-patched buffer with exactly the logged writes applied.
-4. **Output naming, history record and spoiler.** Name a ROM `<Mode>-<Goal>-<code>.sfc`, where `<code>` is 6 hex digits derived from the seed and settings, with a counter suffix on collision. The history record JSON holds the settings, an ISO date and the optional spoiler (reuse `rando/host/spoiler_json.c`'s format). Verified by unit tests: naming of every mode and goal, collision handling, and a record round-trip (write, then read back identical).
+   - a test that the written ROM equals the base-patched buffer with exactly the logged writes applied;
+   - once `data/base.bps` is committed, a host test that reads its header and checks that the pipeline feeds it a source of the declared size (1,048,576) and expects the declared target size (2,097,152).
+3. **Output naming, history record and spoiler.** Name a ROM `<Mode>-<Goal>-<code>.sfc`, where `<code>` is 6 hex digits derived from the seed and settings, with a counter suffix on collision. The history record JSON holds the settings, an ISO date and the optional spoiler (reuse `rando/host/spoiler_json.c`'s format). Verified by unit tests: naming of every mode and goal, collision handling, and a record round-trip (write, then read back identical).
 
-### Phase 3 — The app's UI core and text renderer, host only
-
-1. **Screen model and text renderer.** The screen description struct and a renderer to a fixed character grid. Verified by a snapshot test of a hand-built screen.
-2. **String table (i18n).** Every UI string goes through an id and the English table; a test fails if the UI core contains a string literal that is shown to the user. Verified by that test.
-3. **Generate tab state machine.**
-   - Every setting of §2 is a row; left and right change the value, and up and down move.
-   - Unsupported combinations from Phase 1 step 2 are greyed out with a reason.
-   - The rows include the spoiler option (default off), the heart beep option, and the Generate action.
-   - The last settings are saved and restored.
-
-   Verified by key-sequence snapshot tests, including restoring from a saved settings file.
-4. **Generation flow.** A "Generating…" screen, then success (the file name) or an error message: base ROM missing or wrong MD5, generator gave up, SD card write failed. Verified by snapshot tests with an injected generator, for success and for each failure.
-5. **History tab.** The list is newest first and reconciled at start with the ROMs actually present. It has a detail view (settings, spoiler if kept, scrollable) and a delete action with confirmation, which removes the ROM, `.srm` and save states, then the record. Verified by snapshot tests on a temporary directory tree mimicking the SD card, checking the files removed and the files kept.
-6. **`ui_cli`: key sequence in, text screen out**, for the agent's own checks. Verified by a smoke test in `make test`.
-
-### Phase 4 — Onion and PC builds
+### Phase 3 — Onion facts, then the app's UI core and text renderer, host only
 
 1. **Confirm the Onion specifics from Onion's sources** (`OnionUI/Onion`) and record them in `docs/` with links:
    - the app folder layout (`App/<Name>/config.json`, `launch.sh`, icon);
@@ -114,10 +129,25 @@ The goals behind every rule below:
    - the button mapping;
    - the exact RetroArch save and save-state paths for the default SNES core (e.g. under `Saves/CurrentProfile/`).
 
-   Verified by: each item cites the Onion source file. Fix the delete paths of Phase 3 step 5 if they differ.
-2. **SDL renderer and input**, shared by the Miyoo and PC builds: Onion-style list rendering, and key mapping from the d-pad and buttons, or the keyboard on PC. Verified by: the PC build compiles with no warnings in CI and starts, renders one frame offscreen and exits in a headless smoke test (SDL dummy video driver). The visual check is the user's (§4).
-3. **Miyoo build and package**: a cross build in the Onion toolchain (a container or a pinned toolchain archive), and a release zip with the `App/ALttPR/` layout (binary, `launch.sh`, `config.json`, icon, `base.bps`). Verified by: CI produces the zip, and `file` reports an ARM 32-bit EABI hard-float executable.
-4. **Performance budget**: measure the generation time of the slowest golden case on the host at `-O2`, and estimate the time on the Cortex-A7. If it exceeds about 10 s, the Generating screen gets a progress indicator per generator stage. Verified by: a measurement target outside `test` and `e2e`, with its numbers recorded in the step note.
+   Verified by: each item cites the Onion source file.
+2. **Screen model and text renderer.** The screen description struct and a renderer to a fixed character grid. Verified by a snapshot test of a hand-built screen.
+3. **String table (i18n).** Every UI string goes through an id and the English table; a test fails if the UI core contains a string literal that is shown to the user. Verified by that test.
+4. **Generate tab state machine.**
+   - Every setting of §2 is a row; left and right change the value, and up and down move.
+   - Unsupported combinations from Phase 1 step 2 are greyed out with a reason.
+   - The rows include the spoiler option (default off), the heart beep option, and the Generate action.
+   - The last settings are saved and restored.
+
+   Verified by key-sequence snapshot tests, including restoring from a saved settings file.
+5. **Generation flow.** A "Generating…" screen, then success (the file name) or an error message: base ROM missing or wrong MD5, generator gave up, SD card write failed. Verified by snapshot tests with an injected generator, for success and for each failure.
+6. **History tab.** The list is newest first and reconciled at start with the ROMs actually present. It has a detail view (settings, spoiler if kept, scrollable) and a delete action with confirmation, which removes the ROM, `.srm` and save states, then the record. Verified by snapshot tests on a temporary directory tree mimicking the SD card, checking the files removed and the files kept.
+7. **`ui_cli`: key sequence in, text screen out**, for the agent's own checks. Verified by a smoke test in `make test`.
+
+### Phase 4 — Onion and PC builds
+
+1. **SDL renderer and input**, shared by the Miyoo and PC builds: Onion-style list rendering, and key mapping from the d-pad and buttons, or the keyboard on PC. Verified by: the PC build compiles with no warnings in CI and starts, renders one frame offscreen and exits in a headless smoke test (SDL dummy video driver). The visual check is the user's (§4).
+2. **Miyoo build and package.** Gate: `data/base.bps` exists and passes Phase 0's header checks; otherwise the step stops and asks the user instead of packaging without it. The step makes a cross build in the Onion toolchain (a container or a pinned toolchain archive), and a release zip with the `App/ALttPR/` layout (binary, `launch.sh`, `config.json`, icon, `base.bps`). Verified by: CI produces the zip; `file` reports an ARM 32-bit EABI hard-float executable; and a separate target (not `test` nor `e2e`) runs the cross-built generator under qemu-arm user mode on the e2e cases, whose traces and write logs must match the goldens.
+3. **Performance budget**: measure the generation time of the slowest golden case on the host at `-O2`, and estimate the time on the Cortex-A7. If it exceeds about 10 s, the Generating screen gets a progress indicator per generator stage. Verified by: `make -C tests/rando measure` (outside `test` and `e2e`), with its numbers recorded in the step note.
 
 ### Phase 5 — Cleanup
 
@@ -126,11 +156,11 @@ The goals behind every rule below:
 
 ## 4. Done when
 
-- `make -C tests/rando test` and `make -C tests/rando e2e` are green: every case matches VT's spoiler and write log, with `e2e` no slower than before the plan, except for the per-case cost of the write-log diff.
+- `make -C tests/rando test`, `make -C tests/rando e2e` and `make -C tests/rando e2e-combos` are green: every case claims `all` and its whole write log. `e2e`'s per-case time, as measured by `make -C tests/rando measure`, is unchanged within ±10%, apart from the write-log diff.
 - The UI snapshot tests cover every Generate row, the generation success and failure screens, and History list, detail and delete.
 - CI produces the PC build and the Onion release zip.
+- The user confirmed the base patch MD5 (Phase 0 step note).
 - **Human checks by the user**, listed in the final step note:
-  - the base patch applied to their JP ROM gives MD5 `edc01f3d…`;
   - the app runs on the Mini Flip, generates a seed, and the ROM boots and plays to at least the first dungeon;
   - two seeds keep separate saves;
   - delete from History removes the ROM, save and states;
